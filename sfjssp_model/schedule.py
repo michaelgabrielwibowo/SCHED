@@ -544,14 +544,6 @@ class Schedule:
     def check_feasibility(self, instance: SFJSSPInstance) -> bool:
         """
         Check schedule feasibility
-
-        Evidence: Constraints from mathematical model [CONFIRMED components]
-
-        Checks:
-        - Precedence constraints
-        - Machine capacity (no overlap)
-        - Worker capacity (no overlap)
-        - Eligibility constraints
         """
         self.is_feasible = True
         self.constraint_violations = []
@@ -562,12 +554,17 @@ class Schedule:
                 if i == 0:
                     continue
 
-                prev_op = self.get_operation(job.job_id, i - 1)
-                curr_op = self.get_operation(job.job_id, i)
+                prev_sched = self.get_operation(job.job_id, i - 1)
+                curr_sched = self.get_operation(job.job_id, i)
 
-                if prev_op and curr_op:
-                    # [CHANGED] Added transport_time
-                    if curr_op.start_time < (prev_op.completion_time + prev_op.transport_time):
+                if prev_sched and curr_sched:
+                    # Include transport_time and modeled waiting_time of previous operation
+                    base_gap = prev_sched.completion_time + prev_sched.transport_time
+                    prev_model_op = job.operations[i - 1]
+                    waiting_time = getattr(prev_model_op, "waiting_time", 0.0)
+                    base_gap += waiting_time
+
+                    if curr_sched.start_time < base_gap:
                         self.is_feasible = False
                         self.constraint_violations.append(
                             f"Precedence violation: Job {job.job_id} Op {i}"
@@ -615,6 +612,33 @@ class Schedule:
                 self.is_feasible = False
                 self.constraint_violations.append(
                     f"Ineligible worker: Op({job_id},{op_id}) by W{sched_op.worker_id}"
+                )
+
+        # Check period bounds (operation must lie within its assigned period)
+        for job in instance.jobs:
+            for op in job.operations:
+                sched_op = self.get_operation(job.job_id, op.op_id)
+                if sched_op is None:
+                    continue
+
+                if op.period_start is not None and op.period_end is not None:
+                    if not op.is_within_period():
+                        self.is_feasible = False
+                        self.constraint_violations.append(
+                            f"Period violation: Job {job.job_id} Op {op.op_id}"
+                        )
+
+        # Check due-date constraints (job completion must not exceed due date)
+        for job in instance.jobs:
+            if job.due_date is None:
+                continue
+
+            completion = self.get_job_completion_time(job.job_id, instance)
+            if completion > job.due_date:
+                self.is_feasible = False
+                self.constraint_violations.append(
+                    f"Due date violation: Job {job.job_id} "
+                    f"(C={completion:.2f} > D={job.due_date:.2f})"
                 )
 
         return self.is_feasible
