@@ -1,0 +1,144 @@
+{
+  "instance_id": "SFJSSP_small_001",
+  "instance_name": "",
+  "label": "fully_synthetic",
+  "label_justification": "All parameters computer-generated",
+  "instance_type": "static",
+  "n_jobs": 10,
+  "n_machines": 5,
+  "n_workers": 5,
+  "n_operations": 32,
+  "planning_horizon": 1000.0,
+  "creation_date": "2026-03-24T22:56:42.917107",
+  "source": "Synthetic Generator v1.0",
+  "calibration_sources": [
+    "DyDFJSP 2023 (fatigue)",
+    "E-DFJSP 2025 (energy)",
+    "NSGA-III 2021 (ergonomic)"
+  ],
+  "known_limitations": [
+    "Worker parameters not validated against real data",
+    "Ergonomic indices are approximate",
+    "No real breakdown patterns"
+  ],
+  "carbon_emission_factor": 0.5,
+  "default_electricity_price": 0.1,
+  "auxiliary_power_total": 50.0,
+  "dynamic_params": null,
+  "machines": [
+    {
+      "machine_id": 0,
+      "power_processing": 34.35346682154098,
+      "power_idle": 1.3939779127509695,
+      "n_modes": 2
+    },
+    {
+      "machine_id": 1,
+      "power_processing": 15.111735359163099,
+      "power_idle": 7.76613044636754,
+      "n_modes": 3
+    },
+    {
+      "machine_id": 2,
+      "power_processing": 25.2964124150499,
+      "power_idle": 9.597831212991139,
+      "n_modes": 3
+    },
+    {
+      "machine_id": 3,
+      "power_processing": 23.989980868126825,
+      "power_idle": 1.0366995248738982,
+      "n_modes": 2
+    },
+    {
+      "machine_id": 4,
+      "power_processing": 42.71921502208157,
+      "power_idle": 5.816154313878436,
+      "n_modes": 3
+    }
+  ],
+  "workers": [
+    {
+      "worker_id": 0,
+      "labor_cost_per_hour": 47.714716742748415,
+      "fatigue_rate": 0.011350586172627849,
+      "ocra_max": 3.522397675953694
+    },
+    {
+      "worker_id": 1,
+      "labor_cost_per_hour": 15.04549875973224,
+      "fatigue_rate": 0.022000771591858877,
+      "ocra_max": 2.1012395245968736
+    },
+    {
+      "worker_id": 2,
+      "labor_cost_per_hour": 28.038815173101504,
+      "fatigue_rate": 0.014766820972874349,
+      "ocra_max": 3.009103498306295
+    },
+    {
+      "worker_id": 3,
+      "labor_cost_per_hour": 22.158604422895536,
+      "fatigue_rate": 0.026582440065844516,
+      "ocra_max": 3.1759928011786362
+    },
+    {
+      "worker_id": 4,
+      "labor_cost_per_hour": 12.962234462895657,
+      "fatigue_rate": 0.013314860638287889,
+      "ocra_max": 3.701537965858314
+    }
+  ],
+  "jobs_summary": [
+    {
+      "job_id": 0,
+      "n_operations": 3,
+      "due_date": 156.21944758872348
+    },
+    {
+      "job_id": 1,
+      "n_operations": 4,
+      "due_date": 337.7241179885396
+    },
+    {
+      "job_id": 2,
+      "n_operations": 4,
+      "due_date": 124.12492248492427
+    },
+    {
+      "job_id": 3,
+      "n_operations": 2,
+      "due_date": 88.57533194074394
+    },
+    {
+      "job_id": 4,
+      "n_operations": 2,
+      "due_date": 84.71817951990771
+    },
+    {
+      "job_id": 5,
+      "n_operations": 3,
+      "due_date": 133.13285667391054
+    },
+    {
+      "job_id": 6,
+      "n_operations": 3,
+      "due_date": 268.00785027453276
+    },
+    {
+      "job_id": 7,
+      "n_operations": 4,
+      "due_date": 234.402807208528
+    },
+    {
+      "job_id": 8,
+      "n_operations": 3,
+      "due_date": 224.59518115231685
+    },
+    {
+      "job_id": 9,
+      "n_operations": 4,
+      "due_date": 141.1770705638901
+    }
+  ]
+}

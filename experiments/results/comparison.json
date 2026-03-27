@@ -1,0 +1,462 @@
+[
+  {
+    "instance": "SFJSSP_small_000",
+    "n_jobs": 10,
+    "n_machines": 5,
+    "n_workers": 5,
+    "timestamp": "2026-03-24T23:00:41.894805",
+    "experiments": [
+      {
+        "method": "Greedy (SPT)",
+        "makespan": 451.76613495639407,
+        "energy": 55876.67123702084,
+        "ergonomic_risk": 132.11689419398618,
+        "labor_cost": 29689.057738494757,
+        "time_seconds": 0.001646280288696289,
+        "feasible": true
+      },
+      {
+        "method": "Greedy (FIFO)",
+        "makespan": 671.2562791249943,
+        "energy": 72473.54359092403,
+        "ergonomic_risk": 132.11689419398624,
+        "labor_cost": 29689.057738494754,
+        "time_seconds": 0.0013997554779052734,
+        "feasible": true
+      },
+      {
+        "method": "Greedy (EDD)",
+        "makespan": 626.9433626170153,
+        "energy": 69122.79715218116,
+        "ergonomic_risk": 132.11689419398618,
+        "labor_cost": 29689.057738494757,
+        "time_seconds": 0.0011305809020996094,
+        "feasible": true
+      },
+      {
+        "method": "NSGA-III (20 gen)",
+        "makespan": 721.1840737040677,
+        "energy": 82368.79369891717,
+        "ergonomic_risk": 162.7695867234238,
+        "labor_cost": 59102.596581945465,
+        "time_seconds": 0.2705092430114746,
+        "pareto_size": 19,
+        "feasible": true
+      }
+    ]
+  },
+  {
+    "instance": "SFJSSP_small_001",
+    "n_jobs": 10,
+    "n_machines": 5,
+    "n_workers": 5,
+    "timestamp": "2026-03-24T23:00:42.174411",
+    "experiments": [
+      {
+        "method": "Greedy (SPT)",
+        "makespan": 421.0863277058204,
+        "energy": 41774.59366950793,
+        "ergonomic_risk": 88.78184811906843,
+        "labor_cost": 24964.62778124159,
+        "time_seconds": 0.0005605220794677734,
+        "feasible": true
+      },
+      {
+        "method": "Greedy (FIFO)",
+        "makespan": 475.44158111831274,
+        "energy": 46352.79619191551,
+        "ergonomic_risk": 88.78184811906844,
+        "labor_cost": 24964.62778124159,
+        "time_seconds": 0.0004544258117675781,
+        "feasible": true
+      },
+      {
+        "method": "Greedy (EDD)",
+        "makespan": 545.0743290444666,
+        "energy": 52217.78259494868,
+        "ergonomic_risk": 88.78184811906843,
+        "labor_cost": 24964.62778124159,
+        "time_seconds": 0.0004265308380126953,
+        "feasible": true
+      },
+      {
+        "method": "NSGA-III (20 gen)",
+        "makespan": 529.8233614472938,
+        "energy": 52461.90332833803,
+        "ergonomic_risk": 101.28663672385557,
+        "labor_cost": 42989.19252411839,
+        "time_seconds": 0.26725077629089355,
+        "pareto_size": 8,
+        "feasible": true
+      }
+    ]
+  },
+  {
+    "instance": "SFJSSP_small_002",
+    "n_jobs": 10,
+    "n_machines": 5,
+    "n_workers": 5,
+    "timestamp": "2026-03-24T23:00:42.447252",
+    "experiments": [
+      {
+        "method": "Greedy (SPT)",
+        "makespan": 572.5993452458949,
+        "energy": 59372.842015883645,
+        "ergonomic_risk": 91.86378186024871,
+        "labor_cost": 28718.11889828429,
+        "time_seconds": 0.0008668899536132812,
+        "feasible": true
+      },
+      {
+        "method": "Greedy (FIFO)",
+        "makespan": 694.2317265266295,
+        "energy": 68108.70510174814,
+        "ergonomic_risk": 91.86378186024872,
+        "labor_cost": 28718.11889828429,
+        "time_seconds": 0.0005061626434326172,
+        "feasible": true
+      },
+      {
+        "method": "Greedy (EDD)",
+        "makespan": 691.0905920219251,
+        "energy": 67883.10299909713,
+        "ergonomic_risk": 91.86378186024871,
+        "labor_cost": 28718.11889828429,
+        "time_seconds": 0.0012099742889404297,
+        "feasible": true
+      },
+      {
+        "method": "NSGA-III (20 gen)",
+        "makespan": 616.2029587358613,
+        "energy": 69737.66918108097,
+        "ergonomic_risk": 107.99424300886915,
+        "labor_cost": 52064.96523101567,
+        "time_seconds": 0.2766585350036621,
+        "pareto_size": 21,
+        "feasible": true
+      }
+    ]
+  },
+  {
+    "instance": "SFJSSP_small_003",
+    "n_jobs": 10,
+    "n_machines": 5,
+    "n_workers": 5,
+    "timestamp": "2026-03-24T23:00:42.733228",
+    "experiments": [
+      {
+        "method": "Greedy (SPT)",
+        "makespan": 395.333297690666,
+        "energy": 44949.75757513377,
+        "ergonomic_risk": 68.43251607283453,
+        "labor_cost": 16322.643725367152,
+        "time_seconds": 0.0006272792816162109,
+        "feasible": true
+      },
+      {
+        "method": "Greedy (FIFO)",
+        "makespan": 527.1735785528687,
+        "energy": 54996.60688874399,
+        "ergonomic_risk": 68.43251607283453,
+        "labor_cost": 16322.643725367154,
+        "time_seconds": 0.00045680999755859375,
+        "feasible": true
+      },
+      {
+        "method": "Greedy (EDD)",
+        "makespan": 522.96029592647,
+        "energy": 54675.53494179236,
+        "ergonomic_risk": 68.43251607283455,
+        "labor_cost": 16322.643725367152,
+        "time_seconds": 0.0010881423950195312,
+        "feasible": true
+      },
+      {
+        "method": "NSGA-III (20 gen)",
+        "makespan": 647.9601884597639,
+        "energy": 63439.71131894664,
+        "ergonomic_risk": 120.04548393606632,
+        "labor_cost": 35856.956793401274,
+        "time_seconds": 0.26628708839416504,
+        "pareto_size": 8,
+        "feasible": true
+      }
+    ]
+  },
+  {
+    "instance": "SFJSSP_small_004",
+    "n_jobs": 10,
+    "n_machines": 5,
+    "n_workers": 5,
+    "timestamp": "2026-03-24T23:00:43.007636",
+    "experiments": [
+      {
+        "method": "Greedy (SPT)",
+        "makespan": 441.8821426505868,
+        "energy": 55315.29803184159,
+        "ergonomic_risk": 75.51243959492487,
+        "labor_cost": 18176.26449561487,
+        "time_seconds": 0.0006563663482666016,
+        "feasible": true
+      },
+      {
+        "method": "Greedy (FIFO)",
+        "makespan": 575.221015824454,
+        "energy": 66481.92080453548,
+        "ergonomic_risk": 75.51243959492487,
+        "labor_cost": 18176.26449561487,
+        "time_seconds": 0.0004918575286865234,
+        "feasible": true
+      },
+      {
+        "method": "Greedy (EDD)",
+        "makespan": 466.3189154687289,
+        "energy": 57361.78468158548,
+        "ergonomic_risk": 75.51243959492489,
+        "labor_cost": 18176.264495614865,
+        "time_seconds": 0.000457763671875,
+        "feasible": true
+      },
+      {
+        "method": "NSGA-III (20 gen)",
+        "makespan": 623.8387596812661,
+        "energy": 85170.6279975892,
+        "ergonomic_risk": 124.86734389521207,
+        "labor_cost": 44809.34924661517,
+        "time_seconds": 0.2928192615509033,
+        "pareto_size": 20,
+        "feasible": true
+      }
+    ]
+  },
+  {
+    "instance": "SFJSSP_small_005",
+    "n_jobs": 10,
+    "n_machines": 5,
+    "n_workers": 5,
+    "timestamp": "2026-03-24T23:00:43.308314",
+    "experiments": [
+      {
+        "method": "Greedy (SPT)",
+        "makespan": 517.4484029157522,
+        "energy": 69817.2631066331,
+        "ergonomic_risk": 96.3645149643542,
+        "labor_cost": 27098.80956729485,
+        "time_seconds": 0.0010280609130859375,
+        "feasible": true
+      },
+      {
+        "method": "Greedy (FIFO)",
+        "makespan": 785.8590932960828,
+        "energy": 91280.54995648695,
+        "ergonomic_risk": 96.36451496435419,
+        "labor_cost": 27098.80956729485,
+        "time_seconds": 0.0007448196411132812,
+        "feasible": true
+      },
+      {
+        "method": "Greedy (EDD)",
+        "makespan": 701.6162109680582,
+        "energy": 84544.12248445589,
+        "ergonomic_risk": 96.3645149643542,
+        "labor_cost": 27098.809567294848,
+        "time_seconds": 0.0005562305450439453,
+        "feasible": true
+      },
+      {
+        "method": "NSGA-III (20 gen)",
+        "makespan": 682.7129053778395,
+        "energy": 88904.26794405337,
+        "ergonomic_risk": 105.8584662875671,
+        "labor_cost": 38225.40053928161,
+        "time_seconds": 0.30668091773986816,
+        "pareto_size": 11,
+        "feasible": true
+      }
+    ]
+  },
+  {
+    "instance": "SFJSSP_small_006",
+    "n_jobs": 10,
+    "n_machines": 5,
+    "n_workers": 5,
+    "timestamp": "2026-03-24T23:00:43.625992",
+    "experiments": [
+      {
+        "method": "Greedy (SPT)",
+        "makespan": 520.2127914125505,
+        "energy": 55350.05948387853,
+        "ergonomic_risk": 66.0294217805409,
+        "labor_cost": 18216.517648088757,
+        "time_seconds": 0.0007455348968505859,
+        "feasible": true
+      },
+      {
+        "method": "Greedy (FIFO)",
+        "makespan": 449.69570161140973,
+        "energy": 50020.14737067186,
+        "ergonomic_risk": 66.02942178054089,
+        "labor_cost": 18216.517648088757,
+        "time_seconds": 0.0012018680572509766,
+        "feasible": true
+      },
+      {
+        "method": "Greedy (EDD)",
+        "makespan": 407.02231883622915,
+        "energy": 46794.75363411325,
+        "ergonomic_risk": 66.02942178054089,
+        "labor_cost": 18216.517648088757,
+        "time_seconds": 0.0010905265808105469,
+        "feasible": true
+      },
+      {
+        "method": "NSGA-III (20 gen)",
+        "makespan": 678.4902947174218,
+        "energy": 76865.4506423432,
+        "ergonomic_risk": 126.41401823680764,
+        "labor_cost": 45936.52465609782,
+        "time_seconds": 0.30493760108947754,
+        "pareto_size": 12,
+        "feasible": true
+      }
+    ]
+  },
+  {
+    "instance": "SFJSSP_small_007",
+    "n_jobs": 10,
+    "n_machines": 5,
+    "n_workers": 5,
+    "timestamp": "2026-03-24T23:00:43.939613",
+    "experiments": [
+      {
+        "method": "Greedy (SPT)",
+        "makespan": 525.7480678379882,
+        "energy": 62368.108649465124,
+        "ergonomic_risk": 115.18756839419397,
+        "labor_cost": 20715.916875421433,
+        "time_seconds": 0.0013616085052490234,
+        "feasible": true
+      },
+      {
+        "method": "Greedy (FIFO)",
+        "makespan": 713.1802041784192,
+        "energy": 77312.39550476176,
+        "ergonomic_risk": 115.18756839419397,
+        "labor_cost": 20715.916875421433,
+        "time_seconds": 0.0004734992980957031,
+        "feasible": true
+      },
+      {
+        "method": "Greedy (EDD)",
+        "makespan": 638.2065350441231,
+        "energy": 71334.61581333257,
+        "ergonomic_risk": 115.18756839419397,
+        "labor_cost": 20715.916875421433,
+        "time_seconds": 0.00046062469482421875,
+        "feasible": true
+      },
+      {
+        "method": "NSGA-III (20 gen)",
+        "makespan": 670.371013044778,
+        "energy": 85430.66120833205,
+        "ergonomic_risk": 136.49406496289373,
+        "labor_cost": 43688.82115772723,
+        "time_seconds": 0.28777003288269043,
+        "pareto_size": 21,
+        "feasible": true
+      }
+    ]
+  },
+  {
+    "instance": "SFJSSP_small_008",
+    "n_jobs": 10,
+    "n_machines": 5,
+    "n_workers": 5,
+    "timestamp": "2026-03-24T23:00:44.236461",
+    "experiments": [
+      {
+        "method": "Greedy (SPT)",
+        "makespan": 794.2459473380962,
+        "energy": 85456.34928881055,
+        "ergonomic_risk": 163.37307369587728,
+        "labor_cost": 26441.38425487245,
+        "time_seconds": 0.0018520355224609375,
+        "feasible": true
+      },
+      {
+        "method": "Greedy (FIFO)",
+        "makespan": 714.3634965786046,
+        "energy": 79095.53518781204,
+        "ergonomic_risk": 163.37307369587728,
+        "labor_cost": 26441.38425487245,
+        "time_seconds": 0.0005624294281005859,
+        "feasible": true
+      },
+      {
+        "method": "Greedy (EDD)",
+        "makespan": 781.2255437448152,
+        "energy": 84419.57129828309,
+        "ergonomic_risk": 163.37307369587728,
+        "labor_cost": 26441.38425487245,
+        "time_seconds": 0.0008780956268310547,
+        "feasible": true
+      },
+      {
+        "method": "NSGA-III (20 gen)",
+        "makespan": 748.2975875615795,
+        "energy": 87084.27100713446,
+        "ergonomic_risk": 159.63328233864846,
+        "labor_cost": 55648.14792614626,
+        "time_seconds": 0.30770254135131836,
+        "pareto_size": 8,
+        "feasible": true
+      }
+    ]
+  },
+  {
+    "instance": "SFJSSP_small_009",
+    "n_jobs": 10,
+    "n_machines": 5,
+    "n_workers": 5,
+    "timestamp": "2026-03-24T23:00:44.556080",
+    "experiments": [
+      {
+        "method": "Greedy (SPT)",
+        "makespan": 366.56450712851137,
+        "energy": 53784.80328590433,
+        "ergonomic_risk": 76.82011475847145,
+        "labor_cost": 27445.110705291565,
+        "time_seconds": 0.0006344318389892578,
+        "feasible": true
+      },
+      {
+        "method": "Greedy (FIFO)",
+        "makespan": 440.11802190728514,
+        "energy": 59920.4625554814,
+        "ergonomic_risk": 76.82011475847143,
+        "labor_cost": 27445.11070529156,
+        "time_seconds": 0.0004444122314453125,
+        "feasible": true
+      },
+      {
+        "method": "Greedy (EDD)",
+        "makespan": 472.13250167720133,
+        "energy": 62591.034317439684,
+        "ergonomic_risk": 76.82011475847145,
+        "labor_cost": 27445.11070529156,
+        "time_seconds": 0.0004241466522216797,
+        "feasible": true
+      },
+      {
+        "method": "NSGA-III (20 gen)",
+        "makespan": 585.6291809223444,
+        "energy": 80090.3691262013,
+        "ergonomic_risk": 102.60675151036628,
+        "labor_cost": 48812.48468878925,
+        "time_seconds": 0.2581009864807129,
+        "pareto_size": 21,
+        "feasible": true
+      }
+    ]
+  }
+]

@@ -1,0 +1,404 @@
+{
+  "instance_id": "SFJSSP_medium_005",
+  "instance_name": "",
+  "label": "fully_synthetic",
+  "label_justification": "All parameters computer-generated",
+  "instance_type": "static",
+  "n_jobs": 50,
+  "n_machines": 10,
+  "n_workers": 10,
+  "n_operations": 156,
+  "planning_horizon": 1000.0,
+  "creation_date": "2026-03-24T22:56:42.986437",
+  "source": "Synthetic Generator v1.0",
+  "calibration_sources": [
+    "DyDFJSP 2023 (fatigue)",
+    "E-DFJSP 2025 (energy)",
+    "NSGA-III 2021 (ergonomic)"
+  ],
+  "known_limitations": [
+    "Worker parameters not validated against real data",
+    "Ergonomic indices are approximate",
+    "No real breakdown patterns"
+  ],
+  "carbon_emission_factor": 0.5,
+  "default_electricity_price": 0.1,
+  "auxiliary_power_total": 50.0,
+  "dynamic_params": null,
+  "machines": [
+    {
+      "machine_id": 0,
+      "power_processing": 38.38108975891522,
+      "power_idle": 7.783019354076471,
+      "n_modes": 2
+    },
+    {
+      "machine_id": 1,
+      "power_processing": 19.433764439567646,
+      "power_idle": 2.8029839609658365,
+      "n_modes": 3
+    },
+    {
+      "machine_id": 2,
+      "power_processing": 13.065802465497274,
+      "power_idle": 7.75418118937728,
+      "n_modes": 3
+    },
+    {
+      "machine_id": 3,
+      "power_processing": 32.48909803251264,
+      "power_idle": 4.903205615577833,
+      "n_modes": 3
+    },
+    {
+      "machine_id": 4,
+      "power_processing": 45.59786062417024,
+      "power_idle": 2.7425707562253834,
+      "n_modes": 2
+    },
+    {
+      "machine_id": 5,
+      "power_processing": 10.059474793539824,
+      "power_idle": 7.8002883271208905,
+      "n_modes": 3
+    },
+    {
+      "machine_id": 6,
+      "power_processing": 37.43133010872532,
+      "power_idle": 7.579578664555212,
+      "n_modes": 3
+    },
+    {
+      "machine_id": 7,
+      "power_processing": 24.129214635229037,
+      "power_idle": 9.121304735887874,
+      "n_modes": 2
+    },
+    {
+      "machine_id": 8,
+      "power_processing": 35.085186879549745,
+      "power_idle": 5.0758731272911985,
+      "n_modes": 3
+    },
+    {
+      "machine_id": 9,
+      "power_processing": 48.48733859861578,
+      "power_idle": 1.1417997828939845,
+      "n_modes": 3
+    }
+  ],
+  "workers": [
+    {
+      "worker_id": 0,
+      "labor_cost_per_hour": 11.030875452179473,
+      "fatigue_rate": 0.04313348191310792,
+      "ocra_max": 2.188523174864735
+    },
+    {
+      "worker_id": 1,
+      "labor_cost_per_hour": 47.824643511555294,
+      "fatigue_rate": 0.03880556461418734,
+      "ocra_max": 3.08945867083216
+    },
+    {
+      "worker_id": 2,
+      "labor_cost_per_hour": 32.582630022697934,
+      "fatigue_rate": 0.024092024846737406,
+      "ocra_max": 3.509363607999593
+    },
+    {
+      "worker_id": 3,
+      "labor_cost_per_hour": 29.369228475103164,
+      "fatigue_rate": 0.024234211123756896,
+      "ocra_max": 3.8966533008530275
+    },
+    {
+      "worker_id": 4,
+      "labor_cost_per_hour": 27.50964020321328,
+      "fatigue_rate": 0.04749664964785402,
+      "ocra_max": 2.7953557228284245
+    },
+    {
+      "worker_id": 5,
+      "labor_cost_per_hour": 45.70225869399276,
+      "fatigue_rate": 0.02237973897269316,
+      "ocra_max": 3.170731781837511
+    },
+    {
+      "worker_id": 6,
+      "labor_cost_per_hour": 20.582623035282325,
+      "fatigue_rate": 0.011040045114205116,
+      "ocra_max": 3.590366067204153
+    },
+    {
+      "worker_id": 7,
+      "labor_cost_per_hour": 33.394598574978446,
+      "fatigue_rate": 0.027044083193287646,
+      "ocra_max": 3.7229952380491262
+    },
+    {
+      "worker_id": 8,
+      "labor_cost_per_hour": 27.7707240372418,
+      "fatigue_rate": 0.036749966286754185,
+      "ocra_max": 3.5404000533975295
+    },
+    {
+      "worker_id": 9,
+      "labor_cost_per_hour": 28.688138249037944,
+      "fatigue_rate": 0.014317004682382235,
+      "ocra_max": 2.3517439744719226
+    }
+  ],
+  "jobs_summary": [
+    {
+      "job_id": 0,
+      "n_operations": 4,
+      "due_date": 210.0614160515241
+    },
+    {
+      "job_id": 1,
+      "n_operations": 4,
+      "due_date": 171.70070854409283
+    },
+    {
+      "job_id": 2,
+      "n_operations": 4,
+      "due_date": 185.386681115265
+    },
+    {
+      "job_id": 3,
+      "n_operations": 4,
+      "due_date": 167.8290878768283
+    },
+    {
+      "job_id": 4,
+      "n_operations": 3,
+      "due_date": 196.14095352800214
+    },
+    {
+      "job_id": 5,
+      "n_operations": 3,
+      "due_date": 200.33130481309257
+    },
+    {
+      "job_id": 6,
+      "n_operations": 3,
+      "due_date": 165.66540091646542
+    },
+    {
+      "job_id": 7,
+      "n_operations": 2,
+      "due_date": 102.2764204872456
+    },
+    {
+      "job_id": 8,
+      "n_operations": 3,
+      "due_date": 132.07435240121487
+    },
+    {
+      "job_id": 9,
+      "n_operations": 3,
+      "due_date": 185.1313550469675
+    },
+    {
+      "job_id": 10,
+      "n_operations": 2,
+      "due_date": 185.83109905599684
+    },
+    {
+      "job_id": 11,
+      "n_operations": 4,
+      "due_date": 337.1116926783891
+    },
+    {
+      "job_id": 12,
+      "n_operations": 2,
+      "due_date": 53.192159338287496
+    },
+    {
+      "job_id": 13,
+      "n_operations": 4,
+      "due_date": 217.6687265348705
+    },
+    {
+      "job_id": 14,
+      "n_operations": 3,
+      "due_date": 108.448543646607
+    },
+    {
+      "job_id": 15,
+      "n_operations": 4,
+      "due_date": 183.04555608339325
+    },
+    {
+      "job_id": 16,
+      "n_operations": 4,
+      "due_date": 237.15554770344738
+    },
+    {
+      "job_id": 17,
+      "n_operations": 2,
+      "due_date": 184.52574475651733
+    },
+    {
+      "job_id": 18,
+      "n_operations": 3,
+      "due_date": 336.2368303654135
+    },
+    {
+      "job_id": 19,
+      "n_operations": 3,
+      "due_date": 290.273794307873
+    },
+    {
+      "job_id": 20,
+      "n_operations": 4,
+      "due_date": 331.6104537153161
+    },
+    {
+      "job_id": 21,
+      "n_operations": 4,
+      "due_date": 233.96040253851345
+    },
+    {
+      "job_id": 22,
+      "n_operations": 4,
+      "due_date": 458.7177984885544
+    },
+    {
+      "job_id": 23,
+      "n_operations": 2,
+      "due_date": 95.82275952964709
+    },
+    {
+      "job_id": 24,
+      "n_operations": 2,
+      "due_date": 90.7706379480399
+    },
+    {
+      "job_id": 25,
+      "n_operations": 3,
+      "due_date": 226.0298361810098
+    },
+    {
+      "job_id": 26,
+      "n_operations": 2,
+      "due_date": 105.61116286392672
+    },
+    {
+      "job_id": 27,
+      "n_operations": 4,
+      "due_date": 195.73644367463424
+    },
+    {
+      "job_id": 28,
+      "n_operations": 2,
+      "due_date": 119.5647088411447
+    },
+    {
+      "job_id": 29,
+      "n_operations": 3,
+      "due_date": 192.35072485049315
+    },
+    {
+      "job_id": 30,
+      "n_operations": 2,
+      "due_date": 73.69167941565019
+    },
+    {
+      "job_id": 31,
+      "n_operations": 3,
+      "due_date": 267.63947175244743
+    },
+    {
+      "job_id": 32,
+      "n_operations": 4,
+      "due_date": 160.63729449245616
+    },
+    {
+      "job_id": 33,
+      "n_operations": 2,
+      "due_date": 164.837397059589
+    },
+    {
+      "job_id": 34,
+      "n_operations": 3,
+      "due_date": 90.86360437206855
+    },
+    {
+      "job_id": 35,
+      "n_operations": 2,
+      "due_date": 68.43763658018857
+    },
+    {
+      "job_id": 36,
+      "n_operations": 3,
+      "due_date": 164.65138382034252
+    },
+    {
+      "job_id": 37,
+      "n_operations": 4,
+      "due_date": 352.95356397538905
+    },
+    {
+      "job_id": 38,
+      "n_operations": 3,
+      "due_date": 336.8350871235883
+    },
+    {
+      "job_id": 39,
+      "n_operations": 4,
+      "due_date": 203.53287304507228
+    },
+    {
+      "job_id": 40,
+      "n_operations": 4,
+      "due_date": 180.3880825147923
+    },
+    {
+      "job_id": 41,
+      "n_operations": 2,
+      "due_date": 182.85472584907947
+    },
+    {
+      "job_id": 42,
+      "n_operations": 2,
+      "due_date": 98.35684823641546
+    },
+    {
+      "job_id": 43,
+      "n_operations": 4,
+      "due_date": 246.34166545456168
+    },
+    {
+      "job_id": 44,
+      "n_operations": 3,
+      "due_date": 169.14952006689765
+    },
+    {
+      "job_id": 45,
+      "n_operations": 2,
+      "due_date": 59.482242636673966
+    },
+    {
+      "job_id": 46,
+      "n_operations": 4,
+      "due_date": 203.56182744365228
+    },
+    {
+      "job_id": 47,
+      "n_operations": 4,
+      "due_date": 146.07021166620518
+    },
+    {
+      "job_id": 48,
+      "n_operations": 3,
+      "due_date": 91.87102628025497
+    },
+    {
+      "job_id": 49,
+      "n_operations": 4,
+      "due_date": 153.6388261569885
+    }
+  ]
+}
