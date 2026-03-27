@@ -604,6 +604,191 @@ class GreedyScheduler:
 
         return best_machine, best_worker, best_mode
 
+
+"""
+OPTIONAL: SFJSSP STRICT PERIOD RULE IN GreedyScheduler._select_resources
+Label: TOO OVER (only enable if you really want strict "no consecutive periods")
+
+Prerequisites (from worker.py):
+- Worker has:
+    worked_periods: Set[int] = field(default_factory=set)
+    def _get_period_index(self, t: float) -> int: ...
+    def can_work_in_period(self, start_time: float, end_time: float) -> bool: ...
+- Worker.record_work(...) adds the current period index to worked_periods.
+
+Integration point:
+- This patch shows how to plug can_work_in_period(...) into
+  GreedyScheduler._select_resources BEFORE evaluating a candidate
+  (machine, worker, mode) assignment.
+
+To activate:
+  1) Remove the triple quotes around this block.
+  2) Replace the existing _select_resources method with the version below.
+  3) Make sure worker.can_work_in_period(...) is implemented as in worker.py.
+
+--------------------------------------------------------------------
+Example _select_resources with OPTIONAL period check marked clearly.
+
+    def _select_resources(
+        self,
+        instance: SFJSSPInstance,
+        schedule: Schedule,
+        job_id: int,
+        op_id: int,
+        machine_available: Dict[int, float],
+        worker_available: Dict[int, float]
+    ) -> Tuple[Optional[int], Optional[int], int]:
+        """
+        Select machine and worker for operation
+
+        Returns:
+            (machine_id, worker_id, mode_id) or (None, None, 0) if infeasible
+        """
+        job = instance.get_job(job_id)
+        if job is None or op_id >= len(job.operations):
+            return None, None, 0
+
+        op = job.operations[op_id]
+
+        best_machine = None
+        best_worker = None
+        best_mode = 0
+        best_score = float('inf')
+
+        for m_id in op.eligible_machines:
+            machine = instance.get_machine(m_id)
+            if not machine or not machine.is_available(machine_available.get(m_id, 0.0)):
+                continue
+
+            for w_id in op.eligible_workers:
+                worker = instance.get_worker(w_id)
+                if not worker or not worker.is_available(worker_available.get(w_id, 0.0)):
+                    continue
+
+                # ------------------------------------------------------
+                # OPTIONAL STRICT PERIOD RULE (TOO OVER):
+                #   Enforce "no two consecutive periods" at assignment time.
+                #
+                #   - Compute the earliest possible start time for this
+                #     (machine, worker) pair:
+                #       earliest_start = max(machine_available[m],
+                #                            worker_available[w])
+                #   - For each candidate mode, compute an approximate/true
+                #     processing time and call worker.can_work_in_period(...).
+                #
+                #   If can_work_in_period(...) returns False, skip this
+                #   (machine, worker, mode) combination.
+                # ------------------------------------------------------
+
+                # earliest_start = max(
+                #     machine_available.get(m_id, 0.0),
+                #     worker_available.get(w_id, 0.0),
+                # )
+                #
+                # if m_id in op.processing_times:
+                #     for mode_id, pt in op.processing_times[m_id].items():
+                #         # Option A (simple): use base pt for end time
+                #         # est_proc = pt
+                #
+                #         # Option B (closer to reality): include worker efficiency
+                #         # est_proc = op.get_processing_time(
+                #         #     m_id, mode_id, worker.get_efficiency()
+                #         # )
+                #
+                #         est_proc = pt  # or use Option B above
+                #         est_end = earliest_start + est_proc
+                #
+                #         if not worker.can_work_in_period(
+                #             start_time=earliest_start,
+                #             end_time=est_end,
+                #         ):
+                #             # Skip this (machine, worker, mode) because it
+                #             # would violate the strict period rule
+                #             continue
+                #
+                #         # If you enable this block, you also need to move the
+                #         # _evaluate_assignment(...) call inside here, after
+                #         # the can_work_in_period(...) check.
+                #
+                # NOTE:
+                #   The ACTIVE code below keeps the existing behavior and does
+                #   NOT call can_work_in_period(...). Uncomment/edit carefully
+                #   if you want this rule.
+
+                # Evaluate each mode (current behavior)
+                if m_id in op.processing_times:
+                    for mode_id, pt in op.processing_times[m_id].items():
+                        score = self._evaluate_assignment(
+                            instance, op, m_id, w_id, mode_id, pt,
+                            machine_available, worker_available
+                        )
+
+                        if score < best_score:
+                            best_score = score
+                            best_machine = m_id
+                            best_worker = w_id
+                            best_mode = mode_id
+
+        return best_machine, best_worker, best_mode
+
+"""
+END OPTIONAL PERIOD RULE PATCH FOR GreedyScheduler._select_resources
+
+
+"""
+TOO OVER: OPTIONAL NITPICKING NOTES (SAFE TO IGNORE)
+
+These are modeling choices that are *not* explicitly fixed by JMSY-9, and
+changing them would be more about calibration than correctness. They are
+documented here only for completeness and future experimentation.
+
+1) Startup energy placeholder (E_M component)
+   - Current code:
+       energy['startup'] = len(self.machine_schedules) * 10.0
+   - JMSY-9 only says startup belongs to the machine energy term (E_M); it
+     does NOT specify an exact formula or coefficient.
+   - This is a harmless placeholder; tuning it is optional and depends on
+     real factory data and units, not on the paper itself.
+
+2) Auxiliary energy modeling (E_C component)
+   - Current code:
+       energy['auxiliary'] += aux_power * self.makespan
+   - This matches the *spirit* of "auxiliary energy proportional to the
+     makespan", but JMSY-9 does not force any specific structure beyond
+     "auxiliary energy exists".
+   - Any change here is a parametric modeling decision, not a fix.
+
+3) 12.5% rest rule granularity
+   - Current Worker logic enforces:
+       total_rest_time >= 12.5% of total_work_time   (over the horizon)
+     using requires_mandatory_rest(...).
+   - The paper states "rest time is at least 12.5% of worked time" but
+     does not strictly define whether that is per-day, per-shift, or
+     global horizon.
+   - Our implementation already satisfies the aggregate condition; making
+     it per-shift would be *stricter*, but is not required by the text.
+
+4) Mono-objective vs multi-objective use
+   - JMSY-9 defines SFJSSP with a mono-objective: minimize total energy
+     (E_T + E_M + E_C), treating human constraints (OCRA, rest, etc.)
+     as hard constraints.
+   - This code also computes:
+       - makespan
+       - tardiness metrics
+       - resilience metrics
+       - ergonomic / fatigue indicators
+     and can combine them into a composite score.
+   - As long as "total_energy" stays as a primary objective and the hard
+     constraints are enforced, having extra diagnostics/objectives is an
+     *extension*, not a violation.
+
+Summary:
+- All four points here are intentionally labeled "TOO OVER": they are
+  refinements you may explore if you have real data or want closer
+  alignment with a *specific* plant, but they are not missing or broken
+  with respect to the JMSY-9 SFJSSP definition.
+"""
+
     def _evaluate_assignment(
         self,
         instance: SFJSSPInstance,
