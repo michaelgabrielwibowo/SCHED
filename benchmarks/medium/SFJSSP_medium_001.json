@@ -9,7 +9,7 @@
   "n_workers": 10,
   "n_operations": 149,
   "planning_horizon": 1000.0,
-  "creation_date": "2026-03-24T22:56:42.950819",
+  "creation_date": "2026-04-07T14:18:49.277299",
   "source": "Synthetic Generator v1.0",
   "calibration_sources": [
     "DyDFJSP 2023 (fatigue)",
@@ -92,61 +92,61 @@
       "worker_id": 0,
       "labor_cost_per_hour": 13.31486063828789,
       "fatigue_rate": 0.04403075931716628,
-      "ocra_max": 2.1654897133768642
+      "ocra_max": 2.2
     },
     {
       "worker_id": 1,
       "labor_cost_per_hour": 22.81920368945866,
       "fatigue_rate": 0.034486624269191885,
-      "ocra_max": 2.0079227274472378
+      "ocra_max": 2.2
     },
     {
       "worker_id": 2,
       "labor_cost_per_hour": 43.72329253707223,
       "fatigue_rate": 0.032945224352848496,
-      "ocra_max": 3.5264940758503434
+      "ocra_max": 2.2
     },
     {
       "worker_id": 3,
       "labor_cost_per_hour": 44.477362605996056,
       "fatigue_rate": 0.01775178213757384,
-      "ocra_max": 2.792114102411227
+      "ocra_max": 2.2
     },
     {
       "worker_id": 4,
       "labor_cost_per_hour": 34.26020554216305,
       "fatigue_rate": 0.04515264876932559,
-      "ocra_max": 2.99307057899159
+      "ocra_max": 2.2
     },
     {
       "worker_id": 5,
       "labor_cost_per_hour": 14.907641133023152,
       "fatigue_rate": 0.04677944356398729,
-      "ocra_max": 3.348151186612794
+      "ocra_max": 2.2
     },
     {
       "worker_id": 6,
       "labor_cost_per_hour": 36.35622959080129,
       "fatigue_rate": 0.03748153642699103,
-      "ocra_max": 2.803523180152136
+      "ocra_max": 2.2
     },
     {
       "worker_id": 7,
       "labor_cost_per_hour": 25.9802705025629,
       "fatigue_rate": 0.045269195957865285,
-      "ocra_max": 3.6509298807707866
+      "ocra_max": 2.2
     },
     {
       "worker_id": 8,
       "labor_cost_per_hour": 30.107235922361074,
       "fatigue_rate": 0.03795171821994746,
-      "ocra_max": 2.438946914162332
+      "ocra_max": 2.2
     },
     {
       "worker_id": 9,
       "labor_cost_per_hour": 47.07738943667954,
       "fatigue_rate": 0.03632697156032489,
-      "ocra_max": 2.5630026388468963
+      "ocra_max": 2.2
     }
   ],
   "jobs_summary": [

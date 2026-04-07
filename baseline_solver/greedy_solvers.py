@@ -46,7 +46,7 @@ def fifo_rule(
             best_arrival = job.arrival_time
             best_idx = i
 
-    return best_idx  # Return index, not tuple
+    return best_idx
 
 
 def spt_rule(
@@ -83,7 +83,7 @@ def spt_rule(
             best_time = min_pt
             best_idx = i
 
-    return best_idx  # Return index, not tuple
+    return best_idx
 
 
 def edt_rule(
@@ -110,7 +110,7 @@ def edt_rule(
             best_due = job.due_date
             best_idx = i
 
-    return best_idx  # Return index, not tuple
+    return best_idx
 
 
 def earliest_ready_rule(
@@ -128,9 +128,7 @@ def earliest_ready_rule(
     if not ready_ops:
         return -1
 
-    # First operation in list is typically the earliest ready
-    # (assuming ready_ops is maintained in order)
-    return 0  # Return index
+    return 0
 
 
 def min_energy_rule(
@@ -165,7 +163,6 @@ def min_energy_rule(
             if machine is None:
                 continue
 
-            # Get processing time and power for each mode
             if m_id in op.processing_times:
                 for mode_id, pt in op.processing_times[m_id].items():
                     mode = None
@@ -186,7 +183,7 @@ def min_energy_rule(
             best_energy = min_energy
             best_idx = i
 
-    return best_idx  # Return index
+    return best_idx
 
 
 def min_ergonomic_rule(
@@ -214,7 +211,7 @@ def min_ergonomic_rule(
             best_risk = risk
             best_idx = i
 
-    return best_idx  # Return index
+    return best_idx
 
 
 def composite_rule(
@@ -292,7 +289,7 @@ def composite_rule(
         weights.get('ergonomic', 0) * ergonomic_scores
     )
 
-    return int(np.argmax(scores))  # Return index, not tuple
+    return int(np.argmax(scores))
 
 
 def _get_min_processing_time(
@@ -325,7 +322,7 @@ def _get_due_date_score(
         return 0.0
 
     if job.due_date is None:
-        return 500.0  # Default for jobs without due dates
+        return 500.0
 
     return job.due_date
 
@@ -370,13 +367,6 @@ def _get_energy_score(
 class GreedyScheduler:
     """
     Greedy scheduler for SFJSSP
-
-    Uses dispatching rules to select operations and assignment rules
-    for machine/worker selection.
-
-    Evidence:
-    - Greedy construction heuristics [CONFIRMED scheduling literature]
-    - Dispatching rules for dynamic scheduling [CONFIRMED]
     """
 
     def __init__(
@@ -384,14 +374,6 @@ class GreedyScheduler:
         job_rule: DispatchingRule = spt_rule,
         assignment_rule: str = 'min_time'
     ):
-        """
-        Initialize greedy scheduler
-
-        Args:
-            job_rule: Dispatching rule for job selection
-            assignment_rule: Rule for machine/worker assignment
-                ('min_time', 'first_available', 'min_energy')
-        """
         self.job_rule = job_rule
         self.assignment_rule = assignment_rule
 
@@ -402,16 +384,8 @@ class GreedyScheduler:
     ) -> Schedule:
         """
         Generate schedule using greedy construction
-
-        Args:
-            instance: SFJSSP problem instance
-            verbose: Print progress
-
-        Returns:
-            Schedule object
         """
         schedule = Schedule(instance_id=instance.instance_id)
-        current_time = 0.0
 
         # Track resource availability
         machine_available = {m.machine_id: 0.0 for m in instance.machines}
@@ -434,7 +408,6 @@ class GreedyScheduler:
                     ready_ops.append((job_id, op_id))
 
             if not ready_ops:
-                # No ready operations - should not happen if data is consistent
                 if verbose:
                     print(f"Warning: No ready operations but {len(remaining)} remaining")
                 break
@@ -444,42 +417,32 @@ class GreedyScheduler:
             job_id, op_id = ready_ops[selected_idx]
 
             # Select machine and worker
-            machine_id, worker_id, mode_id = self._select_resources(
+            machine_id, worker_id, mode_id, start_time = self._select_resources(
                 instance, schedule, job_id, op_id,
-                machine_available, worker_available
+                machine_available, worker_available,
+                verbose=verbose
             )
 
             if machine_id is None or worker_id is None:
-                # No available resources - skip
+                # This should only happen if eligible resources are empty
+                if verbose:
+                    print(f"Warning: No eligible resources for J{job_id}.O{op_id}")
                 remaining.remove((job_id, op_id))
                 continue
 
-            # Calculate timing
+            # Timing already computed in _select_resources
             job = instance.get_job(job_id)
             op = job.operations[op_id]
             machine = instance.get_machine(machine_id)
             worker = instance.get_worker(worker_id)
 
-            # Earliest start time
-            earliest_start = max(
-                machine_available[machine_id],
-                worker_available[worker_id]
-            )
+            # Record genuine rest
+            worker_free_at = worker_available[worker_id]
+            if start_time > worker_free_at:
+                genuine_rest = start_time - worker_free_at
+                worker.record_rest(genuine_rest)
 
-            # Check predecessor
-            if op_id > 0:
-                prev_op = schedule.get_operation(job_id, op_id - 1)
-                if prev_op:
-                    earliest_start = max(earliest_start, prev_op.completion_time)
-
-            start_time = earliest_start
-
-            # Calculate and apply rest duration BEFORE calculating processing time
-            rest_duration = max(0.0, start_time - worker_available[worker_id])
-            if rest_duration > 0:
-                worker.record_rest(rest_duration)
-
-            # [CHANGED] Check for mandatory 12.5% rest rule
+            # Check for mandatory 12.5% rest rule
             est_pt = op.get_processing_time(machine_id, mode_id, worker.get_efficiency())
             mandatory_rest = worker.requires_mandatory_rest(
                 proposed_task_duration=est_pt, 
@@ -489,14 +452,39 @@ class GreedyScheduler:
             if mandatory_rest > 0:
                 start_time += mandatory_rest
                 worker.record_rest(mandatory_rest)
-                worker.total_rest_time += mandatory_rest
 
-            # Get processing time AFTER rest recovery
+            # Final processing time calculation
             processing_time = op.get_processing_time(
                 machine_id, mode_id, worker.get_efficiency()
             )
 
             completion_time = start_time + processing_time
+
+            # Enforce "A task cannot span two periods"
+            clock = instance.period_clock
+            max_period_jumps = 5
+            jumps = 0
+            while clock.crosses_boundary(start_time, completion_time) and jumps < max_period_jumps:
+                start_time = clock.period_start(clock.get_period(start_time) + 1)
+                processing_time = op.get_processing_time(
+                    machine_id, mode_id, worker.get_efficiency()
+                )
+                completion_time = start_time + processing_time
+                jumps += 1
+
+            # Re-check mandatory rest after period jump
+            mandatory_rest = worker.requires_mandatory_rest(
+                proposed_task_duration=processing_time, 
+                current_time=start_time
+            )
+            if mandatory_rest > 0:
+                start_time += mandatory_rest
+                worker.record_rest(mandatory_rest)
+                completion_time = start_time + processing_time
+            
+            op.start_time = start_time
+            op.completion_time = completion_time
+            op.assign_period_bounds(instance.period_clock)
 
             # Add to schedule
             schedule.add_operation(
@@ -510,33 +498,23 @@ class GreedyScheduler:
                 processing_time=processing_time
             )
 
-            # Update availability
+            # Update resource availability
             machine_available[machine_id] = completion_time
             worker_available[worker_id] = completion_time
 
-            # Update operation state
-            op.start_time = start_time
-            op.completion_time = completion_time
-            op.is_scheduled = True
+            if machine.total_processing_time == 0.0:
+                machine.startup_count += 1
+            machine.total_processing_time += processing_time
 
-            # Update worker state
+            op.is_scheduled = True
             risk_rate = instance.get_ergonomic_risk(job_id, op_id)
             worker.record_work(processing_time, risk_rate=risk_rate, current_time=start_time)
 
             scheduled.add((job_id, op_id))
             remaining.remove((job_id, op_id))
 
-            if verbose and len(scheduled) % 10 == 0:
-                print(f"Scheduled {len(scheduled)}/{len(all_ops)} operations")
-
-        # Finalize schedule
         schedule.compute_makespan()
         schedule.check_feasibility(instance)
-
-        if verbose:
-            print(f"Complete. Makespan: {schedule.makespan:.2f}")
-            print(f"Feasible: {schedule.is_feasible}")
-
         return schedule
 
     def _is_ready(
@@ -546,10 +524,8 @@ class GreedyScheduler:
         schedule: Schedule,
         instance: SFJSSPInstance
     ) -> bool:
-        """Check if operation is ready (predecessors done)"""
         if op_id == 0:
             return True
-
         return schedule.is_operation_scheduled(job_id, op_id - 1)
 
     def _select_resources(
@@ -559,235 +535,83 @@ class GreedyScheduler:
         job_id: int,
         op_id: int,
         machine_available: Dict[int, float],
-        worker_available: Dict[int, float]
-    ) -> Tuple[Optional[int], Optional[int], int]:
+        worker_available: Dict[int, float],
+        verbose: bool = False
+    ) -> Tuple[Optional[int], Optional[int], int, float]:
         """
         Select machine and worker for operation
-
-        Returns:
-            (machine_id, worker_id, mode_id) or (None, None, 0) if infeasible
+        Returns: (machine_id, worker_id, mode_id, start_time)
         """
         job = instance.get_job(job_id)
-        if job is None or op_id >= len(job.operations):
-            return None, None, 0
-
         op = job.operations[op_id]
 
         best_machine = None
         best_worker = None
         best_mode = 0
+        best_start = float('inf')
         best_score = float('inf')
 
         for m_id in op.eligible_machines:
             machine = instance.get_machine(m_id)
-            if not machine or not machine.is_available(machine_available.get(m_id, 0)):
-                continue
+            if not machine: continue
 
             for w_id in op.eligible_workers:
                 worker = instance.get_worker(w_id)
-                if not worker or not worker.is_available(worker_available.get(w_id, 0)):
-                    continue
+                if not worker: continue
+
+                # Initial earliest start
+                earliest_start = max(
+                    machine_available.get(m_id, 0.0),
+                    worker_available.get(w_id, 0.0),
+                    worker.mandatory_shift_lockout_until
+                )
+                
+                if op_id > 0:
+                    prev_op = schedule.get_operation(job_id, op_id - 1)
+                    if prev_op:
+                        earliest_start = max(earliest_start, prev_op.completion_time)
 
                 # Evaluate each mode
                 if m_id in op.processing_times:
                     for mode_id, pt in op.processing_times[m_id].items():
+                        est_proc = pt / max(0.1, worker.get_efficiency())
+                        
+                        temp_start = earliest_start
+                        clock = instance.period_clock
+                        
+                        # Find earliest period that works
+                        max_tries = 10
+                        found = False
+                        for _ in range(max_tries):
+                            # Ensure it doesn't span two periods
+                            if clock.crosses_boundary(temp_start, temp_start + est_proc):
+                                temp_start = clock.period_start(clock.get_period(temp_start) + 1)
+                                continue
+                            
+                            # Ensure it obeys "no consecutive periods"
+                            if not worker.can_work_in_period(temp_start, temp_start + est_proc):
+                                temp_start = clock.period_start(clock.get_period(temp_start) + 1)
+                                continue
+                            
+                            found = True
+                            break
+                        
+                        if not found:
+                            continue
+
                         score = self._evaluate_assignment(
                             instance, op, m_id, w_id, mode_id, pt,
                             machine_available, worker_available
                         )
 
-                        if score < best_score:
+                        if temp_start < best_start or (temp_start == best_start and score < best_score):
                             best_score = score
                             best_machine = m_id
                             best_worker = w_id
                             best_mode = mode_id
+                            best_start = temp_start
 
-        return best_machine, best_worker, best_mode
-
-
-"""
-OPTIONAL: SFJSSP STRICT PERIOD RULE IN GreedyScheduler._select_resources
-Label: TOO OVER (only enable if you really want strict "no consecutive periods")
-
-Prerequisites (from worker.py):
-- Worker has:
-    worked_periods: Set[int] = field(default_factory=set)
-    def _get_period_index(self, t: float) -> int: ...
-    def can_work_in_period(self, start_time: float, end_time: float) -> bool: ...
-- Worker.record_work(...) adds the current period index to worked_periods.
-
-Integration point:
-- This patch shows how to plug can_work_in_period(...) into
-  GreedyScheduler._select_resources BEFORE evaluating a candidate
-  (machine, worker, mode) assignment.
-
-To activate:
-  1) Remove the triple quotes around this block.
-  2) Replace the existing _select_resources method with the version below.
-  3) Make sure worker.can_work_in_period(...) is implemented as in worker.py.
-
---------------------------------------------------------------------
-Example _select_resources with OPTIONAL period check marked clearly.
-
-    def _select_resources(
-        self,
-        instance: SFJSSPInstance,
-        schedule: Schedule,
-        job_id: int,
-        op_id: int,
-        machine_available: Dict[int, float],
-        worker_available: Dict[int, float]
-    ) -> Tuple[Optional[int], Optional[int], int]:
-        """
-        Select machine and worker for operation
-
-        Returns:
-            (machine_id, worker_id, mode_id) or (None, None, 0) if infeasible
-        """
-        job = instance.get_job(job_id)
-        if job is None or op_id >= len(job.operations):
-            return None, None, 0
-
-        op = job.operations[op_id]
-
-        best_machine = None
-        best_worker = None
-        best_mode = 0
-        best_score = float('inf')
-
-        for m_id in op.eligible_machines:
-            machine = instance.get_machine(m_id)
-            if not machine or not machine.is_available(machine_available.get(m_id, 0.0)):
-                continue
-
-            for w_id in op.eligible_workers:
-                worker = instance.get_worker(w_id)
-                if not worker or not worker.is_available(worker_available.get(w_id, 0.0)):
-                    continue
-
-                # ------------------------------------------------------
-                # OPTIONAL STRICT PERIOD RULE (TOO OVER):
-                #   Enforce "no two consecutive periods" at assignment time.
-                #
-                #   - Compute the earliest possible start time for this
-                #     (machine, worker) pair:
-                #       earliest_start = max(machine_available[m],
-                #                            worker_available[w])
-                #   - For each candidate mode, compute an approximate/true
-                #     processing time and call worker.can_work_in_period(...).
-                #
-                #   If can_work_in_period(...) returns False, skip this
-                #   (machine, worker, mode) combination.
-                # ------------------------------------------------------
-
-                # earliest_start = max(
-                #     machine_available.get(m_id, 0.0),
-                #     worker_available.get(w_id, 0.0),
-                # )
-                #
-                # if m_id in op.processing_times:
-                #     for mode_id, pt in op.processing_times[m_id].items():
-                #         # Option A (simple): use base pt for end time
-                #         # est_proc = pt
-                #
-                #         # Option B (closer to reality): include worker efficiency
-                #         # est_proc = op.get_processing_time(
-                #         #     m_id, mode_id, worker.get_efficiency()
-                #         # )
-                #
-                #         est_proc = pt  # or use Option B above
-                #         est_end = earliest_start + est_proc
-                #
-                #         if not worker.can_work_in_period(
-                #             start_time=earliest_start,
-                #             end_time=est_end,
-                #         ):
-                #             # Skip this (machine, worker, mode) because it
-                #             # would violate the strict period rule
-                #             continue
-                #
-                #         # If you enable this block, you also need to move the
-                #         # _evaluate_assignment(...) call inside here, after
-                #         # the can_work_in_period(...) check.
-                #
-                # NOTE:
-                #   The ACTIVE code below keeps the existing behavior and does
-                #   NOT call can_work_in_period(...). Uncomment/edit carefully
-                #   if you want this rule.
-
-                # Evaluate each mode (current behavior)
-                if m_id in op.processing_times:
-                    for mode_id, pt in op.processing_times[m_id].items():
-                        score = self._evaluate_assignment(
-                            instance, op, m_id, w_id, mode_id, pt,
-                            machine_available, worker_available
-                        )
-
-                        if score < best_score:
-                            best_score = score
-                            best_machine = m_id
-                            best_worker = w_id
-                            best_mode = mode_id
-
-        return best_machine, best_worker, best_mode
-
-"""
-END OPTIONAL PERIOD RULE PATCH FOR GreedyScheduler._select_resources
-
-
-"""
-TOO OVER: OPTIONAL NITPICKING NOTES (SAFE TO IGNORE)
-
-These are modeling choices that are *not* explicitly fixed by JMSY-9, and
-changing them would be more about calibration than correctness. They are
-documented here only for completeness and future experimentation.
-
-1) Startup energy placeholder (E_M component)
-   - Current code:
-       energy['startup'] = len(self.machine_schedules) * 10.0
-   - JMSY-9 only says startup belongs to the machine energy term (E_M); it
-     does NOT specify an exact formula or coefficient.
-   - This is a harmless placeholder; tuning it is optional and depends on
-     real factory data and units, not on the paper itself.
-
-2) Auxiliary energy modeling (E_C component)
-   - Current code:
-       energy['auxiliary'] += aux_power * self.makespan
-   - This matches the *spirit* of "auxiliary energy proportional to the
-     makespan", but JMSY-9 does not force any specific structure beyond
-     "auxiliary energy exists".
-   - Any change here is a parametric modeling decision, not a fix.
-
-3) 12.5% rest rule granularity
-   - Current Worker logic enforces:
-       total_rest_time >= 12.5% of total_work_time   (over the horizon)
-     using requires_mandatory_rest(...).
-   - The paper states "rest time is at least 12.5% of worked time" but
-     does not strictly define whether that is per-day, per-shift, or
-     global horizon.
-   - Our implementation already satisfies the aggregate condition; making
-     it per-shift would be *stricter*, but is not required by the text.
-
-4) Mono-objective vs multi-objective use
-   - JMSY-9 defines SFJSSP with a mono-objective: minimize total energy
-     (E_T + E_M + E_C), treating human constraints (OCRA, rest, etc.)
-     as hard constraints.
-   - This code also computes:
-       - makespan
-       - tardiness metrics
-       - resilience metrics
-       - ergonomic / fatigue indicators
-     and can combine them into a composite score.
-   - As long as "total_energy" stays as a primary objective and the hard
-     constraints are enforced, having extra diagnostics/objectives is an
-     *extension*, not a violation.
-
-Summary:
-- All four points here are intentionally labeled "TOO OVER": they are
-  refinements you may explore if you have real data or want closer
-  alignment with a *specific* plant, but they are not missing or broken
-  with respect to the JMSY-9 SFJSSP definition.
-"""
+        return best_machine, best_worker, best_mode, best_start
 
     def _evaluate_assignment(
         self,
@@ -800,38 +624,17 @@ Summary:
         machine_available: Dict[int, float],
         worker_available: Dict[int, float]
     ) -> float:
-        """
-        Evaluate assignment quality
-
-        Returns score (lower = better)
-        """
         if self.assignment_rule == 'min_time':
             return processing_time
-
         elif self.assignment_rule == 'first_available':
-            # Earliest completion time
             return max(
                 machine_available.get(machine_id, 0),
                 worker_available.get(worker_id, 0)
             ) + processing_time
-
         elif self.assignment_rule == 'min_energy':
             machine = instance.get_machine(machine_id)
-            if machine is None:
-                return float('inf')
-
-            mode = None
-            if machine.modes:
-                mode = next(
-                    (m for m in machine.modes if m.mode_id == mode_id),
-                    None
-                )
-
-            power = machine.power_processing
-            if mode:
-                power *= mode.power_multiplier
-
+            mode = next((m for m in machine.modes if m.mode_id == mode_id), None)
+            power = machine.power_processing * (mode.power_multiplier if mode else 1.0)
             return power * processing_time
-
         else:
             return processing_time

@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Set, List, Optional
 from enum import Enum
 import numpy as np
+from .period_clock import PeriodClock
 
 
 class WorkerState(Enum):
@@ -101,6 +102,18 @@ class Worker:
     SHIFT_DURATION: float = 480.0 # 8 hour period length
     mandatory_shift_lockout_until: float = 0.0
 
+    # NEW: remember period index for this work
+    worked_periods: Set[int] = field(default_factory=set)
+
+    # [FIX 6] shared period clock
+    period_clock: PeriodClock = field(default_factory=PeriodClock)
+    _last_worked_period: int = -1
+
+    # OCRA normalization:
+    # ocra_current_shift reaches ocra_max_per_shift (2.2) only if a worker
+    # sustains high-risk work for the full shift — matches JMSY-9 §5.2.3.
+    ocra_risk_rate_unit: str = "OCRA-index per minute"
+
     # Current state
     current_state: WorkerState = WorkerState.IDLE
     current_job: Optional[int] = None
@@ -114,6 +127,26 @@ class Worker:
     # Absence tracking (for dynamic scenarios)
     is_absent: bool = False
     absence_end_time: Optional[float] = None
+
+    def _get_period_index(self, t: float) -> int:
+        """
+        Map a continuous time t into a discrete period index,
+        using SHIFT_DURATION (e.g. 480.0 for 8h).
+        """
+        return int(t // self.SHIFT_DURATION)
+
+    def can_work_in_period(self, start_time: float, end_time: float) -> bool:
+        """
+        Strict period rule:
+        - Let p be the period index of this operation (by start_time).
+        - Forbid assignment if |p - q| == 1 for any q in worked_periods
+          (no back-to-back consecutive periods).
+        """
+        p = self.period_clock.get_period(start_time)
+        for q in self.worked_periods:
+            if abs(p - q) == 1:
+                return False
+        return True
 
     def get_efficiency(self) -> float:
         """
@@ -190,16 +223,11 @@ class Worker:
 
     def add_ergonomic_risk(self, risk_rate: float, duration: float):
         """
-        Add ergonomic risk exposure for an operation
-
-        Evidence: OCRA index accumulation [CONFIRMED NSGA-III 2021]
-
-        Args:
-            risk_rate: Ergonomic risk rate per time unit
-            duration: Operation duration
+        Add ergonomic risk exposure for an operation.
+        Delegates to record_work (conceptual) but kept here as standalone
+        OCRA accumulation — only call when NOT using record_work.
         """
-        risk_exposure = risk_rate * duration
-        self.ocra_current_shift += risk_exposure
+        self.ocra_current_shift += risk_rate * duration
 
     def is_ergonomic_limit_exceeded(self) -> bool:
         """Check if ergonomic limit exceeded for current shift"""
@@ -223,13 +251,21 @@ class Worker:
         self.current_work_duration = 0.0
 
     def record_work(self, duration: float, risk_rate: float = 0.0, current_time: float = 0.0):
-        """Record work period and enforce shift/ergonomic limits"""
+        """Record work period; resets OCRA/fatigue at period boundaries."""
         self.current_work_duration += duration
         self.total_work_time += duration
         self.update_fatigue(work_duration=duration, rest_duration=0.0)
-        
-        # Accumulate OCRA risk
         self.ocra_current_shift += risk_rate * duration
+
+        # --- FIX 6: Period-boundary OCRA reset ---
+        current_period = self.period_clock.get_period(current_time)
+        if current_period != self._last_worked_period and self._last_worked_period >= 0:
+            # Worker crossed into a new period — reset per-period OCRA accumulator
+            self.ocra_current_shift = risk_rate * duration  # only this operation's exposure
+            self.current_work_duration = duration           # reset consecutive-work counter
+
+        self._last_worked_period = current_period
+        self.worked_periods.add(current_period)
         
         # [CHANGED] Enforce shift limits and ergonomic safety
         # If worker completes a full shift OR exceeds ergonomic limit, enforce lockout
@@ -238,7 +274,9 @@ class Worker:
             
             # Lock the worker out for the next 8-hour period
             # They must "go home" to recover
-            self.mandatory_shift_lockout_until = current_time + duration + self.SHIFT_DURATION
+            # [FIX 6] period-aligned lockout
+            next_period_start = self.period_clock.period_start(current_period + 1)
+            self.mandatory_shift_lockout_until = next_period_start
             self.current_work_duration = 0.0 # Reset for their next shift
             self.ocra_current_shift = 0.0    # Reset daily ergonomic risk
 
@@ -367,113 +405,10 @@ class Worker:
         self.total_work_time = 0.0
         self.total_rest_time = 0.0
         self.mandatory_shift_lockout_until = 0.0
+        self._last_worked_period = -1
         self.is_absent = False
         self.absence_end_time = None
-
-
-"""
-OPTIONAL SFJSSP PERIOD CONSTRAINT (JMSY-9 Section 5.2.1)
-
-Reference assumption (PDF):
-- A period is equal to 7h or 8h.
-- A worker is assigned to one period to two.
-- "Period + next period = 1" → A worker cannot be assigned on two consecutive periods.
-
-Current implementation:
-- Uses continuous time + fatigue + OCRA + an 8-hour SHIFT_DURATION.
-- Workers can be locked out after a full shift or when exceeding OCRA, but they are
-  not explicitly forbidden from working two *consecutive* periods if they stayed
-  below those limits.
-
-This OPTIONAL code sketch shows how to add a hard "no back-to-back periods" rule
-using the existing SHIFT_DURATION parameter.
-
-If you ever want to enforce it:
-  1. Remove the triple quotes around this block.
-  2. Integrate the helper + checks into Worker.
-  3. Make sure you initialize/reset any new state in Worker.reset().
-
---------------------------------------------------------------------
-Example: track which discrete periods a worker has already worked,
-and forbid assigning the same worker in two consecutive periods.
-
-    # New field on Worker (if you choose to use this rule):
-    # worked_periods: Set[int] = field(default_factory=set)
-
-    def _get_period_index(self, t: float) -> int:
-        '''
-        Map a continuous time t into a discrete period index,
-        using the existing SHIFT_DURATION (e.g. 480.0 for 8h).
-        '''
-        return int(t // self.SHIFT_DURATION)
-
-    def can_work_in_period(self, start_time: float, end_time: float) -> bool:
-        '''
-        OPTIONAL strict-period rule:
-        - Disallow assignment if the target period is consecutive to an
-          already-worked period.
-
-        Example policy:
-        - Let p be the period index of this operation.
-        - If worker already has any period in worked_periods that satisfies
-          |p - q| == 1, then reject this assignment.
-        '''
-        p = self._get_period_index(start_time)
-
-        # If you want "no two consecutive periods" at all:
-        for q in self.worked_periods:
-            if abs(p - q) == 1:
-                return False
-        return True
-
-    def record_work(self, duration: float, risk_rate: float = 0.0, current_time: float = 0.0):
-        '''
-        If you enable the period rule, you can also record the period index
-        whenever work is actually accepted.
-        '''
-        # Existing behavior...
-        self.current_work_duration += duration
-        self.total_work_time += duration
-        self.update_fatigue(work_duration=duration, rest_duration=0.0)
-        self.ocra_current_shift += risk_rate * duration
-
-        # OPTIONAL: remember which period this work belonged to
-        p = self._get_period_index(current_time)
-        self.worked_periods.add(p)
-
-        # Existing lockout logic remains unchanged...
-        if (self.current_work_duration >= self.max_consecutive_work_time or 
-            self.ocra_current_shift >= self.ocra_max_per_shift):
-            self.mandatory_shift_lockout_until = current_time + duration + self.SHIFT_DURATION
-            self.current_work_duration = 0.0
-            self.ocra_current_shift = 0.0
-
-    def is_available(self, current_time: float) -> bool:
-        '''
-        If you want the strict "no consecutive periods" rule to apply at decision time,
-        you would also integrate can_work_in_period(...) with the operation's time window
-        in the scheduler, for example in GreedyScheduler._select_resources.
-        This method remains focused on:
-        - lockout window
-        - absence
-        - base availability
-        '''
-        if current_time < self.mandatory_shift_lockout_until:
-            return False
-
-        return (
-            not self.is_absent and
-            self.available_time <= current_time and
-            self.current_state != WorkerState.ABSENT
-        )
-
-    def reset(self):
-        '''
-        If you add worked_periods, don't forget to reset it here:
-            self.worked_periods.clear()
-        '''
-        ...
-"""
+        self.worked_periods.clear()
 
     def to_dict(self) -> dict:
         """Convert worker to dictionary for serialization"""

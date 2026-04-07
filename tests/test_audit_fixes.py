@@ -38,8 +38,8 @@ def test_feasibility_transport_time():
     instance.add_machine(Machine(machine_id=1))
     instance.add_worker(Worker(0))
     job = Job(job_id=0, operations=[
-        Operation(0, 0, {0: {0: 10.0}}, {0}, {0}),
-        Operation(0, 1, {1: {0: 10.0}}, {1}, {0})
+        Operation(job_id=0, op_id=0, processing_times={0: {0: 10.0}}, eligible_machines={0}, eligible_workers={0}),
+        Operation(job_id=0, op_id=1, processing_times={1: {0: 10.0}}, eligible_machines={1}, eligible_workers={0})
     ])
     instance.add_job(job)
     
@@ -61,8 +61,8 @@ def test_feasibility_setup_time():
     instance = SFJSSPInstance(instance_id="test_feas_setup")
     instance.add_machine(Machine(machine_id=0))
     instance.add_worker(Worker(0))
-    job0 = Job(job_id=0, operations=[Operation(0, 0, {0: {0: 10.0}}, {0}, {0})])
-    job1 = Job(job_id=1, operations=[Operation(1, 0, {0: {0: 10.0}}, {0}, {0})])
+    job0 = Job(job_id=0, operations=[Operation(job_id=0, op_id=0, processing_times={0: {0: 10.0}}, eligible_machines={0}, eligible_workers={0})])
+    job1 = Job(job_id=1, operations=[Operation(job_id=1, op_id=0, processing_times={0: {0: 10.0}}, eligible_machines={0}, eligible_workers={0})])
     instance.add_job(job0)
     instance.add_job(job1)
     
@@ -89,7 +89,9 @@ def test_greedy_mandatory_rest():
     instance.add_worker(worker)
     
     for i in range(5):
-        instance.add_job(Job(i, operations=[Operation(i, 0, {0: {0: 10.0}}, {0}, {0})]))
+        instance.add_job(Job(i, operations=[Operation(job_id=i, op_id=0, processing_times={0: {0: 10.0}}, eligible_machines={0}, eligible_workers={0})]))
+        # Set low risk rate (0.001) to avoid OCRA lockout
+        instance.ergonomic_risk_map[(i, 0)] = 0.001
     
     scheduler = GreedyScheduler()
     schedule = scheduler.schedule(instance)
@@ -103,7 +105,7 @@ def test_nsga3_penalty():
     instance = SFJSSPInstance(instance_id="test_penalty")
     instance.add_machine(Machine(machine_id=0, power_processing=10.0))
     instance.add_worker(Worker(0))
-    instance.add_job(Job(0, operations=[Operation(0, 0, {0: {0: 100.0}}, {0}, {0})]))
+    instance.add_job(Job(0, operations=[Operation(job_id=0, op_id=0, processing_times={0: {0: 100.0}}, eligible_machines={0}, eligible_workers={0})]))
     
     # Create genome that will cause high OCRA
     # OCRA risk rate defaults to 0.5 in code if not mapped. 0.5 * 100 = 50.0.

@@ -64,6 +64,30 @@ class Operation:
             return False
         return True
 
+    def assign_period_bounds(self, clock) -> None:
+        """
+        Auto-assign period_start and period_end from a PeriodClock
+        based on the operation's scheduled start time.
+
+        Call this immediately after start_time and completion_time are set.
+        Raises ValueError if the operation crosses a period boundary,
+        since a single operation should not span two shifts.
+        """
+        if self.start_time is None:
+            raise ValueError("Cannot assign period bounds before start_time is set.")
+
+        period_idx = clock.get_period(self.start_time)
+        self.period_start = clock.period_start(period_idx)
+        self.period_end   = clock.period_end(period_idx)
+
+        # Enforce: operation must not cross into the next period
+        if self.completion_time is not None and self.completion_time > self.period_end:
+            raise ValueError(
+                f"Operation ({self.job_id},{self.op_id}) crosses period boundary: "
+                f"completion={self.completion_time:.1f} > period_end={self.period_end:.1f}. "
+                f"Reduce processing time or split across periods."
+            )
+
     def get_processing_time(self, machine_id: int, mode_id: int,
                            worker_efficiency: float = 1.0) -> float:
         """

@@ -9,7 +9,7 @@
   "n_workers": 5,
   "n_operations": 30,
   "planning_horizon": 1000.0,
-  "creation_date": "2026-03-24T22:56:42.921870",
+  "creation_date": "2026-04-07T14:18:49.234220",
   "source": "Synthetic Generator v1.0",
   "calibration_sources": [
     "DyDFJSP 2023 (fatigue)",
@@ -62,31 +62,31 @@
       "worker_id": 0,
       "labor_cost_per_hour": 11.763023309520833,
       "fatigue_rate": 0.026795017447435163,
-      "ocra_max": 2.307850269630092
+      "ocra_max": 2.2
     },
     {
       "worker_id": 1,
       "labor_cost_per_hour": 14.254852519874163,
       "fatigue_rate": 0.041112411723565376,
-      "ocra_max": 3.4194541201901894
+      "ocra_max": 2.2
     },
     {
       "worker_id": 2,
       "labor_cost_per_hour": 38.07503709814893,
       "fatigue_rate": 0.04841585428336969,
-      "ocra_max": 2.0708848657893357
+      "ocra_max": 2.2
     },
     {
       "worker_id": 3,
       "labor_cost_per_hour": 29.816483194175248,
       "fatigue_rate": 0.0149732303808619,
-      "ocra_max": 2.716872448532289
+      "ocra_max": 2.2
     },
     {
       "worker_id": 4,
       "labor_cost_per_hour": 37.6878496991084,
       "fatigue_rate": 0.010542811144123422,
-      "ocra_max": 3.446633459978064
+      "ocra_max": 2.2
     }
   ],
   "jobs_summary": [

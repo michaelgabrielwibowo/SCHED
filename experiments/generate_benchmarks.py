@@ -63,8 +63,10 @@ class GeneratorConfig:
     labor_cost_range: Tuple[float, float] = (10.0, 50.0)
 
     # Ergonomic parameters - from NSGA-III 2021
-    ergonomic_risk_range: Tuple[float, float] = (0.1, 0.5)
-    ocra_max_range: Tuple[float, float] = (2.0, 4.0)
+    # Calibrated so that 480 mins of high risk (0.007) hits Red zone (~3.5)
+    # and 480 mins of medium risk (0.004) hits limit (~2.2)
+    ergonomic_risk_range: Tuple[float, float] = (0.001, 0.005)
+    ocra_max_range: Tuple[float, float] = (2.2, 2.2)  # Tight limit per JMSY-9
 
     def __post_init__(self):
         """Set counts based on size"""

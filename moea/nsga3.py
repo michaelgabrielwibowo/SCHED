@@ -353,27 +353,42 @@ class NSGA3:
         Apply mutation operators
 
         - Swap mutation for sequence
-        - Random reset for machine/worker assignments
+        - Random reset for machine/worker assignments (eligibility-aware)
         """
         genome = individual.genome
+        op_list = genome.get('op_list', [])
 
         # Sequence mutation (swap)
         if self.rng.random() < self.mutation_rate:
             idx1, idx2 = self.rng.choice(len(genome['sequence']), size=2, replace=False)
             genome['sequence'][[idx1, idx2]] = genome['sequence'][[idx2, idx1]]
 
-        # Machine mutation
+        # Machine mutation — sample from eligible set
         for i in range(len(genome['machines'])):
             if self.rng.random() < self.mutation_rate:
-                # Random new machine index (respecting eligibility happens in evaluation)
+                if i < len(op_list):
+                    job_id, op_idx = op_list[i]
+                    job = instance.get_job(job_id)
+                    if job is not None and op_idx < len(job.operations):
+                        eligible_m = list(job.operations[op_idx].eligible_machines)
+                        if eligible_m:
+                            genome['machines'][i] = self.rng.choice(eligible_m)
+                            continue
+                # Fallback if op_list is missing or op not found
                 genome['machines'][i] = self.rng.integers(0, instance.n_machines)
 
-        # Worker mutation
+        # Worker mutation — sample from eligible set
         for i in range(len(genome['workers'])):
             if self.rng.random() < self.mutation_rate:
+                if i < len(op_list):
+                    job_id, op_idx = op_list[i]
+                    job = instance.get_job(job_id)
+                    if job is not None and op_idx < len(job.operations):
+                        eligible_w = list(job.operations[op_idx].eligible_workers)
+                        if eligible_w:
+                            genome['workers'][i] = self.rng.choice(eligible_w)
+                            continue
                 genome['workers'][i] = self.rng.integers(0, instance.n_workers)
-
-        # op_list is not mutated (it's problem structure)
 
     def _associate_to_reference(
         self,
@@ -425,19 +440,11 @@ class NSGA3:
         if candidates:
             return self.rng.choice(candidates)
 
-        # No individual from last front: return None (niche remains empty)
         return None
 
     def evolve(self, instance: Any, verbose: bool = True) -> Population:
         """
         Run NSGA-III optimization
-
-        Args:
-            instance: SFJSSPInstance to optimize
-            verbose: Print progress
-
-        Returns:
-            Final population with Pareto front
         """
         if self.evaluate_fn is None or self.create_individual_fn is None:
             raise ValueError("Must call set_problem() before evolve()")
@@ -553,13 +560,6 @@ class NSGA3:
 def create_sfjssp_genome(instance: Any, rng: np.random.Generator) -> Dict[str, np.ndarray]:
     """
     Create random genome for SFJSSP
-
-    Genome encoding:
-    - sequence: permutation of operation indices
-    - machines: machine assignment for each operation
-    - workers: worker assignment for each operation
-
-    Evidence: Operation-based encoding confirmed from scheduling literature
     """
     # Count total operations
     n_ops = sum(len(job.operations) for job in instance.jobs)
@@ -573,29 +573,33 @@ def create_sfjssp_genome(instance: Any, rng: np.random.Generator) -> Dict[str, n
     # Random sequence (permutation of operations)
     sequence = rng.permutation(n_ops)
 
-    # Random machine assignment (respecting eligibility would be better)
-    machines = rng.integers(0, instance.n_machines, size=n_ops)
+    # Eligibility-aware machine and worker assignment
+    machines = np.zeros(n_ops, dtype=int)
+    workers  = np.zeros(n_ops, dtype=int)
 
-    # Random worker assignment
-    workers = rng.integers(0, instance.n_workers, size=n_ops)
+    for i, (job_id, op_idx) in enumerate(op_list):
+        job = instance.get_job(job_id)
+        if job is None or op_idx >= len(job.operations):
+            continue
+        op = job.operations[op_idx]
+
+        eligible_m = list(op.eligible_machines)
+        eligible_w = list(op.eligible_workers)
+
+        machines[i] = rng.choice(eligible_m) if eligible_m else instance.machines[0].machine_id
+        workers[i]  = rng.choice(eligible_w) if eligible_w else instance.workers[0].worker_id
 
     return {
         'sequence': sequence,
         'machines': machines,
         'workers': workers,
-        'op_list': op_list,  # For decoding
+        'op_list': op_list,
     }
 
 
 def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List[float]:
     """
     Evaluate genome for SFJSSP
-
-    Decodes genome into schedule and computes objectives.
-    Simplified evaluation using direct scheduling logic.
-
-    Returns:
-        [makespan, total_energy, ergonomic_risk, labor_cost]
     """
     from sfjssp_model.schedule import Schedule
 
@@ -607,93 +611,118 @@ def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List
     if not op_list:
         return [0.0, 0.0, 0.0, 0.0]
 
+    assert len(op_list) == sum(len(job.operations) for job in instance.jobs), \
+        "op_list misalignment"
+
     # Build schedule
     schedule = Schedule(instance_id=instance.instance_id)
 
     machine_available = {m.machine_id: 0.0 for m in instance.machines}
     worker_available = {w.worker_id: 0.0 for w in instance.workers}
-    job_last_op_completion = {}  # (job_id) -> completion time
+    job_last_op_completion = {}
 
     for seq_pos in range(len(sequence)):
-        # Get operation at this position in sequence
         op_list_idx = sequence[seq_pos]
         if op_list_idx >= len(op_list):
             continue
 
         job_id, local_op_idx = op_list[op_list_idx]
         job = instance.get_job(job_id)
-        if job is None or local_op_idx >= len(job.operations):
-            continue
-
         op = job.operations[local_op_idx]
 
-        # Get assigned machine and worker from genome
         m_id = int(machines[seq_pos] % instance.n_machines)
         w_id = int(workers[seq_pos] % instance.n_workers)
 
-        # Check eligibility (use first eligible if assigned is invalid)
+        # Eligibility check
         if m_id not in op.eligible_machines:
-            m_id = list(op.eligible_machines)[0] if op.eligible_machines else instance.machines[0].machine_id
+            if not op.eligible_machines: continue
+            eligible_m = list(op.eligible_machines)
+            m_id = eligible_m[int(machines[seq_pos]) % len(eligible_m)]
+            machines[seq_pos] = m_id
+
         if w_id not in op.eligible_workers:
-            w_id = list(op.eligible_workers)[0] if op.eligible_workers else instance.workers[0].worker_id
+            if not op.eligible_workers: continue
+            eligible_w = list(op.eligible_workers)
+            w_id = eligible_w[int(workers[seq_pos]) % len(eligible_w)]
+            workers[seq_pos] = w_id
 
         machine = instance.get_machine(m_id)
         worker = instance.get_worker(w_id)
 
-        if machine is None or worker is None:
-            continue
-
-        # Calculate earliest start time
+        # Calculate earliest start
         earliest_start = max(
             machine_available.get(m_id, 0),
             worker_available.get(w_id, 0),
+            worker.mandatory_shift_lockout_until
         )
 
-        # Check predecessor completion
         if local_op_idx > 0:
             prev_completion = job_last_op_completion.get((job_id, local_op_idx - 1), 0)
             earliest_start = max(earliest_start, prev_completion)
 
         start_time = earliest_start
 
-        # [ADDED] Apply mandatory rest logic
+        # Record rest
         rest_duration = max(0.0, start_time - worker_available.get(w_id, 0))
         if rest_duration > 0:
             worker.record_rest(rest_duration)
 
-        # Check for mandatory 12.5% rest rule
-        # Use a nominal pt for rest calculation
+        # Base pt
         mode_id = 0
         if m_id in op.processing_times and mode_id in op.processing_times[m_id]:
             base_pt = op.processing_times[m_id][mode_id]
         else:
             base_pt = 50.0
             
-        est_pt = base_pt / max(0.1, worker.get_efficiency())
-        
-        mandatory_rest = worker.requires_mandatory_rest(
-            proposed_task_duration=est_pt, 
-            current_time=start_time
-        )
-        
-        if mandatory_rest > 0:
-            start_time += mandatory_rest
-            worker.record_rest(mandatory_rest)
-
-        # Check if worker is locked out (Go Home rule)
-        if not worker.is_available(start_time):
-            # Delay start until lockout ends
-            start_time = max(start_time, worker.mandatory_shift_lockout_until)
-            # Re-record rest for the wait period
-            wait_rest = max(0.0, start_time - earliest_start)
-            if wait_rest > 0:
-                worker.record_rest(wait_rest)
-
-        # Get actual processing time AFTER rest recovery
         pt = base_pt / max(0.1, worker.get_efficiency())
         completion_time = start_time + pt
 
-        # Add to schedule
+        # [FIX] Enforce "A task cannot span two periods" and "no consecutive periods"
+        clock = instance.period_clock
+        max_tries = 10
+        found = False
+        for _ in range(max_tries):
+            if clock.crosses_boundary(start_time, completion_time):
+                start_time = clock.period_start(clock.get_period(start_time) + 1)
+                pt = base_pt / max(0.1, worker.get_efficiency())
+                completion_time = start_time + pt
+                continue
+            
+            if not worker.can_work_in_period(start_time, completion_time):
+                start_time = clock.period_start(clock.get_period(start_time) + 1)
+                pt = base_pt / max(0.1, worker.get_efficiency())
+                completion_time = start_time + pt
+                continue
+            
+            found = True
+            break
+        
+        # Check for mandatory 12.5% rest rule
+        mandatory_rest = worker.requires_mandatory_rest(
+            proposed_task_duration=pt, 
+            current_time=start_time
+        )
+        if mandatory_rest > 0:
+            start_time += mandatory_rest
+            worker.record_rest(mandatory_rest)
+            completion_time = start_time + pt
+
+        # Final check if rest pushed us across a boundary (limit jumps to 2 for NSGA)
+        jumps = 0
+        while clock.crosses_boundary(start_time, completion_time) and jumps < 2:
+            start_time = clock.period_start(clock.get_period(start_time) + 1)
+            completion_time = start_time + pt
+            jumps += 1
+
+        op.start_time = start_time
+        op.completion_time = completion_time
+        try:
+            op.assign_period_bounds(instance.period_clock)
+        except ValueError:
+            # If still crosses (very long task), we skip adding to schedule or just ignore for MOEA
+            # MOEA can handle infeasible solutions via penalty
+            pass
+
         schedule.add_operation(
             job_id=job_id,
             op_id=local_op_idx,
@@ -705,24 +734,25 @@ def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List
             processing_time=pt,
         )
 
-        # Update worker state
         risk_rate = instance.get_ergonomic_risk(job_id, local_op_idx)
         worker.record_work(pt, risk_rate=risk_rate, current_time=start_time)
 
-        # Update availability
+        if machine.total_processing_time == 0.0:
+            machine.startup_count += 1
+        machine.total_processing_time += pt
+
         machine_available[m_id] = completion_time
         worker_available[w_id] = completion_time
         job_last_op_completion[(job_id, local_op_idx)] = completion_time
 
     # Evaluate schedule
     if not schedule.scheduled_ops:
-        return [1000.0, 1000.0, 10.0, 1000.0]  # Penalty for empty schedule
+        return [1e9, 1e9, 1e9, 1e9]
 
     schedule.compute_makespan()
     schedule.compute_total_energy(instance)
     schedule.compute_ergonomic_metrics(instance)
 
-    # Calculate labor cost
     labor_cost = 0.0
     for w_id, w_sched in schedule.worker_schedules.items():
         worker = instance.get_worker(w_id)
@@ -730,13 +760,13 @@ def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List
             total_time = sum(op.processing_time for op in w_sched.operations)
             labor_cost += worker.labor_cost_per_hour * total_time
 
-    # [CHANGED] Enforce Hard Constraints (JMSY 9.pdf Section 5.2.3)
     max_ocra = schedule.ergonomic_metrics.get('max_exposure', 0.0)
     constraint_penalty = 0.0
-    
-    # The "Health Inspector" Penalty for exceeding strict 2.2 OCRA limit
     if max_ocra >= 2.2:
         constraint_penalty += 1e6 * (max_ocra - 2.2)
+    
+    if not schedule.check_feasibility(instance):
+        constraint_penalty += 1e6 * len(schedule.constraint_violations)
 
     return [
         schedule.makespan + constraint_penalty,

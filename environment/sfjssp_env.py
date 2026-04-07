@@ -380,6 +380,21 @@ class SFJSSPEnv(gym.Env):
             if not w.is_available(self.current_time):
                 mask[:, :, :, w.worker_id, :] = 0.0
 
+        # NEW: apply period rule (conservative approximation)
+        for job in self.instance.jobs:
+            for i, op in enumerate(job.operations):
+                if mask[job.job_id, i, :, :, :].sum() == 0.0:
+                    continue  # already masked
+                
+                pt = self._get_processing_time(op)
+                est_start = self.current_time
+                est_end = est_start + pt
+
+                for w in range(n_workers):
+                    worker = self.instance.get_worker(w)
+                    if worker and not worker.can_work_in_period(est_start, est_end):
+                        mask[job.job_id, i, :, w, :] = 0.0
+
         return mask
 
     def _validate_action(self, action: SFJSSPAction) -> bool:
@@ -410,6 +425,11 @@ class SFJSSPEnv(gym.Env):
         if not machine.is_available(self.current_time):
             return False
         if not worker.is_available(self.current_time):
+            return False
+
+        # NEW: enforce period rule at decision time
+        pt = self._get_processing_time(op)
+        if not worker.can_work_in_period(self.current_time, self.current_time + pt):
             return False
 
         return True
@@ -458,6 +478,22 @@ class SFJSSPEnv(gym.Env):
         if rest_duration > 0:
             worker.record_rest(rest_duration)
 
+        # [ADDED] Check for mandatory 12.5% rest rule
+        # Use nominal pt for rest calculation
+        est_pt = op.get_processing_time(
+            action.machine_id,
+            action.mode_id,
+            worker.get_efficiency()
+        )
+        mandatory_rest = worker.requires_mandatory_rest(
+            proposed_task_duration=est_pt, 
+            current_time=start_time
+        )
+        
+        if mandatory_rest > 0:
+            start_time += mandatory_rest
+            worker.record_rest(mandatory_rest)
+
         # Get processing time AFTER rest recovery so efficiency improves
         processing_time = op.get_processing_time(
             action.machine_id,
@@ -466,6 +502,11 @@ class SFJSSPEnv(gym.Env):
         )
 
         completion_time = start_time + processing_time
+
+        # [FIX 6.3] assign period bounds
+        op.start_time = start_time
+        op.completion_time = completion_time
+        op.assign_period_bounds(self.instance.period_clock)
 
         # Add to schedule
         self.schedule.add_operation(
@@ -488,6 +529,8 @@ class SFJSSPEnv(gym.Env):
         op.is_scheduled = True
 
         # Update machine state
+        if machine.total_processing_time == 0.0:
+            machine.startup_count += 1
         machine.available_time = completion_time
         machine.total_processing_time += processing_time
 

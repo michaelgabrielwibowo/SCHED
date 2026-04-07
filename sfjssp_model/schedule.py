@@ -289,9 +289,11 @@ class Schedule:
             if machine:
                 energy['auxiliary'] += aux_power * self.makespan
 
-        # Startup energy (simplified - count machine activations)
-        # In a detailed model, this would track state changes
-        energy['startup'] = len(self.machine_schedules) * 10.0  # Placeholder
+        # Startup energy: sum of startup energy for all machines used
+        for machine_id in self.machine_schedules:
+            machine = instance.get_machine(machine_id)
+            if machine:
+                energy['startup'] += machine.startup_energy
 
         energy['total'] = sum(energy.values())
 
@@ -640,6 +642,84 @@ class Schedule:
                     f"Due date violation: Job {job.job_id} "
                     f"(C={completion:.2f} > D={job.due_date:.2f})"
                 )
+
+        # --- Human-related feasibility checks ---
+
+        # 1) Rest fraction >= 12.5% of work time for each worker
+        MIN_REST_FRACTION = 0.125
+
+        for worker_id, worker_sched in self.worker_schedules.items():
+            ops = sorted(worker_sched.operations, key=lambda x: x.start_time)
+            if not ops:
+                continue
+
+            # Define horizon for this worker as [first_start, last_completion]
+            first_start = ops[0].start_time
+            last_end = ops[-1].completion_time
+
+            total_work = sum(op.processing_time for op in ops)
+
+            # Treat all idle gaps as rest within that horizon
+            total_rest = 0.0
+            prev_end = first_start
+            for op in ops:
+                if op.start_time > prev_end:
+                    total_rest += (op.start_time - prev_end)
+                prev_end = op.completion_time
+
+            # We do NOT count rest outside [first_start, last_end] here;
+            # that is consistent with checking "during the day" window.
+
+            if total_work > 0.0:
+                rest_fraction = total_rest / total_work
+                if rest_fraction < MIN_REST_FRACTION:
+                    self.is_feasible = False
+                    self.constraint_violations.append(
+                        f"Rest fraction violation: W{worker_id} "
+                        f"(rest/work = {rest_fraction:.3f} < {MIN_REST_FRACTION:.3f})"
+                    )
+
+        # 2) OCRA / ergonomic exposure <= 2.2 per shift (approximate)
+
+        # Reuse existing metric computation
+        erg_metrics = self.compute_ergonomic_metrics(instance)
+        max_exposure = erg_metrics.get("max_exposure", 0.0)
+
+        # Threshold from instance if available, else default 2.2
+        ocra_threshold = getattr(instance, "ocra_max_per_shift", 2.2)
+
+        if max_exposure > ocra_threshold:
+            self.is_feasible = False
+            self.constraint_violations.append(
+                f"Ergonomic exposure violation: "
+                f"max_exposure = {max_exposure:.3f} > {ocra_threshold:.3f}"
+            )
+
+        # --- Period-based feasibility: no two consecutive periods per worker ---
+
+        # Get canonical SHIFT_DURATION from instance workers (fallback 480.0)
+        if instance.workers:
+            shift_duration = instance.workers[0].SHIFT_DURATION
+        else:
+            shift_duration = 480.0  # default 8h
+
+        for worker_id, w_sched in self.worker_schedules.items():
+            ops = sorted(w_sched.operations, key=lambda x: x.start_time)
+            if not ops:
+                continue
+
+            # Map operations to period indices
+            periods = [int(op.start_time // shift_duration) for op in ops]
+
+            # Check for consecutive periods
+            for p_prev, p_curr in zip(periods[:-1], periods[1:]):
+                if p_curr - p_prev == 1:
+                    self.is_feasible = False
+                    self.constraint_violations.append(
+                        f"Period constraint violation: W{worker_id} "
+                        f"worked in consecutive periods {p_prev} and {p_curr}"
+                    )
+                    break
 
         return self.is_feasible
 

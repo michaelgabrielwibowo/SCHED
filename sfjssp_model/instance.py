@@ -16,6 +16,7 @@ import numpy as np
 from .job import Job, Operation
 from .machine import Machine, MachineMode, MachineState
 from .worker import Worker, WorkerSkill, WorkerState
+from .period_clock import PeriodClock
 
 
 class InstanceLabel(Enum):
@@ -95,6 +96,9 @@ class SFJSSPInstance:
     machines: List[Machine] = field(default_factory=list)
     workers: List[Worker] = field(default_factory=list)
 
+    # Global shared period clock
+    period_clock: PeriodClock = field(default_factory=PeriodClock)
+
     # Ergonomic risk parameters (CONFIRMED from NSGA-III 2021)
     # Map: (job_id, op_id) -> ergonomic risk rate per time unit
     ergonomic_risk_map: Dict[Tuple[int, int], float] = field(default_factory=dict)
@@ -130,8 +134,33 @@ class SFJSSPInstance:
     auxiliary_power_total: float = 50.0  # Total facility auxiliary power (kW)
 
     def __post_init__(self):
-        """Update statistics after initialization"""
+        """Update statistics after initialization and sync clocks"""
         self._update_statistics()
+        self.validate_risk_map()
+
+        # Sync all workers to the shared period clock
+        for worker in self.workers:
+            worker.period_clock = self.period_clock
+
+    def validate_risk_map(self):
+        """
+        Warn if any risk_rate implies a worker hits OCRA limit
+        in less than 30 minutes (likely miscalibrated).
+        """
+        OCRA_UNIT_BUDGET = 2.2   # max allowed per shift (JMSY-9 §5.2.3)
+        SHIFT_MINUTES   = 480.0  # 8 hours
+
+        for (job_id, op_id), rate in self.ergonomic_risk_map.items():
+            if rate > 0:
+                time_to_limit = OCRA_UNIT_BUDGET / rate
+                if time_to_limit < 30.0:
+                    import warnings
+                    warnings.warn(
+                        f"Op ({job_id},{op_id}): risk_rate={rate:.4f} hits OCRA "
+                        f"limit in {time_to_limit:.1f} min. "
+                        f"Consider calibrating to ~{OCRA_UNIT_BUDGET / SHIFT_MINUTES:.5f} "
+                        f"for a full-shift limit."
+                    )
 
     def _update_statistics(self):
         """Compute instance statistics"""

@@ -95,6 +95,9 @@ class Machine:
     total_idle_time: float = 0.0
     total_setup_time: float = 0.0
 
+    # Count how many times this machine has been started from OFF state
+    startup_count: int = 0
+
     # Breakdown tracking (PROPOSED for dynamic scenarios)
     is_broken: bool = False
     breakdown_time: Optional[float] = None
@@ -147,7 +150,7 @@ class Machine:
             'idle': self.power_idle * self.total_idle_time,                   # EM
             'setup': self.power_setup * self.total_setup_time,                # EM
             'transport': self.power_transport * self.total_transport_time,    # ET (ADDED)
-            'startup': 0.0,  
+            'startup': self.startup_energy * self.startup_count,              # FIXED
             'auxiliary': self.auxiliary_power_share * (                       # EC
                 self.total_processing_time + self.total_idle_time + 
                 self.total_setup_time + self.total_transport_time
@@ -185,6 +188,7 @@ class Machine:
         self.total_idle_time = 0.0
         self.total_setup_time = 0.0
         self.total_transport_time = 0.0  # ADDED
+        self.startup_count = 0           # ADDED
         self.is_broken = False
         self.breakdown_time = None
         self.repair_time = None

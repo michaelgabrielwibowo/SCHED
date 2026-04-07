@@ -57,12 +57,17 @@ def run_greedy_experiment(instance: SFJSSPInstance, rule_name: str, rule_fn) -> 
     start_time = time.time()
 
     scheduler = GreedyScheduler(job_rule=rule_fn)
-    schedule = scheduler.schedule(instance, verbose=False)
+    schedule = scheduler.schedule(instance, verbose=True)
 
     elapsed = time.time() - start_time
 
     # Evaluate
     objectives = schedule.evaluate(instance)
+    
+    if not schedule.is_feasible and schedule.constraint_violations:
+        print(f"    (Infeasible: {len(schedule.constraint_violations)} violations, first: {schedule.constraint_violations[0]})")
+        if any("overlap" in v for v in schedule.constraint_violations):
+            print(f"    WARNING: Overlap violation detected!")
 
     return {
         'method': f'Greedy ({rule_name})',

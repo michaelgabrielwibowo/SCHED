@@ -4,43 +4,43 @@
     "n_jobs": 10,
     "n_machines": 5,
     "n_workers": 5,
-    "timestamp": "2026-03-24T23:00:41.894805",
+    "timestamp": "2026-04-07T14:25:14.649957",
     "experiments": [
       {
         "method": "Greedy (SPT)",
-        "makespan": 451.76613495639407,
-        "energy": 55876.67123702084,
-        "ergonomic_risk": 132.11689419398618,
-        "labor_cost": 29689.057738494757,
-        "time_seconds": 0.001646280288696289,
-        "feasible": true
+        "makespan": 1102.569194638808,
+        "energy": 113036.52883371433,
+        "ergonomic_risk": 1.1954843896681182,
+        "labor_cost": 38105.51420701679,
+        "time_seconds": 0.008530855178833008,
+        "feasible": false
       },
       {
         "method": "Greedy (FIFO)",
-        "makespan": 671.2562791249943,
-        "energy": 72473.54359092403,
-        "ergonomic_risk": 132.11689419398624,
-        "labor_cost": 29689.057738494754,
-        "time_seconds": 0.0013997554779052734,
-        "feasible": true
+        "makespan": 2386.7733509843574,
+        "energy": 208411.2002689846,
+        "ergonomic_risk": 1.1309523424272754,
+        "labor_cost": 45370.50758447873,
+        "time_seconds": 0.00426936149597168,
+        "feasible": false
       },
       {
         "method": "Greedy (EDD)",
-        "makespan": 626.9433626170153,
-        "energy": 69122.79715218116,
-        "ergonomic_risk": 132.11689419398618,
-        "labor_cost": 29689.057738494757,
-        "time_seconds": 0.0011305809020996094,
-        "feasible": true
+        "makespan": 3022.5691946388083,
+        "energy": 258939.83297899048,
+        "ergonomic_risk": 0.7503860699152378,
+        "labor_cost": 40341.32128807339,
+        "time_seconds": 0.005364418029785156,
+        "feasible": false
       },
       {
-        "method": "NSGA-III (20 gen)",
-        "makespan": 721.1840737040677,
-        "energy": 82368.79369891717,
-        "ergonomic_risk": 162.7695867234238,
-        "labor_cost": 59102.596581945465,
-        "time_seconds": 0.2705092430114746,
-        "pareto_size": 19,
+        "method": "NSGA-III (5 gen)",
+        "makespan": 14353656.43708209,
+        "energy": 18879442.913113788,
+        "ergonomic_risk": 1.2019123142297115,
+        "labor_cost": 14087836.52754176,
+        "time_seconds": 0.9251525402069092,
+        "pareto_size": 15,
         "feasible": true
       }
     ]
@@ -50,43 +50,43 @@
     "n_jobs": 10,
     "n_machines": 5,
     "n_workers": 5,
-    "timestamp": "2026-03-24T23:00:42.174411",
+    "timestamp": "2026-04-07T14:25:15.605814",
     "experiments": [
       {
         "method": "Greedy (SPT)",
-        "makespan": 421.0863277058204,
-        "energy": 41774.59366950793,
-        "ergonomic_risk": 88.78184811906843,
-        "labor_cost": 24964.62778124159,
-        "time_seconds": 0.0005605220794677734,
-        "feasible": true
+        "makespan": 982.7104498188138,
+        "energy": 92043.11612054554,
+        "ergonomic_risk": 0.7866886596321476,
+        "labor_cost": 27747.78269802715,
+        "time_seconds": 0.0040149688720703125,
+        "feasible": false
       },
       {
         "method": "Greedy (FIFO)",
-        "makespan": 475.44158111831274,
-        "energy": 46352.79619191551,
-        "ergonomic_risk": 88.78184811906844,
-        "labor_cost": 24964.62778124159,
-        "time_seconds": 0.0004544258117675781,
-        "feasible": true
+        "makespan": 1200.4089116286145,
+        "energy": 108602.40346611063,
+        "ergonomic_risk": 0.5284376268964155,
+        "labor_cost": 28757.40612376148,
+        "time_seconds": 0.004637241363525391,
+        "feasible": false
       },
       {
         "method": "Greedy (EDD)",
-        "makespan": 545.0743290444666,
-        "energy": 52217.78259494868,
-        "ergonomic_risk": 88.78184811906843,
-        "labor_cost": 24964.62778124159,
-        "time_seconds": 0.0004265308380126953,
-        "feasible": true
+        "makespan": 2364.881794778793,
+        "energy": 206561.16877035744,
+        "ergonomic_risk": 0.9141881849590673,
+        "labor_cost": 26702.994509516695,
+        "time_seconds": 0.003927707672119141,
+        "feasible": false
       },
       {
-        "method": "NSGA-III (20 gen)",
-        "makespan": 529.8233614472938,
-        "energy": 52461.90332833803,
-        "ergonomic_risk": 101.28663672385557,
-        "labor_cost": 42989.19252411839,
-        "time_seconds": 0.26725077629089355,
-        "pareto_size": 8,
+        "method": "NSGA-III (5 gen)",
+        "makespan": 13132114.158801597,
+        "energy": 15946179.75144701,
+        "ergonomic_risk": 0.6607413410083844,
+        "labor_cost": 13074363.35605959,
+        "time_seconds": 0.7560877799987793,
+        "pareto_size": 13,
         "feasible": true
       }
     ]
@@ -96,43 +96,43 @@
     "n_jobs": 10,
     "n_machines": 5,
     "n_workers": 5,
-    "timestamp": "2026-03-24T23:00:42.447252",
+    "timestamp": "2026-04-07T14:25:16.384543",
     "experiments": [
       {
         "method": "Greedy (SPT)",
-        "makespan": 572.5993452458949,
-        "energy": 59372.842015883645,
-        "ergonomic_risk": 91.86378186024871,
-        "labor_cost": 28718.11889828429,
-        "time_seconds": 0.0008668899536132812,
-        "feasible": true
+        "makespan": 1039.1109431770583,
+        "energy": 96218.48764770868,
+        "ergonomic_risk": 0.8153395759588059,
+        "labor_cost": 32615.94467105168,
+        "time_seconds": 0.00492548942565918,
+        "feasible": false
       },
       {
         "method": "Greedy (FIFO)",
-        "makespan": 694.2317265266295,
-        "energy": 68108.70510174814,
-        "ergonomic_risk": 91.86378186024872,
-        "labor_cost": 28718.11889828429,
-        "time_seconds": 0.0005061626434326172,
-        "feasible": true
+        "makespan": 1375.1992222880149,
+        "energy": 123638.87457506028,
+        "ergonomic_risk": 0.6714460740273418,
+        "labor_cost": 37064.81302924936,
+        "time_seconds": 0.0046367645263671875,
+        "feasible": false
       },
       {
         "method": "Greedy (EDD)",
-        "makespan": 691.0905920219251,
-        "energy": 67883.10299909713,
-        "ergonomic_risk": 91.86378186024871,
-        "labor_cost": 28718.11889828429,
-        "time_seconds": 0.0012099742889404297,
-        "feasible": true
+        "makespan": 2318.720107998072,
+        "energy": 188092.63011596113,
+        "ergonomic_risk": 0.6176580325133768,
+        "labor_cost": 34611.38235208015,
+        "time_seconds": 0.0047245025634765625,
+        "feasible": false
       },
       {
-        "method": "NSGA-III (20 gen)",
-        "makespan": 616.2029587358613,
-        "energy": 69737.66918108097,
-        "ergonomic_risk": 107.99424300886915,
-        "labor_cost": 52064.96523101567,
-        "time_seconds": 0.2766585350036621,
-        "pareto_size": 21,
+        "method": "NSGA-III (5 gen)",
+        "makespan": 15094204.794174213,
+        "energy": 17691434.717706002,
+        "ergonomic_risk": 0.6198353692348136,
+        "labor_cost": 15073575.491748476,
+        "time_seconds": 0.7806391716003418,
+        "pareto_size": 14,
         "feasible": true
       }
     ]
@@ -142,43 +142,43 @@
     "n_jobs": 10,
     "n_machines": 5,
     "n_workers": 5,
-    "timestamp": "2026-03-24T23:00:42.733228",
+    "timestamp": "2026-04-07T14:25:17.191150",
     "experiments": [
       {
         "method": "Greedy (SPT)",
-        "makespan": 395.333297690666,
-        "energy": 44949.75757513377,
-        "ergonomic_risk": 68.43251607283453,
-        "labor_cost": 16322.643725367152,
-        "time_seconds": 0.0006272792816162109,
-        "feasible": true
+        "makespan": 388.1951562764655,
+        "energy": 47608.56960565905,
+        "ergonomic_risk": 0.9238297618963218,
+        "labor_cost": 26465.346460152963,
+        "time_seconds": 0.004737138748168945,
+        "feasible": false
       },
       {
         "method": "Greedy (FIFO)",
-        "makespan": 527.1735785528687,
-        "energy": 54996.60688874399,
-        "ergonomic_risk": 68.43251607283453,
-        "labor_cost": 16322.643725367154,
-        "time_seconds": 0.00045680999755859375,
-        "feasible": true
+        "makespan": 1148.4424789818556,
+        "energy": 106549.7865048075,
+        "ergonomic_risk": 0.5041702922881905,
+        "labor_cost": 28340.494877831574,
+        "time_seconds": 0.0042345523834228516,
+        "feasible": false
       },
       {
         "method": "Greedy (EDD)",
-        "makespan": 522.96029592647,
-        "energy": 54675.53494179236,
-        "ergonomic_risk": 68.43251607283455,
-        "labor_cost": 16322.643725367152,
-        "time_seconds": 0.0010881423950195312,
-        "feasible": true
+        "makespan": 2021.436253185148,
+        "energy": 170889.07673271437,
+        "ergonomic_risk": 1.3988032779517785,
+        "labor_cost": 33882.362330161086,
+        "time_seconds": 0.005058765411376953,
+        "feasible": false
       },
       {
-        "method": "NSGA-III (20 gen)",
-        "makespan": 647.9601884597639,
-        "energy": 63439.71131894664,
-        "ergonomic_risk": 120.04548393606632,
-        "labor_cost": 35856.956793401274,
-        "time_seconds": 0.26628708839416504,
-        "pareto_size": 8,
+        "method": "NSGA-III (5 gen)",
+        "makespan": 13143642.123572817,
+        "energy": 16503634.914810872,
+        "ergonomic_risk": 0.6230723119763286,
+        "labor_cost": 13061666.738640575,
+        "time_seconds": 0.7973594665527344,
+        "pareto_size": 16,
         "feasible": true
       }
     ]
@@ -188,43 +188,43 @@
     "n_jobs": 10,
     "n_machines": 5,
     "n_workers": 5,
-    "timestamp": "2026-03-24T23:00:43.007636",
+    "timestamp": "2026-04-07T14:25:18.014042",
     "experiments": [
       {
         "method": "Greedy (SPT)",
-        "makespan": 441.8821426505868,
-        "energy": 55315.29803184159,
-        "ergonomic_risk": 75.51243959492487,
-        "labor_cost": 18176.26449561487,
-        "time_seconds": 0.0006563663482666016,
-        "feasible": true
+        "makespan": 990.4989757467422,
+        "energy": 104321.5708820133,
+        "ergonomic_risk": 0.8104701887954952,
+        "labor_cost": 24355.561292290397,
+        "time_seconds": 0.0049059391021728516,
+        "feasible": false
       },
       {
         "method": "Greedy (FIFO)",
-        "makespan": 575.221015824454,
-        "energy": 66481.92080453548,
-        "ergonomic_risk": 75.51243959492487,
-        "labor_cost": 18176.26449561487,
-        "time_seconds": 0.0004918575286865234,
-        "feasible": true
+        "makespan": 2902.0113458670407,
+        "energy": 263481.9281135111,
+        "ergonomic_risk": 0.5927058234941229,
+        "labor_cost": 24354.59157929313,
+        "time_seconds": 0.005041599273681641,
+        "feasible": false
       },
       {
         "method": "Greedy (EDD)",
-        "makespan": 466.3189154687289,
-        "energy": 57361.78468158548,
-        "ergonomic_risk": 75.51243959492489,
-        "labor_cost": 18176.264495614865,
-        "time_seconds": 0.000457763671875,
-        "feasible": true
+        "makespan": 2948.9193622617404,
+        "energy": 264236.9790414096,
+        "ergonomic_risk": 0.6562699967451341,
+        "labor_cost": 23648.260376774622,
+        "time_seconds": 0.004227161407470703,
+        "feasible": false
       },
       {
-        "method": "NSGA-III (20 gen)",
-        "makespan": 623.8387596812661,
-        "energy": 85170.6279975892,
-        "ergonomic_risk": 124.86734389521207,
-        "labor_cost": 44809.34924661517,
-        "time_seconds": 0.2928192615509033,
-        "pareto_size": 20,
+        "method": "NSGA-III (5 gen)",
+        "makespan": 14071784.67701125,
+        "energy": 16445632.95245301,
+        "ergonomic_risk": 0.7674617225966957,
+        "labor_cost": 14067190.235345645,
+        "time_seconds": 0.7966670989990234,
+        "pareto_size": 14,
         "feasible": true
       }
     ]
@@ -234,43 +234,43 @@
     "n_jobs": 10,
     "n_machines": 5,
     "n_workers": 5,
-    "timestamp": "2026-03-24T23:00:43.308314",
+    "timestamp": "2026-04-07T14:25:18.836070",
     "experiments": [
       {
         "method": "Greedy (SPT)",
-        "makespan": 517.4484029157522,
-        "energy": 69817.2631066331,
-        "ergonomic_risk": 96.3645149643542,
-        "labor_cost": 27098.80956729485,
-        "time_seconds": 0.0010280609130859375,
-        "feasible": true
+        "makespan": 976.6838502217314,
+        "energy": 116138.22400258396,
+        "ergonomic_risk": 0.877267281187021,
+        "labor_cost": 29037.191727574253,
+        "time_seconds": 0.004685401916503906,
+        "feasible": false
       },
       {
         "method": "Greedy (FIFO)",
-        "makespan": 785.8590932960828,
-        "energy": 91280.54995648695,
-        "ergonomic_risk": 96.36451496435419,
-        "labor_cost": 27098.80956729485,
-        "time_seconds": 0.0007448196411132812,
-        "feasible": true
+        "makespan": 1388.0498973489284,
+        "energy": 151300.27145090487,
+        "ergonomic_risk": 0.9884203832556918,
+        "labor_cost": 33287.167125332715,
+        "time_seconds": 0.005762577056884766,
+        "feasible": false
       },
       {
         "method": "Greedy (EDD)",
-        "makespan": 701.6162109680582,
-        "energy": 84544.12248445589,
-        "ergonomic_risk": 96.3645149643542,
-        "labor_cost": 27098.809567294848,
-        "time_seconds": 0.0005562305450439453,
-        "feasible": true
+        "makespan": 2381.7460503809543,
+        "energy": 226777.57421039327,
+        "ergonomic_risk": 0.7010997216421571,
+        "labor_cost": 34782.37517552467,
+        "time_seconds": 0.0044596195220947266,
+        "feasible": false
       },
       {
-        "method": "NSGA-III (20 gen)",
-        "makespan": 682.7129053778395,
-        "energy": 88904.26794405337,
-        "ergonomic_risk": 105.8584662875671,
-        "labor_cost": 38225.40053928161,
-        "time_seconds": 0.30668091773986816,
-        "pareto_size": 11,
+        "method": "NSGA-III (5 gen)",
+        "makespan": 15106154.213658625,
+        "energy": 18539575.866420917,
+        "ergonomic_risk": 0.7069262620404124,
+        "labor_cost": 15058001.754353784,
+        "time_seconds": 0.8371396064758301,
+        "pareto_size": 30,
         "feasible": true
       }
     ]
@@ -280,43 +280,43 @@
     "n_jobs": 10,
     "n_machines": 5,
     "n_workers": 5,
-    "timestamp": "2026-03-24T23:00:43.625992",
+    "timestamp": "2026-04-07T14:25:19.708304",
     "experiments": [
       {
         "method": "Greedy (SPT)",
-        "makespan": 520.2127914125505,
-        "energy": 55350.05948387853,
-        "ergonomic_risk": 66.0294217805409,
-        "labor_cost": 18216.517648088757,
-        "time_seconds": 0.0007455348968505859,
-        "feasible": true
+        "makespan": 1006.9135822535618,
+        "energy": 101783.36423281523,
+        "ergonomic_risk": 0.728905368127195,
+        "labor_cost": 29351.34701684609,
+        "time_seconds": 0.009733438491821289,
+        "feasible": false
       },
       {
         "method": "Greedy (FIFO)",
-        "makespan": 449.69570161140973,
-        "energy": 50020.14737067186,
-        "ergonomic_risk": 66.02942178054089,
-        "labor_cost": 18216.517648088757,
-        "time_seconds": 0.0012018680572509766,
-        "feasible": true
+        "makespan": 1290.7357306901197,
+        "energy": 125001.58081514428,
+        "ergonomic_risk": 0.5473719379699319,
+        "labor_cost": 33023.815102353765,
+        "time_seconds": 0.00963902473449707,
+        "feasible": false
       },
       {
         "method": "Greedy (EDD)",
-        "makespan": 407.02231883622915,
-        "energy": 46794.75363411325,
-        "ergonomic_risk": 66.02942178054089,
-        "labor_cost": 18216.517648088757,
-        "time_seconds": 0.0010905265808105469,
-        "feasible": true
+        "makespan": 2285.1106192051125,
+        "energy": 194567.1341176696,
+        "ergonomic_risk": 0.5688422025492159,
+        "labor_cost": 28241.27688303835,
+        "time_seconds": 0.009273529052734375,
+        "feasible": false
       },
       {
-        "method": "NSGA-III (20 gen)",
-        "makespan": 678.4902947174218,
-        "energy": 76865.4506423432,
-        "ergonomic_risk": 126.41401823680764,
-        "labor_cost": 45936.52465609782,
-        "time_seconds": 0.30493760108947754,
-        "pareto_size": 12,
+        "method": "NSGA-III (5 gen)",
+        "makespan": 14196614.841726175,
+        "energy": 16337140.912095997,
+        "ergonomic_risk": 0.7001563008271017,
+        "labor_cost": 14070551.669317314,
+        "time_seconds": 0.8765521049499512,
+        "pareto_size": 15,
         "feasible": true
       }
     ]
@@ -326,43 +326,43 @@
     "n_jobs": 10,
     "n_machines": 5,
     "n_workers": 5,
-    "timestamp": "2026-03-24T23:00:43.939613",
+    "timestamp": "2026-04-07T14:25:20.629395",
     "experiments": [
       {
         "method": "Greedy (SPT)",
-        "makespan": 525.7480678379882,
-        "energy": 62368.108649465124,
-        "ergonomic_risk": 115.18756839419397,
-        "labor_cost": 20715.916875421433,
-        "time_seconds": 0.0013616085052490234,
-        "feasible": true
+        "makespan": 424.19175323204365,
+        "energy": 60930.24269086067,
+        "ergonomic_risk": 1.0770266344417092,
+        "labor_cost": 32815.131173883325,
+        "time_seconds": 0.004062175750732422,
+        "feasible": false
       },
       {
         "method": "Greedy (FIFO)",
-        "makespan": 713.1802041784192,
-        "energy": 77312.39550476176,
-        "ergonomic_risk": 115.18756839419397,
-        "labor_cost": 20715.916875421433,
-        "time_seconds": 0.0004734992980957031,
-        "feasible": true
+        "makespan": 1325.3732973073413,
+        "energy": 131894.5950944833,
+        "ergonomic_risk": 0.749730457716782,
+        "labor_cost": 26693.773568045923,
+        "time_seconds": 0.005074501037597656,
+        "feasible": false
       },
       {
         "method": "Greedy (EDD)",
-        "makespan": 638.2065350441231,
-        "energy": 71334.61581333257,
-        "ergonomic_risk": 115.18756839419397,
-        "labor_cost": 20715.916875421433,
-        "time_seconds": 0.00046062469482421875,
-        "feasible": true
+        "makespan": 2296.880874690118,
+        "energy": 213870.43169102224,
+        "ergonomic_risk": 0.7842318655474212,
+        "labor_cost": 38065.552985023176,
+        "time_seconds": 0.004010915756225586,
+        "feasible": false
       },
       {
-        "method": "NSGA-III (20 gen)",
-        "makespan": 670.371013044778,
-        "energy": 85430.66120833205,
-        "ergonomic_risk": 136.49406496289373,
-        "labor_cost": 43688.82115772723,
-        "time_seconds": 0.28777003288269043,
-        "pareto_size": 21,
+        "method": "NSGA-III (5 gen)",
+        "makespan": 14113026.460730352,
+        "energy": 16703530.981622469,
+        "ergonomic_risk": 0.8629643935689455,
+        "labor_cost": 14063772.806739232,
+        "time_seconds": 0.7710506916046143,
+        "pareto_size": 18,
         "feasible": true
       }
     ]
@@ -372,43 +372,43 @@
     "n_jobs": 10,
     "n_machines": 5,
     "n_workers": 5,
-    "timestamp": "2026-03-24T23:00:44.236461",
+    "timestamp": "2026-04-07T14:25:21.429297",
     "experiments": [
       {
         "method": "Greedy (SPT)",
-        "makespan": 794.2459473380962,
-        "energy": 85456.34928881055,
-        "ergonomic_risk": 163.37307369587728,
-        "labor_cost": 26441.38425487245,
-        "time_seconds": 0.0018520355224609375,
-        "feasible": true
+        "makespan": 1330.7327232669938,
+        "energy": 135518.47231476396,
+        "ergonomic_risk": 0.6821831186688555,
+        "labor_cost": 34188.00584551465,
+        "time_seconds": 0.005094289779663086,
+        "feasible": false
       },
       {
         "method": "Greedy (FIFO)",
-        "makespan": 714.3634965786046,
-        "energy": 79095.53518781204,
-        "ergonomic_risk": 163.37307369587728,
-        "labor_cost": 26441.38425487245,
-        "time_seconds": 0.0005624294281005859,
-        "feasible": true
+        "makespan": 2128.11262436213,
+        "energy": 196332.65387554222,
+        "ergonomic_risk": 0.9616365878748757,
+        "labor_cost": 29821.673108502247,
+        "time_seconds": 0.005430698394775391,
+        "feasible": false
       },
       {
         "method": "Greedy (EDD)",
-        "makespan": 781.2255437448152,
-        "energy": 84419.57129828309,
-        "ergonomic_risk": 163.37307369587728,
-        "labor_cost": 26441.38425487245,
-        "time_seconds": 0.0008780956268310547,
-        "feasible": true
+        "makespan": 2991.2785391153448,
+        "energy": 264048.25609398517,
+        "ergonomic_risk": 0.9076070930473357,
+        "labor_cost": 29823.670064565787,
+        "time_seconds": 0.006037473678588867,
+        "feasible": false
       },
       {
-        "method": "NSGA-III (20 gen)",
-        "makespan": 748.2975875615795,
-        "energy": 87084.27100713446,
-        "ergonomic_risk": 159.63328233864846,
-        "labor_cost": 55648.14792614626,
-        "time_seconds": 0.30770254135131836,
-        "pareto_size": 8,
+        "method": "NSGA-III (5 gen)",
+        "makespan": 14133792.006823203,
+        "energy": 19988849.297932446,
+        "ergonomic_risk": 0.8252583693312439,
+        "labor_cost": 14080849.10188922,
+        "time_seconds": 0.8819336891174316,
+        "pareto_size": 14,
         "feasible": true
       }
     ]
@@ -418,43 +418,43 @@
     "n_jobs": 10,
     "n_machines": 5,
     "n_workers": 5,
-    "timestamp": "2026-03-24T23:00:44.556080",
+    "timestamp": "2026-04-07T14:25:22.337771",
     "experiments": [
       {
         "method": "Greedy (SPT)",
-        "makespan": 366.56450712851137,
-        "energy": 53784.80328590433,
-        "ergonomic_risk": 76.82011475847145,
-        "labor_cost": 27445.110705291565,
-        "time_seconds": 0.0006344318389892578,
-        "feasible": true
+        "makespan": 357.8873705048354,
+        "energy": 61116.76976258771,
+        "ergonomic_risk": 0.5991548635179056,
+        "labor_cost": 28563.083647123807,
+        "time_seconds": 0.004211902618408203,
+        "feasible": false
       },
       {
         "method": "Greedy (FIFO)",
-        "makespan": 440.11802190728514,
-        "energy": 59920.4625554814,
-        "ergonomic_risk": 76.82011475847143,
-        "labor_cost": 27445.11070529156,
-        "time_seconds": 0.0004444122314453125,
-        "feasible": true
+        "makespan": 1138.4816140593373,
+        "energy": 121548.20254532504,
+        "ergonomic_risk": 0.6163948747358847,
+        "labor_cost": 29488.604330386275,
+        "time_seconds": 0.0052585601806640625,
+        "feasible": false
       },
       {
         "method": "Greedy (EDD)",
-        "makespan": 472.13250167720133,
-        "energy": 62591.034317439684,
-        "ergonomic_risk": 76.82011475847145,
-        "labor_cost": 27445.11070529156,
-        "time_seconds": 0.0004241466522216797,
-        "feasible": true
+        "makespan": 3003.581065094792,
+        "energy": 280182.9565868048,
+        "ergonomic_risk": 0.412844976833935,
+        "labor_cost": 26894.34159745164,
+        "time_seconds": 0.004330635070800781,
+        "feasible": false
       },
       {
-        "method": "NSGA-III (20 gen)",
-        "makespan": 585.6291809223444,
-        "energy": 80090.3691262013,
-        "ergonomic_risk": 102.60675151036628,
-        "labor_cost": 48812.48468878925,
-        "time_seconds": 0.2581009864807129,
-        "pareto_size": 21,
+        "method": "NSGA-III (5 gen)",
+        "makespan": 13026505.061722714,
+        "energy": 14536371.444518222,
+        "ergonomic_risk": 0.7023644443919971,
+        "labor_cost": 13061337.752610678,
+        "time_seconds": 0.7494544982910156,
+        "pareto_size": 23,
         "feasible": true
       }
     ]
