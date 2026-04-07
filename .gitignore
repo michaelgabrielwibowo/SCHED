@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+benchmarks/
+plots/
+logs/
+*.log
+*.json
+!benchmarks/MK*.json
+!benchmarks/large/*.json
+!plots/pareto_frontier.png

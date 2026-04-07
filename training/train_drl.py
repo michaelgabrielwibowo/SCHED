@@ -22,6 +22,62 @@ except ImportError:
     TORCH_AVAILABLE = False
 
 
+def parse_observation(obs) -> tuple:
+    """
+    Parse SFJSSPObservation into separate state tensors for each agent.
+
+    Aggregates feature matrices into fixed-size state vectors by mean pooling
+    and projecting to state_dim=64.
+
+    Args:
+        obs: SFJSSPObservation from SFJSSPEnv.reset() or SFJSSPEnv.step()
+
+    Returns:
+        job_state, machine_state, worker_state tensors, each shape (1, 64)
+    """
+    if not TORCH_AVAILABLE:
+        return None, None, None
+
+    # Handle both SFJSSPObservation dataclass and dict formats
+    if hasattr(obs, 'job_features'):
+        # SFJSSPObservation dataclass
+        job_features = obs.job_features
+        machine_features = obs.machine_features
+        worker_features = obs.worker_features
+    elif isinstance(obs, dict):
+        # Dict format
+        job_features = obs.get('job_features', obs.get('job_nodes', np.zeros((1, 6))))
+        machine_features = obs.get('machine_features', obs.get('machine_nodes', np.zeros((1, 4))))
+        worker_features = obs.get('worker_features', obs.get('worker_nodes', np.zeros((1, 4))))
+    else:
+        # Unknown format
+        return None, None, None
+
+    # Aggregate: mean across entity dimension
+    job_agg = np.mean(job_features, axis=0) if job_features.shape[0] > 0 else np.zeros(job_features.shape[1])
+    machine_agg = np.mean(machine_features, axis=0) if machine_features.shape[0] > 0 else np.zeros(machine_features.shape[1])
+    worker_agg = np.mean(worker_features, axis=0) if worker_features.shape[0] > 0 else np.zeros(worker_features.shape[1])
+
+    # Pad to state_dim=64
+    state_dim = 64
+
+    job_state = np.zeros(state_dim, dtype=np.float32)
+    job_state[:min(len(job_agg), state_dim)] = job_agg[:min(len(job_agg), state_dim)]
+
+    machine_state = np.zeros(state_dim, dtype=np.float32)
+    machine_state[:min(len(machine_agg), state_dim)] = machine_agg[:min(len(machine_agg), state_dim)]
+
+    worker_state = np.zeros(state_dim, dtype=np.float32)
+    worker_state[:min(len(worker_agg), state_dim)] = worker_agg[:min(len(worker_agg), state_dim)]
+
+    # Convert to tensors with batch dimension
+    job_state = torch.tensor(job_state, dtype=torch.float32).unsqueeze(0)
+    machine_state = torch.tensor(machine_state, dtype=torch.float32).unsqueeze(0)
+    worker_state = torch.tensor(worker_state, dtype=torch.float32).unsqueeze(0)
+
+    return job_state, machine_state, worker_state
+
+
 @dataclass
 class TrainingConfig:
     """Training configuration"""
@@ -123,18 +179,61 @@ class TrainingPipeline:
 
             for step in range(self.config.max_steps_per_episode):
                 if not TORCH_AVAILABLE:
-                    # Random actions
+                    # Random actions (fallback when PyTorch is not available)
                     action = env.action_space.sample()
                     next_obs, reward, terminated, truncated, info = env.step(action)
                 else:
-                    # TODO: Implement proper action selection
-                    action = env.action_space.sample()
+                    # Parse observation into agent-specific states
+                    job_state, machine_state, worker_state = parse_observation(obs)
+
+                    # Select actions from policy
+                    action_dict = self.agent.select_actions(
+                        job_state, machine_state, worker_state
+                    )
+
+                    # Convert to env action format
+                    action = {
+                        'job_idx': action_dict['job_action'].item(),
+                        'op_idx': 0,  # Default: first unscheduled operation
+                        'machine_idx': action_dict['machine_action'].item(),
+                        'worker_idx': action_dict['worker_action'].item(),
+                        'mode_idx': 0,  # Default: first mode
+                    }
+
                     next_obs, reward, terminated, truncated, info = env.step(action)
+
+                    # Parse next observation
+                    next_job_state, next_machine_state, next_worker_state = parse_observation(next_obs)
+
+                    # Store transition for PPO update
+                    self.agent.store_transition(
+                        states={
+                            'job_state': job_state,
+                            'machine_state': machine_state,
+                            'worker_state': worker_state,
+                        },
+                        actions=action_dict,
+                        rewards=torch.tensor([reward], dtype=torch.float32),
+                        next_states={
+                            'job_state': next_job_state,
+                            'machine_state': next_machine_state,
+                            'worker_state': next_worker_state,
+                        },
+                        dones=torch.tensor([terminated or truncated], dtype=torch.float32),
+                    )
+
+                    # PPO update on interval
+                    total_steps = episode * self.config.max_steps_per_episode + step
+                    if total_steps % self.config.update_interval == 0 and total_steps > 0:
+                        self.agent.update()
 
                 episode_reward += reward
 
                 if 'makespan' in info:
                     episode_makespan = info['makespan']
+
+                # Update observation for next step
+                obs = next_obs
 
                 if terminated or truncated:
                     break

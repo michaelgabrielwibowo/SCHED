@@ -653,22 +653,10 @@ class Schedule:
             if not ops:
                 continue
 
-            # Define horizon for this worker as [first_start, last_completion]
-            first_start = ops[0].start_time
+            # [FIX] Count rest from t=0 to include initial idle time
             last_end = ops[-1].completion_time
-
             total_work = sum(op.processing_time for op in ops)
-
-            # Treat all idle gaps as rest within that horizon
-            total_rest = 0.0
-            prev_end = first_start
-            for op in ops:
-                if op.start_time > prev_end:
-                    total_rest += (op.start_time - prev_end)
-                prev_end = op.completion_time
-
-            # We do NOT count rest outside [first_start, last_end] here;
-            # that is consistent with checking "during the day" window.
+            total_rest = last_end - total_work
 
             if total_work > 0.0:
                 rest_fraction = total_rest / total_work

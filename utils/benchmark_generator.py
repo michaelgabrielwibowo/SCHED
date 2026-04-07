@@ -56,7 +56,7 @@ class GeneratorConfig:
     n_jobs: int = 10
     n_operations_per_job: Tuple[int, int] = (2, 5)  # (min, max)
     job_arrival_time: Tuple[float, float] = (0.0, 100.0)
-    due_date_margin: Tuple[float, float] = (1.5, 3.0)  # Multiplier for processing time
+    due_date_margin: Tuple[float, float] = (10.0, 20.0)  # Multiplier for processing time
     job_weight_range: Tuple[float, float] = (1.0, 2.0)
 
     # Machine parameters (calibrated from E-DFJSP 2025)
