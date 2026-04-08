@@ -196,10 +196,17 @@ class NSGA3:
             c1_seq, c2_seq = seq1.copy(), seq2.copy()
 
         mask = self.rng.random(len(g1['machines'])) < 0.5
-        def mix(a, b): return np.where(mask, a, b), np.where(mask, b, a)
-        c1_m, c2_m = mix(g1['machines'], g2['machines'])
-        c1_w, c2_w = mix(g1['workers'], g2['workers'])
-        c1_o, c2_o = mix(g1['offsets'], g2['offsets'])
+        c1_m, c2_m = g1['machines'].copy(), g2['machines'].copy()
+        c1_w, c2_w = g1['workers'].copy(), g2['workers'].copy()
+        c1_o, c2_o = g1['offsets'].copy(), g2['offsets'].copy()
+        
+        # [FIX] Machines/Workers are mapped to the operation at that index in op_list
+        # We must swap by operation, not by sequence position
+        for i in range(len(mask)):
+            if mask[i]:
+                c1_m[i], c2_m[i] = g2['machines'][i], g1['machines'][i]
+                c1_w[i], c2_w[i] = g2['workers'][i], g1['workers'][i]
+                c1_o[i], c2_o[i] = g2['offsets'][i], g1['offsets'][i]
 
         return Individual(genome={'sequence': c1_seq, 'machines': c1_m, 'workers': c1_w, 'offsets': c1_o, 'op_list': g1['op_list']}), \
                Individual(genome={'sequence': c2_seq, 'machines': c2_m, 'workers': c2_w, 'offsets': c2_o, 'op_list': g1['op_list']})
@@ -210,6 +217,10 @@ class NSGA3:
         if self.rng.random() < self.mutation_rate:
             i1, i2 = self.rng.choice(len(g['sequence']), 2, replace=False)
             g['sequence'][i1], g['sequence'][i2] = g['sequence'][i2], g['sequence'][i1]
+            # [FIX] Resources must move with the job in the sequence if using sequence-index mapping
+            g['machines'][i1], g['machines'][i2] = g['machines'][i2], g['machines'][i1]
+            g['workers'][i1], g['workers'][i2] = g['workers'][i2], g['workers'][i1]
+            g['offsets'][i1], g['offsets'][i2] = g['offsets'][i2], g['offsets'][i1]
         for i in range(len(g['sequence'])):
             if self.rng.random() < self.mutation_rate:
                 if i < len(ops):
@@ -304,59 +315,160 @@ def create_sfjssp_genome(instance: Any, rng: np.random.Generator) -> Dict[str, n
 
 
 def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List[float]:
+    """
+    Robust evaluation function for SFJSSP genome.
+    
+    Args:
+        instance: SFJSSPInstance
+        genome: Dict containing 'sequence', 'machines', 'workers', 'offsets', 'op_list'
+        
+    Returns:
+        List of 4 objectives: [Makespan, Energy, OCRA, Labor]
+        Constraints are handled via heavy penalties.
+    """
     from sfjssp_model.schedule import Schedule
-    for m in instance.machines: m.reset()
-    for w in instance.workers: w.reset()
     
-    seq = genome['sequence']
-    mats = genome['machines']
-    wrks = genome['workers']
-    ops = genome.get('op_list', [])
-    offs = genome.get('offsets', np.zeros(len(mats), dtype=int))
+    # 1. Reset all resource states
+    for m in instance.machines:
+        m.reset()
+    for w in instance.workers:
+        w.reset()
+        
+    # 2. Extract genome components
+    job_seq = genome['sequence']
+    machine_indices = genome['machines']
+    worker_indices = genome['workers']
+    offsets = genome['offsets']
+    op_list = genome['op_list'] # List of (job_id, op_id)
     
-    if not ops: return [1e9, 1e9, 1e9, 1e9]
-    sched = Schedule(instance_id=instance.instance_id)
-    m_av, w_avail, j_last, j_cnt = {m.machine_id: 0.0 for m in instance.machines}, {w.worker_id: 0.0 for w in instance.workers}, {}, {j.job_id: 0 for j in instance.jobs}
-    op_m = {p: i for i, p in enumerate(ops)}; clock = instance.period_clock
-    for jid in seq:
-        jid = int(jid); l_idx = j_cnt[jid]; j_cnt[jid] += 1
-        job = instance.get_job(jid); op = job.operations[l_idx]; l_pos = op_m[(jid, l_idx)]
-        mid, wid, ov = int(mats[l_pos]), int(wrks[l_pos]), int(offs[l_pos])
-        if mid not in op.eligible_machines: mid = list(op.eligible_machines)[mid % len(op.eligible_machines)]
-        if wid not in op.eligible_workers: wid = list(op.eligible_workers)[wid % len(op.eligible_workers)]
-        m, w = instance.get_machine(mid), instance.get_worker(wid)
-        start = max(m_av[mid] + m.setup_time, w_avail[wid], w.mandatory_shift_lockout_until)
-        if l_idx > 0: start = max(start, j_last[(jid, l_idx - 1)] + getattr(op, 'transport_time', 0.0))
-        if ov > 0: start = clock.period_start(clock.get_period(start) + ov)
-        pt = op.processing_times.get(mid, {0: 50.0}).get(0, 50.0) / max(0.1, w.get_efficiency())
+    # 3. Create operation-to-resource mapping
+    # This ensures that even if sequence order changes, the specific 
+    # resource assigned to (job_id, op_id) stays with it.
+    op_resource_map = {}
+    for i, (jid, oid) in enumerate(op_list):
+        op_resource_map[(jid, oid)] = {
+            'm_id': int(machine_indices[i]),
+            'w_id': int(worker_indices[i]),
+            'offset': int(offsets[i])
+        }
+        
+    schedule = Schedule(instance_id=instance.instance_id)
+    job_op_ptr = {j.job_id: 0 for j in instance.jobs}
+    machine_available = {m.machine_id: 0.0 for m in instance.machines}
+    worker_available = {w.worker_id: 0.0 for w in instance.workers}
+    job_last_completion = {j.job_id: 0.0 for j in instance.jobs}
+    clock = instance.period_clock
+    
+    # 4. Decode sequence
+    for job_id in job_seq:
+        job_id = int(job_id)
+        job = instance.get_job(job_id)
+        op_idx = job_op_ptr[job_id]
+        if op_idx >= len(job.operations):
+            continue
+            
+        op = job.operations[op_idx]
+        
+        # Retrieve resources assigned to THIS specific operation
+        res = op_resource_map.get((job_id, op_idx))
+        if res is None:
+            # Fallback if op_list is inconsistent (should not happen with pox crossover)
+            m_id = list(op.eligible_machines)[0]
+            w_id = list(op.eligible_workers)[0]
+            offset = 0
+        else:
+            m_id, w_id, offset = res['m_id'], res['w_id'], res['offset']
+            
+        machine = instance.get_machine(m_id)
+        worker = instance.get_worker(w_id)
+        
+        # Determine earliest possible start time
+        est = max(
+            machine_available[m_id] + machine.setup_time,
+            worker_available[w_id],
+            worker.mandatory_shift_lockout_until,
+            job_last_completion[job_id] + getattr(op, 'transport_time', 0.0)
+        )
+        
+        # Apply shift-skipping offset
+        if offset > 0:
+            est = clock.period_start(clock.get_period(est) + offset)
+            
+        # Refine start time to satisfy hard constraints
+        pt_base = op.processing_times.get(m_id, {0: 50.0}).get(0, 50.0)
+        pt = pt_base / max(0.1, worker.get_efficiency())
+        
+        found = False
+        curr_t = est
         for _ in range(50):
-            if pt > clock.period_duration: pt = clock.period_duration * 0.95
-            if clock.crosses_boundary(start, start+pt) or not w.can_work_in_period(start, start+pt):
-                start = clock.period_start(clock.get_period(start) + 1)
+            # 1. Task cannot span two periods
+            if clock.crosses_boundary(curr_t, curr_t + pt):
+                curr_t = clock.period_start(clock.get_period(curr_t) + 1)
                 continue
-            mr = w.requires_mandatory_rest(pt, start)
-            if mr > 0: start += mr; w.record_rest(mr); continue
+            # 2. No back-to-back 8h shifts
+            if not worker.can_work_in_period(curr_t, curr_t + pt):
+                curr_t = clock.period_start(clock.get_period(curr_t) + 1)
+                continue
+            # 3. Mandatory rest fraction (12.5%)
+            m_rest = worker.requires_mandatory_rest(pt, curr_t)
+            if m_rest > 0:
+                curr_t += m_rest
+                continue
+            found = True
             break
-        sched.add_operation(jid, l_idx, mid, wid, 0, start, start+pt, pt, m.setup_time, getattr(op, 'transport_time', 0.0))
-        w.record_work(pt, instance.get_ergonomic_risk(jid, l_idx), start); m.total_processing_time += pt
-        m_av[mid] = w_avail[wid] = j_last[(jid, l_idx)] = start + pt
-    sched.compute_makespan(); sched.compute_total_energy(instance); sched.compute_ergonomic_metrics(instance)
-    max_o = sched.ergonomic_metrics.get('max_exposure', 0.0); sched.check_feasibility(instance)
-    hv, tp, nt = 0, 0.0, 0
+            
+        if not found:
+            # Individual is practically infeasible for this decoder
+            return [1e9, 1e9, 1e9, 1e9]
+            
+        # 5. Record operation
+        schedule.add_operation(
+            job_id, op_idx, m_id, w_id, 0, # mode_id fixed to 0 for now
+            curr_t, curr_t + pt, pt, 
+            machine.setup_time, getattr(op, 'transport_time', 0.0)
+        )
+        
+        # 6. Update states
+        machine_available[m_id] = curr_t + pt
+        worker_available[w_id] = curr_t + pt
+        job_last_completion[job_id] = curr_t + pt
+        worker.record_work(pt, instance.get_ergonomic_risk(job_id, op_idx), curr_t)
+        job_op_ptr[job_id] += 1
+        
+    # 7. Evaluate complete schedule
+    metrics = schedule.evaluate(instance)
+    is_feasible = schedule.check_feasibility(instance)
     
-    # [DEBUG] Print violations for one individual per 1000 evaluations to see what's failing
-    if sched.constraint_violations and np.random.random() < 0.001:
-        print(f"DEBUG: Sample Violations: {sched.constraint_violations[:3]}")
-
-    for v in sched.constraint_violations:
+    # 8. Calculate penalties
+    hard_violations = 0
+    tardiness_penalty = 0.0
+    n_tardy = 0
+    
+    for v in schedule.constraint_violations:
         if "Due date" in v:
-            nt += 1
+            n_tardy += 1
+            # Extract tardiness amount if possible
             try:
-                p = v.split("C=")[1].split(" > D=")
-                tp += (float(p[0]) - float(p[1].rstrip(")")))
-            except: tp += 1000.0
-        else: hv += 1
-    labor_cost = sum(instance.get_worker(w_id).labor_cost_per_hour * sum(o.processing_time for o in ws.operations) / 60.0 for w_id, ws in sched.worker_schedules.items())
-    pen = (hv * 1e6) + (tp * 10.0) + (nt * 1000.0)
-    if max_o > 2.2: pen += 1e6 * (max_o - 2.2)
-    return [sched.makespan + pen, sched.energy_breakdown.get('total', 0.0) + pen, max_o + pen / 1e6, labor_cost + pen]
+                # "Due date violation: Job X (C=100.00 > D=80.00)"
+                parts = v.split("C=")[1].split(" > D=")
+                c = float(parts[0])
+                d = float(parts[1].rstrip(")"))
+                tardiness_penalty += (c - d)
+            except:
+                tardiness_penalty += 1000.0
+        else:
+            hard_violations += 1
+            
+    # Ergonomic penalty if OCRA > threshold
+    max_ocra = metrics.get('max_ergonomic_exposure', 0.0)
+    ocra_threshold = getattr(instance, 'ocra_max_per_shift', 2.2)
+    ocra_penalty = max(0.0, max_ocra - ocra_threshold) * 1e6
+    
+    total_penalty = (hard_violations * 1e7) + (n_tardy * 1e4) + (tardiness_penalty * 100.0) + ocra_penalty
+    
+    return [
+        metrics.get('makespan', 1e6) + total_penalty,
+        metrics.get('total_energy', 1e6) + total_penalty,
+        max_ocra + (total_penalty / 1e6), # Keep OCRA in same scale for ranking but penalized
+        metrics.get('total_labor_cost', 1e6) + total_penalty
+    ]
