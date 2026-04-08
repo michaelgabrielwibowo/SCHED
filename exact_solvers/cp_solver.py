@@ -285,22 +285,92 @@ class CPScheduler:
                     energy_val = int(power * pt)
                     model.Add(self.energy[(job_id, op_idx)] == energy_val).OnlyEnforceIf(presence)
 
-            # Worker assignment (simplified - uses first mode duration)
+            # Worker assignment
             for w_id in op.eligible_workers:
                 presence = model.NewBoolVar(f'assign_w_{job_id}_{op_idx}_w{w_id}')
                 self.assign_worker[(job_id, op_idx, w_id)] = presence
 
-                # Create worker interval (reuses duration from machine assignment)
+                # [INDUSTRY 5.0] 12.5% Mandatory Rest Rule
+                # We enforce this by extending the interval duration by 12.5%
+                rest_duration = model.NewIntVar(0, horizon, f'rest_{job_id}_{op_idx}_w{w_id}')
+                # rest >= duration * 0.125  => 8 * rest >= duration
+                model.Add(8 * rest_duration >= self.duration[(job_id, op_idx)]).OnlyEnforceIf(presence)
+                
+                total_duration_with_rest = model.NewIntVar(0, horizon, f'total_dur_{job_id}_{op_idx}_w{w_id}')
+                model.Add(total_duration_with_rest == self.duration[(job_id, op_idx)] + rest_duration).OnlyEnforceIf(presence)
+
+                # Create worker interval with rest
                 interval = model.NewOptionalIntervalVar(
                     self.start[(job_id, op_idx)],
-                    self.duration[(job_id, op_idx)],
-                    self.end[(job_id, op_idx)],
+                    total_duration_with_rest,
+                    self.end[(job_id, op_idx)], # Note: end here includes rest for overlap check
                     presence,
                     f'interval_w_{job_id}_{op_idx}_w{w_id}'
                 )
                 self.worker_intervals[w_id].append(interval)
 
         # Constraints
+
+        # [INDUSTRY 5.0] No consecutive periods rule
+        # period_len = 480 (8 hours)
+        period_len = 480
+        num_periods = (horizon // period_len) + 1
+        
+        for w_id in range(n_workers):
+            worker_in_period = {}
+            for p in range(num_periods):
+                worker_in_period[p] = model.NewBoolVar(f'w{w_id}_p{p}')
+                
+                # Check if any operation assigned to this worker starts in this period
+                p_start = p * period_len
+                p_end = (p + 1) * period_len
+                
+                overlaps = []
+                for job_id, op_idx in all_operations:
+                    if (job_id, op_idx, w_id) in self.assign_worker:
+                        is_assigned = self.assign_worker[(job_id, op_idx, w_id)]
+                        
+                        # Op overlaps with period if start < p_end AND end > p_start
+                        # Simplified: start is in period
+                        start_in_p = model.NewBoolVar(f'j{job_id}_o{op_idx}_w{w_id}_p{p}')
+                        model.AddLinearConstraint([self.start[(job_id, op_idx)]], p_start, p_end-1).OnlyEnforceIf([is_assigned, start_in_p])
+                        model.Add(start_in_p == 0).OnlyEnforceIf(is_assigned.Not())
+                        overlaps.append(start_in_p)
+                
+                if overlaps:
+                    model.Add(sum(overlaps) > 0).OnlyEnforceIf(worker_in_period[p])
+                    model.Add(sum(overlaps) == 0).OnlyEnforceIf(worker_in_period[p].Not())
+                else:
+                    model.Add(worker_in_period[p] == 0)
+
+            # Constraint: No back-to-back periods
+            for p in range(num_periods - 1):
+                model.Add(worker_in_period[p] + worker_in_period[p+1] <= 1)
+
+            # [INDUSTRY 5.0] OCRA limit per period (shift)
+            for p in range(num_periods):
+                p_start = p * period_len
+                p_end = (p + 1) * period_len
+                
+                period_exposure = []
+                for job_id, op_idx in all_operations:
+                    if (job_id, op_idx, w_id) in self.assign_worker:
+                        is_assigned = self.assign_worker[(job_id, op_idx, w_id)]
+                        # scaled_risk = risk * ERGO_SCALE (1000)
+                        risk_rate = int(instance.get_ergonomic_risk(job_id, op_idx) * ERGO_SCALE)
+                        
+                        start_in_p = model.NewBoolVar(f'ergo_j{job_id}_o{op_idx}_w{w_id}_p{p}')
+                        model.AddLinearConstraint([self.start[(job_id, op_idx)]], p_start, p_end-1).OnlyEnforceIf([is_assigned, start_in_p])
+                        model.Add(start_in_p == 0).OnlyEnforceIf(is_assigned.Not())
+                        
+                        exposure = model.NewIntVar(0, 5000, f'exp_j{job_id}_o{op_idx}_w{w_id}_p{p}')
+                        model.Add(exposure == self.duration[(job_id, op_idx)] * risk_rate).OnlyEnforceIf(start_in_p)
+                        model.Add(exposure == 0).OnlyEnforceIf(start_in_p.Not())
+                        period_exposure.append(exposure)
+                
+                if period_exposure:
+                    # Limit: 2.2 * 1000 = 2200
+                    model.Add(sum(period_exposure) <= 2200)
 
         # 1. Each operation assigned to exactly one machine-mode combination
         for job_id, op_idx in all_operations:

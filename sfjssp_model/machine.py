@@ -164,6 +164,15 @@ class Machine:
         m.is_broken = data.get('is_broken', False)
         return m
 
+    def validate_gap(self, start_time: float, setup_duration: float) -> bool:
+        """
+        Validate if the machine has enough gap for an incoming operation.
+        Must accommodate current available_time plus setup duration.
+        """
+        if self.is_broken:
+            return False
+        return (self.available_time + setup_duration) <= start_time
+
     def get_power(self, state: MachineState, mode_id: Optional[int] = None) -> float:
         """
         Get power consumption for a given state

@@ -384,10 +384,10 @@ def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List
         
         # Determine earliest possible start time
         est = max(
-            machine_available[m_id] + machine.setup_time,
-            worker_available[w_id],
+            machine.available_time + machine.setup_time,
+            worker.available_time,
             worker.mandatory_shift_lockout_until,
-            job_last_completion[job_id] # [FIX] Already includes prev op's transport/waiting
+            job_last_completion[job_id]
         )
         
         # Apply shift-skipping offset
@@ -397,45 +397,45 @@ def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List
         # Refine start time to satisfy hard constraints
         pt_base = op.processing_times.get(m_id, {0: 50.0}).get(0, 50.0)
         pt = pt_base / max(0.1, worker.get_efficiency())
+        risk_rate = instance.get_ergonomic_risk(job_id, op_idx)
         
         found = False
         curr_t = est
         for _ in range(50):
-            # 1. Task cannot span two periods
-            if clock.crosses_boundary(curr_t, curr_t + pt):
+            # 1. Machine gap check (centralized)
+            if not machine.validate_gap(curr_t, machine.setup_time):
+                curr_t = machine.available_time + machine.setup_time
+                continue
+
+            # 2. Worker assignment check (centralized Industry 5.0 engine)
+            if not worker.validate_assignment(curr_t, pt, risk_rate):
+                # If worker rule is violated, jump to next period
                 curr_t = clock.period_start(clock.get_period(curr_t) + 1)
+                # Recalculate rest if needed at the new start time
+                m_rest = worker.requires_mandatory_rest(pt, curr_t)
+                if m_rest > 0:
+                    curr_t += m_rest
+                    worker.record_rest(m_rest)
                 continue
-            # 2. No back-to-back 8h shifts
-            if not worker.can_work_in_period(curr_t, curr_t + pt):
-                curr_t = clock.period_start(clock.get_period(curr_t) + 1)
-                continue
-            # 3. Mandatory rest fraction (12.5%)
-            m_rest = worker.requires_mandatory_rest(pt, curr_t)
-            if m_rest > 0:
-                curr_t += m_rest
-                # [FIX] FORMALLY RECORD REST so fatigue recovers and lockout timer resets
-                worker.record_rest(m_rest)
-                continue
+                
             found = True
             break
             
         if not found:
-            # Individual is practically infeasible for this decoder
             return [1e9, 1e9, 1e9, 1e9]
             
         # 5. Record operation
         schedule.add_operation(
-            job_id, op_idx, m_id, w_id, 0, # mode_id fixed to 0 for now
+            job_id, op_idx, m_id, w_id, 0,
             curr_t, curr_t + pt, pt, 
             machine.setup_time, getattr(op, 'transport_time', 0.0)
         )
         
         # 6. Update states
-        machine_available[m_id] = curr_t + pt
-        worker_available[w_id] = curr_t + pt
-        # [FIX] Add transport and waiting time to job availability for next op
+        machine.available_time = curr_t + pt
+        # job_last_completion still needs local tracking or updating job objects
         job_last_completion[job_id] = curr_t + pt + getattr(op, 'transport_time', 0.0) + getattr(op, 'waiting_time', 0.0)
-        worker.record_work(pt, instance.get_ergonomic_risk(job_id, op_idx), curr_t)
+        worker.record_work(pt, risk_rate, curr_t)
         job_op_ptr[job_id] += 1
         
     # 7. Evaluate complete schedule

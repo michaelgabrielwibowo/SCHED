@@ -221,6 +221,56 @@ class Worker:
                 return False
         return True
 
+    def validate_assignment(self, start_time: float, duration: float, risk_rate: float) -> bool:
+        """
+        Industry 5.0 validation engine. Checks all worker constraints.
+        Returns True if valid, False if any constraint is violated.
+        
+        Logic mapping to JMSY-9 §5.2.3:
+        - Availability: Worker is not absent and not currently locked out.
+        - Period rule: No back-to-back periods (|p - q| > 1).
+        - Mandatory rest: 12.5% rest fraction must be satisfied.
+        - Boundary: Task cannot span two periods.
+        - Ergonomics: OCRA exposure per shift <= 2.2.
+        - Work limit: Maximum 8 hours continuous work.
+        """
+        # 1. Availability check (including lockout)
+        if not self.is_available(start_time):
+            return False
+
+        # 2. Period rule (no back-to-back periods)
+        if not self.can_work_in_period(start_time, start_time + duration):
+            return False
+
+        # 3. Mandatory rest rule (12.5%)
+        if self.requires_mandatory_rest(duration, start_time) > 0:
+            return False
+
+        # 4. Period boundary rule (Task cannot span two periods)
+        if self.period_clock.crosses_boundary(start_time, start_time + duration):
+            return False
+
+        # 5. Ergonomic / OCRA limit check
+        current_period = self.period_clock.get_period(start_time)
+        temp_ocra = self.ocra_current_shift
+        
+        # If starting in a new period, OCRA resets
+        if current_period != self._last_worked_period and self._last_worked_period >= 0:
+            temp_ocra = 0.0
+            
+        if temp_ocra + (risk_rate * duration) > self.ocra_max_per_shift:
+            return False
+
+        # 6. Consecutive work limit
+        temp_work_dur = self.current_work_duration
+        if current_period != self._last_worked_period and self._last_worked_period >= 0:
+            temp_work_dur = 0.0
+            
+        if temp_work_dur + duration > self.max_consecutive_work_time:
+            return False
+
+        return True
+
     def get_efficiency(self) -> float:
         """
         Get current efficiency considering fatigue and learning

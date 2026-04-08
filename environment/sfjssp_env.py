@@ -156,97 +156,53 @@ class SFJSSPEnv(gym.Env):
             for m in self.instance.machines
         ) if self.instance.machines else 1
 
-        # Action space: Discrete choices for job/op/machine/worker/mode
-        # Using Dict space for structured actions
+        # Action space: Pointer-ready discrete choices
+        # [FIX] op_idx now supports up to the maximum found in this instance
+        max_ops_per_job = max(len(j.operations) for j in self.instance.jobs) if self.instance.jobs else 10
+        
         self.action_space = spaces.Dict({
             'job_idx': spaces.Discrete(n_jobs),
-            'op_idx': spaces.Discrete(10),  # Max 10 ops per job
+            'op_idx': spaces.Discrete(max_ops_per_job),
             'machine_idx': spaces.Discrete(n_machines),
             'worker_idx': spaces.Discrete(n_workers),
             'mode_idx': spaces.Discrete(max_modes),
         })
 
         # Observation space: Feature matrices
-        # Job features: arrival_time, due_date, weight, progress, is_active, is_completed
         n_job_features = 6
-        # Operation features: processing_time, is_ready, is_scheduled, is_completed, start_time, completion_time
         n_op_features = 6
-        # Machine features: is_available, current_load, energy_rate, breakdown_state
         n_machine_features = 4
-        # Worker features: is_available, efficiency, fatigue, absence_state
         n_worker_features = 4
 
-        if self.use_graph_state:
-            # Graph-based observation (for GNN policies)
-            self.observation_space = spaces.Dict({
-                'job_nodes': spaces.Box(
-                    low=-np.inf, high=np.inf,
-                    shape=(n_jobs, n_job_features),
-                    dtype=np.float32
-                ),
-                'op_nodes': spaces.Box(
-                    low=-np.inf, high=np.inf,
-                    shape=(n_ops, n_op_features),
-                    dtype=np.float32
-                ),
-                'machine_nodes': spaces.Box(
-                    low=-np.inf, high=np.inf,
-                    shape=(n_machines, n_machine_features),
-                    dtype=np.float32
-                ),
-                'worker_nodes': spaces.Box(
-                    low=-np.inf, high=np.inf,
-                    shape=(n_workers, n_worker_features),
-                    dtype=np.float32
-                ),
-                'adjacency': spaces.Box(
-                    low=0, high=1,
-                    shape=(n_jobs + n_ops + n_machines + n_workers,
-                           n_jobs + n_ops + n_machines + n_workers),
-                    dtype=np.float32
-                ),
-            })
-        else:
-            # Flat observation vector
-            obs_dim = (
-                1 +  # Current time
-                n_jobs * n_job_features +
-                n_ops * n_op_features +
-                n_machines * n_machine_features +
-                n_workers * n_worker_features +
-                n_ops * n_machines +  # Eligibility masks
-                n_ops * n_workers
-            )
-            self.observation_space = spaces.Box(
-                low=-np.inf, high=np.inf,
-                shape=(obs_dim,),
-                dtype=np.float32
-            )
+        # [FIX] Heterogeneous graph representation is now the default
+        self.observation_space = spaces.Dict({
+            'job_nodes': spaces.Box(low=-np.inf, high=np.inf, shape=(n_jobs, n_job_features), dtype=np.float32),
+            'op_nodes': spaces.Box(low=-np.inf, high=np.inf, shape=(n_ops, n_op_features), dtype=np.float32),
+            'machine_nodes': spaces.Box(low=-np.inf, high=np.inf, shape=(n_machines, n_machine_features), dtype=np.float32),
+            'worker_nodes': spaces.Box(low=-np.inf, high=np.inf, shape=(n_workers, n_worker_features), dtype=np.float32),
+            'adjacency': spaces.Box(low=0, high=1, shape=(n_jobs + n_ops + n_machines + n_workers, n_jobs + n_ops + n_machines + n_workers), dtype=np.float32),
+            'action_mask': spaces.Box(low=0, high=1, shape=(n_jobs, max_ops_per_job, n_machines, n_workers, max_modes), dtype=np.float32),
+        })
 
-    def _get_observation(self) -> SFJSSPObservation:
+    def _get_observation(self) -> Dict[str, np.ndarray]:
         """
-        Get current state observation
-
-        Evidence: State must capture scheduling status for decision making [CONFIRMED]
+        Get current state observation as heterogeneous graph.
         """
         n_jobs = self.instance.n_jobs
         n_machines = self.instance.n_machines
         n_workers = self.instance.n_workers
-
-        # Count total operations
         n_ops = sum(len(job.operations) for job in self.instance.jobs)
 
+        # 1. Node Features
         # Job features
         job_features = np.zeros((n_jobs, 6), dtype=np.float32)
         for i, job in enumerate(self.instance.jobs):
-            job_features[i, 0] = job.arrival_time / max(1.0, self.current_time)
-            job_features[i, 1] = (job.due_date or 0) / max(1.0, self.current_time + 100)
+            job_features[i, 0] = job.arrival_time / 1000.0
+            job_features[i, 1] = (job.due_date or 0) / 1000.0
             job_features[i, 2] = job.weight
             completed_ops = sum(1 for op in job.operations if op.is_completed)
             job_features[i, 3] = completed_ops / max(1, len(job.operations))
-            job_features[i, 4] = 1.0 if not job.is_completed and any(
-                not op.is_completed for op in job.operations
-            ) else 0.0
+            job_features[i, 4] = 1.0 if not job.is_completed else 0.0
             job_features[i, 5] = 1.0 if job.is_completed else 0.0
 
         # Operation features
@@ -258,19 +214,16 @@ class SFJSSPEnv(gym.Env):
                 op_features[op_idx, 1] = 1.0 if self._is_operation_ready(op) else 0.0
                 op_features[op_idx, 2] = 1.0 if op.is_scheduled else 0.0
                 op_features[op_idx, 3] = 1.0 if op.is_completed else 0.0
-                op_features[op_idx, 4] = op.start_time if op.start_time else 0.0
-                op_features[op_idx, 5] = op.completion_time if op.completion_time else 0.0
+                op_features[op_idx, 4] = op.start_time / 1000.0
+                op_features[op_idx, 5] = op.completion_time / 1000.0
                 op_idx += 1
 
         # Machine features
         machine_features = np.zeros((n_machines, 4), dtype=np.float32)
         for i, machine in enumerate(self.instance.machines):
             machine_features[i, 0] = 1.0 if machine.is_available(self.current_time) else 0.0
-            # Current load: number of scheduled ops
-            if machine.machine_id in self.schedule.machine_schedules:
-                sched = self.schedule.machine_schedules[machine.machine_id]
-                machine_features[i, 1] = len(sched.operations)
-            machine_features[i, 2] = machine.power_processing / 100.0
+            machine_features[i, 1] = machine.available_time / 1000.0
+            machine_features[i, 2] = machine.power_processing / 50.0
             machine_features[i, 3] = 1.0 if machine.is_broken else 0.0
 
         # Worker features
@@ -281,38 +234,46 @@ class SFJSSPEnv(gym.Env):
             worker_features[i, 2] = worker.fatigue_current
             worker_features[i, 3] = 1.0 if worker.is_absent else 0.0
 
-        # Eligibility masks
-        eligible_machines = np.zeros((n_ops, n_machines), dtype=np.float32)
-        eligible_workers = np.zeros((n_ops, n_workers), dtype=np.float32)
-
-        op_idx = 0
-        for job in self.instance.jobs:
-            for op in job.operations:
+        # 2. Adjacency Matrix
+        total_nodes = n_jobs + n_ops + n_machines + n_workers
+        adj = np.zeros((total_nodes, total_nodes), dtype=np.float32)
+        
+        # Offsets
+        o_off = n_jobs
+        m_off = n_jobs + n_ops
+        w_off = n_jobs + n_ops + n_machines
+        
+        op_global_idx = 0
+        for i, job in enumerate(self.instance.jobs):
+            # Job -> Operations
+            for j, op in enumerate(job.operations):
+                adj[i, o_off + op_global_idx] = 1.0
+                adj[o_off + op_global_idx, i] = 1.0
+                
+                # Precedence: Op -> Next Op
+                if j < len(job.operations) - 1:
+                    adj[o_off + op_global_idx, o_off + op_global_idx + 1] = 1.0
+                
+                # Eligibility: Op -> Machine
                 for m_id in op.eligible_machines:
-                    if m_id < n_machines:
-                        eligible_machines[op_idx, m_id] = 1.0
+                    adj[o_off + op_global_idx, m_off + m_id] = 1.0
+                    adj[m_off + m_id, o_off + op_global_idx] = 1.0
+                    
+                # Eligibility: Op -> Worker
                 for w_id in op.eligible_workers:
-                    if w_id < n_workers:
-                        eligible_workers[op_idx, w_id] = 1.0
-                op_idx += 1
+                    adj[o_off + op_global_idx, w_off + w_id] = 1.0
+                    adj[w_off + w_id, o_off + op_global_idx] = 1.0
+                    
+                op_global_idx += 1
 
-        # Create action mask (filter invalid actions)
-        action_mask = self._compute_action_mask()
-
-        obs = SFJSSPObservation(
-            current_time=self.current_time,
-            job_features=job_features,
-            operation_features=op_features,
-            machine_features=machine_features,
-            worker_features=worker_features,
-            job_eligible_machines=eligible_machines,
-            job_eligible_workers=eligible_workers,
-            action_mask=action_mask,
-            broken_machines=[m.machine_id for m in self.instance.machines if m.is_broken],
-            absent_workers=[w.worker_id for w in self.instance.workers if w.is_absent],
-        )
-
-        return obs
+        return {
+            'job_nodes': job_features,
+            'op_nodes': op_features,
+            'machine_nodes': machine_features,
+            'worker_nodes': worker_features,
+            'adjacency': adj,
+            'action_mask': self._compute_action_mask()
+        }
 
     def _get_processing_time(self, op: Operation) -> float:
         """Get minimum processing time for an operation"""

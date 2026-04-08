@@ -182,19 +182,10 @@ class TrainingPipeline:
                     action = env.action_space.sample()
                     next_obs, reward, terminated, truncated, info = env.step(action)
                 else:
-                    # Parse observation into agent-specific states and masks
-                    job_state, machine_state, worker_state, job_mask, machine_mask, worker_mask = parse_observation(obs)
+                    # [FIX] Direct pass of observation to graph-enabled agent
+                    action_dict = self.agent.select_actions(obs, deterministic=False)
 
-                    # Select actions from policy with masking
-                    action_dict = self.agent.select_actions(
-                        job_state, machine_state, worker_state,
-                        job_mask=job_mask,
-                        machine_mask=machine_mask,
-                        worker_mask=worker_mask
-                    )
-
-                    # [FIX] Implementation of dynamic op_idx selection
-                    # Logic: Find the first unscheduled operation for the selected job
+                    # Dynamic op_idx selection logic (still needed for environment interface)
                     job_idx = action_dict['job_action'].item()
                     selected_job = env.instance.get_job(job_idx)
                     op_idx = 0
@@ -204,34 +195,22 @@ class TrainingPipeline:
                                 op_idx = i
                                 break
 
-                    # Convert to env action format
                     action = {
                         'job_idx': job_idx,
                         'op_idx': op_idx,
                         'machine_idx': action_dict['machine_action'].item(),
                         'worker_idx': action_dict['worker_action'].item(),
-                        'mode_idx': action_dict['mode_action'].item() if 'mode_action' in action_dict else 0,
+                        'mode_idx': action_dict['mode_action'].item(),
                     }
 
                     next_obs, reward, terminated, truncated, info = env.step(action)
 
-                    # Parse next observation
-                    next_job_state, next_machine_state, next_worker_state, _, _, _ = parse_observation(next_obs)
-
-                    # Store transition for PPO update
+                    # Store transition (agent now handles graph state extraction)
                     self.agent.store_transition(
-                        states={
-                            'job_state': job_state,
-                            'machine_state': machine_state,
-                            'worker_state': worker_state,
-                        },
+                        states=action_dict['states'],
                         actions=action_dict,
                         rewards=torch.tensor([reward], dtype=torch.float32),
-                        next_states={
-                            'job_state': next_job_state,
-                            'machine_state': next_machine_state,
-                            'worker_state': next_worker_state,
-                        },
+                        next_states=None, # Update logic will re-encode
                         dones=torch.tensor([terminated or truncated], dtype=torch.float32),
                     )
 

@@ -583,25 +583,25 @@ class GreedyScheduler:
                         
                         temp_start = earliest_start
                         clock = instance.period_clock
+                        risk_rate = instance.get_ergonomic_risk(job_id, op_id)
                         
-                        # Find earliest period that works
+                        # Find earliest time that works
                         max_tries = 50
                         found = False
                         for _ in range(max_tries):
-                            # Ensure it doesn't span two periods
-                            if clock.crosses_boundary(temp_start, temp_start + est_proc):
-                                temp_start = clock.period_start(clock.get_period(temp_start) + 1)
+                            # 1. Machine gap check (centralized)
+                            if not machine.validate_gap(temp_start, machine.setup_time):
+                                temp_start = machine.available_time + machine.setup_time
                                 continue
-                            
-                            # Ensure it obeys "no consecutive periods"
-                            if not worker.can_work_in_period(temp_start, temp_start + est_proc):
+
+                            # 2. Worker check (centralized Industry 5.0 engine)
+                            if not worker.validate_assignment(temp_start, est_proc, risk_rate):
+                                # If invalid, jump to next period
                                 temp_start = clock.period_start(clock.get_period(temp_start) + 1)
-                                continue
-                            
-                            # [FIX] Ensure mandatory rest is respected
-                            m_rest = worker.requires_mandatory_rest(est_proc, temp_start)
-                            if m_rest > 0:
-                                temp_start += m_rest
+                                # Recalculate rest if needed
+                                m_rest = worker.requires_mandatory_rest(est_proc, temp_start)
+                                if m_rest > 0:
+                                    temp_start += m_rest
                                 continue
                             
                             found = True

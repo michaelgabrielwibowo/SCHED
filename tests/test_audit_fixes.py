@@ -14,22 +14,24 @@ def test_ergonomic_limit_value():
     assert worker.ocra_max_per_shift == 2.2
 
 def test_transport_energy_calculation():
-    """Verify transport energy is calculated (5.0kW per time unit)."""
-    instance = SFJSSPInstance(instance_id="test_energy", n_jobs=1, n_machines=1, n_workers=1)
-    instance.machines.append(Machine(machine_id=0, modes=[MachineMode(0, 10, 5, 2)]))
-    instance.workers.append(Worker(0))
+    """Verify transport energy is calculated dynamically."""
+    instance = SFJSSPInstance(instance_id="test_energy")
+    # Machine with 3.0 kW transport power
+    machine = Machine(machine_id=0, power_transport=3.0)
+    instance.add_machine(machine)
+    instance.add_worker(Worker(0))
     
     schedule = Schedule(instance)
-    # Op with 2.0 transport time
+    # Op with 4.0 transport time
     op = ScheduledOperation(job_id=0, op_id=0, machine_id=0, worker_id=0, mode_id=0,
                             start_time=0.0, completion_time=10.0, processing_time=10.0,
-                            transport_time=2.0)
+                            transport_time=4.0)
     schedule.scheduled_ops[(0, 0)] = op
     
     energy = schedule.compute_total_energy(instance)
-    # Transport energy should be 5.0 * 2.0 = 10.0
-    assert energy['transport'] == 10.0
-    assert energy['total'] >= 10.0
+    # Transport energy should be 3.0 * 4.0 = 12.0
+    assert energy['transport'] == 12.0
+    assert energy['total'] >= 12.0
 
 def test_feasibility_transport_time():
     """Verify precedence feasibility check includes transport time."""
