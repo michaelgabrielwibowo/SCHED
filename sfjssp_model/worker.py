@@ -46,6 +46,28 @@ class WorkerSkill:
     learning_rate: float = 0.1  # gamma parameter
 
 
+    def to_dict(self) -> dict:
+        """Convert skill to dictionary for serialization"""
+        return {
+            'skill_id': self.skill_id,
+            'skill_name': self.skill_name,
+            'proficiency': self.proficiency,
+            'experience_count': self.experience_count,
+            'learning_rate': self.learning_rate,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'WorkerSkill':
+        """Create skill from dictionary"""
+        return cls(
+            skill_id=data['skill_id'],
+            skill_name=data.get('skill_name', ""),
+            proficiency=data.get('proficiency', 1.0),
+            experience_count=data.get('experience_count', 0),
+            learning_rate=data.get('learning_rate', 0.1),
+        )
+
+
 @dataclass
 class Worker:
     """
@@ -127,6 +149,57 @@ class Worker:
     # Absence tracking (for dynamic scenarios)
     is_absent: bool = False
     absence_end_time: Optional[float] = None
+
+    def to_dict(self) -> dict:
+        """Convert worker to dictionary for serialization"""
+        return {
+            'worker_id': self.worker_id,
+            'worker_name': self.worker_name,
+            'skills': {str(k): v.to_dict() for k, v in self.skills.items()},
+            'eligible_operations': [list(op) for op in self.eligible_operations],
+            'labor_cost_per_hour': self.labor_cost_per_hour,
+            'base_efficiency': self.base_efficiency,
+            'fatigue_rate': self.fatigue_rate,
+            'recovery_rate': self.recovery_rate,
+            'fatigue_max': self.fatigue_max,
+            'fatigue_current': self.fatigue_current,
+            'ocra_max_per_shift': self.ocra_max_per_shift,
+            'ocra_current_shift': self.ocra_current_shift,
+            'learning_coefficient': self.learning_coefficient,
+            'min_rest_fraction': self.min_rest_fraction,
+            'current_state': self.current_state.value,
+            'available_time': self.available_time,
+            'is_absent': self.is_absent,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'Worker':
+        """Create worker from dictionary"""
+        w = cls(
+            worker_id=data['worker_id'],
+            worker_name=data.get('worker_name', ""),
+            labor_cost_per_hour=data.get('labor_cost_per_hour', 20.0),
+            base_efficiency=data.get('base_efficiency', 1.0),
+            fatigue_rate=data.get('fatigue_rate', 0.03),
+            recovery_rate=data.get('recovery_rate', 0.05),
+            fatigue_max=data.get('fatigue_max', 1.0),
+            ocra_max_per_shift=data.get('ocra_max_per_shift', 2.2),
+            learning_coefficient=data.get('learning_coefficient', 0.1),
+            min_rest_fraction=data.get('min_rest_fraction', 0.125),
+        )
+        # Skills
+        raw_skills = data.get('skills', {})
+        w.skills = {int(k): WorkerSkill.from_dict(v) for k, v in raw_skills.items()}
+        # Eligible operations
+        raw_eligible = data.get('eligible_operations', [])
+        w.eligible_operations = {tuple(op) for op in raw_eligible}
+        
+        w.fatigue_current = data.get('fatigue_current', 0.0)
+        w.ocra_current_shift = data.get('ocra_current_shift', 0.0)
+        w.current_state = WorkerState(data.get('current_state', 'idle'))
+        w.available_time = data.get('available_time', 0.0)
+        w.is_absent = data.get('is_absent', False)
+        return w
 
     def _get_period_index(self, t: float) -> int:
         """

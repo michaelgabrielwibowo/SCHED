@@ -123,6 +123,9 @@ class SFJSSPEnv(gym.Env):
         # Normalization factors (computed during reset)
         self.norm_factors = {}
 
+        # Track previous metrics for delta reward
+        self.last_metrics: Dict[str, float] = {}
+
         # Environment state
         self.current_time = 0.0
         self.schedule = Schedule(instance_id=instance.instance_id)
@@ -408,6 +411,10 @@ class SFJSSPEnv(gym.Env):
 
         op = job.operations[action.op_id]
 
+        # [FIX] Reject if already scheduled or completed
+        if op.is_scheduled or op.is_completed:
+            return False
+
         # Check eligibility
         if action.machine_id not in op.eligible_machines:
             return False
@@ -558,9 +565,10 @@ class SFJSSPEnv(gym.Env):
 
     def _calculate_reward(self) -> float:
         """
-        Calculate multi-objective reward
+        Calculate multi-objective reward using delta approach
 
-        Evidence: Multi-objective reward from literature [PROPOSED combination]
+        Returns:
+            float: Step reward
         """
         reward = 0.0
 
@@ -568,19 +576,27 @@ class SFJSSPEnv(gym.Env):
         if self.schedule.scheduled_ops:
             objectives = self.schedule.evaluate(self.instance)
 
-            # Weighted combination
-            if 'makespan' in self.reward_weights:
-                # Negative makespan (minimize)
-                reward += self.reward_weights['makespan'] * objectives.get('makespan', 0)
+            # Map of reward key to objective key
+            key_map = {
+                'makespan': 'makespan',
+                'energy': 'total_energy',
+                'tardiness': 'weighted_tardiness',
+                'ergonomic': 'max_ergonomic_exposure'
+            }
 
-            if 'energy' in self.reward_weights:
-                reward += self.reward_weights['energy'] * objectives.get('total_energy', 0)
+            # Weighted combination of DELTAS
+            for rew_key, weight in self.reward_weights.items():
+                obj_key = key_map.get(rew_key)
+                if obj_key and obj_key in objectives:
+                    current_val = objectives[obj_key]
+                    prev_val = self.last_metrics.get(obj_key, 0.0)
+                    delta = current_val - prev_val
+                    
+                    # weight is negative (e.g. -1.0), so we penalize increases
+                    reward += weight * delta
 
-            if 'tardiness' in self.reward_weights:
-                reward += self.reward_weights['tardiness'] * objectives.get('weighted_tardiness', 0)
-
-            if 'ergonomic' in self.reward_weights:
-                reward += self.reward_weights['ergonomic'] * objectives.get('max_ergonomic_exposure', 0)
+            # Update tracking
+            self.last_metrics = objectives.copy()
 
         # Small penalty for each step to encourage efficiency
         reward -= 0.01

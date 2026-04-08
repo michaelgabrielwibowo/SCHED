@@ -151,20 +151,37 @@ class SFJSSPGraphEncoder:
         worker_features: torch.Tensor,
     ) -> torch.Tensor:
         """
-        Forward pass returning global state embedding
-
-        Returns:
-            Global state embedding (batch, output_dim)
+        Forward pass returning global state embedding with message passing.
         """
+        # 1. Initial encoding
         embeddings = self.encode(job_features, op_features, machine_features, worker_features)
+        
+        job_emb = embeddings['jobs']
+        op_emb = embeddings['operations']
+        m_emb = embeddings['machines']
+        w_emb = embeddings['workers']
 
-        # Concatenate and pool
-        all_emb = torch.cat([
-            embeddings['jobs'].mean(dim=1),
-            embeddings['operations'].mean(dim=1),
-            embeddings['machines'].mean(dim=1),
-            embeddings['workers'].mean(dim=1),
-        ], dim=-1)
+        # 2. Cross-entity message passing via attention
+        # Concatenate all nodes into one sequence: (batch, total_nodes, output_dim)
+        combined = torch.cat([job_emb, op_emb, m_emb, w_emb], dim=1)
+        
+        # Apply self-attention (all nodes attend to all other nodes)
+        attn_out, _ = self.attention(combined, combined, combined)
+        
+        # 3. Informative pooling
+        # Split back to entity types
+        n_jobs = job_emb.size(1)
+        n_ops = op_emb.size(1)
+        n_machines = m_emb.size(1)
+        # n_workers = w_emb.size(1)
+        
+        job_final = attn_out[:, :n_jobs, :].mean(dim=1)
+        op_final = attn_out[:, n_jobs:n_jobs+n_ops, :].mean(dim=1)
+        m_final = attn_out[:, n_jobs+n_ops:n_jobs+n_ops+n_machines, :].mean(dim=1)
+        w_final = attn_out[:, n_jobs+n_ops+n_machines:, :].mean(dim=1)
+
+        # Concatenate entity-level summaries
+        all_emb = torch.cat([job_final, op_final, m_final, w_final], dim=-1)
 
         return self.fusion(all_emb)
 
@@ -545,17 +562,99 @@ class MultiAgentPPO:
         })
 
     def update(self, n_epochs: int = 10, batch_size: int = 64):
-        """Update agents using PPO"""
+        """
+        Update agents using PPO with formal loss functions.
+        
+        Coordinates clipped surrogate actor loss and MSE critic loss for all agents.
+        """
         if len(self.buffer) < batch_size:
             return
 
-        # Convert buffer to tensors
-        transitions = {k: [] for k in self.buffer[0].keys()}
-        for t in self.buffer:
-            for k, v in t.items():
-                transitions[k].append(v)
+        # 1. Convert buffer to tensors
+        states_job = torch.cat([t['states']['job_state'] for t in self.buffer]).to(self.device)
+        states_mac = torch.cat([t['states']['machine_state'] for t in self.buffer]).to(self.device)
+        states_wrk = torch.cat([t['states']['worker_state'] for t in self.buffer]).to(self.device)
+        
+        rewards = torch.cat([t['rewards'] for t in self.buffer]).to(self.device)
+        dones = torch.cat([t['dones'] for t in self.buffer]).to(self.device)
+        
+        # Actions and old log probs (detached)
+        job_actions = torch.stack([t['actions']['job_action'] for t in self.buffer]).to(self.device).squeeze()
+        mac_actions = torch.stack([t['actions']['machine_action'] for t in self.buffer]).to(self.device).squeeze()
+        wrk_actions = torch.stack([t['actions']['worker_action'] for t in self.buffer]).to(self.device).squeeze()
+        
+        old_job_log_probs = torch.stack([t['actions']['job_log_prob'] for t in self.buffer]).to(self.device).detach().squeeze()
+        old_mac_log_probs = torch.stack([t['actions']['machine_log_prob'] for t in self.buffer]).to(self.device).detach().squeeze()
+        old_wrk_log_probs = torch.stack([t['actions']['worker_log_prob'] for t in self.buffer]).to(self.device).detach().squeeze()
 
-        # Simple update (full implementation would use proper batching)
+        # 2. Compute returns and advantages
+        # Using discounted reward-to-go for stability in sparse manufacturing environments
+        with torch.no_grad():
+            _, v_job = self.job_agent(states_job)
+            _, _, v_mac = self.machine_agent(states_mac)
+            _, v_wrk = self.worker_agent(states_wrk)
+            
+            # Simple returns calculation
+            returns = []
+            discounted_reward = 0
+            for r, d in zip(reversed(rewards.tolist()), reversed(dones.tolist())):
+                if d: discounted_reward = 0
+                discounted_reward = r + (self.gamma * discounted_reward)
+                returns.insert(0, discounted_reward)
+            
+            returns = torch.tensor(returns, dtype=torch.float32).to(self.device)
+            # Normalize returns
+            returns = (returns - returns.mean()) / (returns.std() + 1e-8)
+            
+            job_adv = returns - v_job.squeeze()
+            mac_adv = returns - v_mac.squeeze()
+            wrk_adv = returns - v_wrk.squeeze()
+
+        # 3. PPO Update Epochs
+        for _ in range(n_epochs):
+            # Job Agent Update
+            logits_j, val_j = self.job_agent(states_job)
+            dist_j = torch.distributions.Categorical(F.softmax(logits_j, dim=-1))
+            new_log_probs_j = dist_j.log_prob(job_actions)
+            ratio_j = torch.exp(new_log_probs_j - old_job_log_probs)
+            
+            surr1_j = ratio_j * job_adv
+            surr2_j = torch.clamp(ratio_j, 1-self.clip_epsilon, 1+self.clip_epsilon) * job_adv
+            j_loss = -torch.min(surr1_j, surr2_j).mean() + 0.5 * F.mse_loss(val_j.squeeze(), returns)
+            
+            self.job_optimizer.zero_grad()
+            j_loss.backward()
+            self.job_optimizer.step()
+
+            # Machine Agent Update
+            logits_m, _, val_m = self.machine_agent(states_mac)
+            dist_m = torch.distributions.Categorical(F.softmax(logits_m, dim=-1))
+            new_log_probs_m = dist_m.log_prob(mac_actions)
+            ratio_m = torch.exp(new_log_probs_m - old_mac_log_probs)
+            
+            surr1_m = ratio_m * mac_adv
+            surr2_m = torch.clamp(ratio_m, 1-self.clip_epsilon, 1+self.clip_epsilon) * mac_adv
+            m_loss = -torch.min(surr1_m, surr2_m).mean() + 0.5 * F.mse_loss(val_m.squeeze(), returns)
+            
+            self.machine_optimizer.zero_grad()
+            m_loss.backward()
+            self.machine_optimizer.step()
+
+            # Worker Agent Update
+            logits_w, val_w = self.worker_agent(states_wrk)
+            dist_w = torch.distributions.Categorical(F.softmax(logits_w, dim=-1))
+            new_log_probs_w = dist_w.log_prob(wrk_actions)
+            ratio_w = torch.exp(new_log_probs_w - old_wrk_log_probs)
+            
+            surr1_w = ratio_w * wrk_adv
+            surr2_w = torch.clamp(ratio_w, 1-self.clip_epsilon, 1+self.clip_epsilon) * wrk_adv
+            w_loss = -torch.min(surr1_w, surr2_w).mean() + 0.5 * F.mse_loss(val_w.squeeze(), returns)
+            
+            self.worker_optimizer.zero_grad()
+            w_loss.backward()
+            self.worker_optimizer.step()
+
+        # Clear buffer
         self.buffer = []
 
     def save(self, path: str):

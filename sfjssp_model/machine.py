@@ -41,6 +41,27 @@ class MachineMode:
     # Tool wear characteristics (PROPOSED)
     tool_wear_rate: float = 1.0
 
+    def to_dict(self) -> dict:
+        """Convert mode to dictionary for serialization"""
+        return {
+            'mode_id': self.mode_id,
+            'mode_name': self.mode_name,
+            'speed_factor': self.speed_factor,
+            'power_multiplier': self.power_multiplier,
+            'tool_wear_rate': self.tool_wear_rate,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'MachineMode':
+        """Create mode from dictionary"""
+        return cls(
+            mode_id=data['mode_id'],
+            mode_name=data.get('mode_name', ""),
+            speed_factor=data.get('speed_factor', 1.0),
+            power_multiplier=data.get('power_multiplier', 1.0),
+            tool_wear_rate=data.get('tool_wear_rate', 1.0),
+        )
+
     def __post_init__(self):
         """Validate mode parameters"""
         if self.speed_factor <= 0:
@@ -102,6 +123,46 @@ class Machine:
     is_broken: bool = False
     breakdown_time: Optional[float] = None
     repair_time: Optional[float] = None
+
+    def to_dict(self) -> dict:
+        """Convert machine to dictionary for serialization"""
+        return {
+            'machine_id': self.machine_id,
+            'machine_name': self.machine_name,
+            'modes': [m.to_dict() for m in self.modes],
+            'default_mode_id': self.default_mode_id,
+            'power_processing': self.power_processing,
+            'power_idle': self.power_idle,
+            'power_setup': self.power_setup,
+            'startup_energy': self.startup_energy,
+            'setup_time': self.setup_time,
+            'power_transport': self.power_transport,
+            'auxiliary_power_share': self.auxiliary_power_share,
+            'current_state': self.current_state.value,
+            'available_time': self.available_time,
+            'is_broken': self.is_broken,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'Machine':
+        """Create machine from dictionary"""
+        m = cls(
+            machine_id=data['machine_id'],
+            machine_name=data.get('machine_name', ""),
+            default_mode_id=data.get('default_mode_id', 0),
+            power_processing=data.get('power_processing', 10.0),
+            power_idle=data.get('power_idle', 2.0),
+            power_setup=data.get('power_setup', 5.0),
+            startup_energy=data.get('startup_energy', 50.0),
+            setup_time=data.get('setup_time', 0.0),
+            power_transport=data.get('power_transport', 2.0),
+            auxiliary_power_share=data.get('auxiliary_power_share', 0.0),
+        )
+        m.modes = [MachineMode.from_dict(mode_data) for mode_data in data.get('modes', [])]
+        m.current_state = MachineState(data.get('current_state', 'idle'))
+        m.available_time = data.get('available_time', 0.0)
+        m.is_broken = data.get('is_broken', False)
+        return m
 
     def get_power(self, state: MachineState, mode_id: Optional[int] = None) -> float:
         """

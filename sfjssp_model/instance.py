@@ -394,10 +394,9 @@ class SFJSSPInstance:
             'label': self.label.value,
             'label_justification': self.label_justification,
             'instance_type': self.instance_type.value,
-            'n_jobs': self.n_jobs,
-            'n_machines': self.n_machines,
-            'n_workers': self.n_workers,
-            'n_operations': self.n_operations,
+            'jobs': [j.to_dict() for j in self.jobs],
+            'machines': [m.to_dict() for m in self.machines],
+            'workers': [w.to_dict() for w in self.workers],
             'planning_horizon': self.planning_horizon,
             'creation_date': self.creation_date,
             'source': self.source,
@@ -406,6 +405,7 @@ class SFJSSPInstance:
             'carbon_emission_factor': self.carbon_emission_factor,
             'default_electricity_price': self.default_electricity_price,
             'auxiliary_power_total': self.auxiliary_power_total,
+            'ergonomic_risks': {f"{k[0]}_{k[1]}": v for k, v in self.ergonomic_risk_map.items()},
             'dynamic_params': {
                 'arrival_rate': self.dynamic_params.arrival_rate,
                 'breakdown_rate': self.dynamic_params.breakdown_rate,
@@ -416,18 +416,13 @@ class SFJSSPInstance:
 
     def to_json(self, filepath: str):
         """Save instance to JSON file"""
-        # Note: Full serialization requires custom handlers for dataclasses
-        # This is a simplified version for metadata
         with open(filepath, 'w') as f:
             json.dump(self.to_dict(), f, indent=2)
 
     @classmethod
     def from_dict(cls, data: dict) -> 'SFJSSPInstance':
         """
-        Create instance from dictionary
-
-        Note: This is a partial loader for metadata. Full instance
-        loading requires job/machine/worker reconstruction.
+        Create instance from dictionary with full reconstruction.
         """
         dynamic_params = None
         if data.get('dynamic_params'):
@@ -438,7 +433,7 @@ class SFJSSPInstance:
                 absence_probability=data['dynamic_params'].get('absence_probability', 0.05),
             )
 
-        return cls(
+        instance = cls(
             instance_id=data.get('instance_id', 'SFJSSP_001'),
             instance_name=data.get('instance_name', ''),
             label=InstanceLabel(data.get('label', 'fully_synthetic')),
@@ -454,6 +449,20 @@ class SFJSSPInstance:
             auxiliary_power_total=data.get('auxiliary_power_total', 50.0),
             dynamic_params=dynamic_params,
         )
+        
+        # Recursive reconstruction
+        instance.machines = [Machine.from_dict(m_data) for m_data in data.get('machines', [])]
+        instance.workers = [Worker.from_dict(w_data) for w_data in data.get('workers', [])]
+        instance.jobs = [Job.from_dict(j_data) for j_data in data.get('jobs', [])]
+        
+        # Risk map reconstruction
+        raw_risks = data.get('ergonomic_risks', {})
+        for k_str, val in raw_risks.items():
+            jid, oid = map(int, k_str.split('_'))
+            instance.ergonomic_risk_map[(jid, oid)] = val
+            
+        instance._update_statistics()
+        return instance
 
     def __repr__(self):
         return (

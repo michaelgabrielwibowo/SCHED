@@ -110,6 +110,48 @@ class Operation:
 
         return adjusted_time
 
+    def to_dict(self) -> dict:
+        """Convert operation to dictionary for serialization"""
+        return {
+            'job_id': self.job_id,
+            'op_id': self.op_id,
+            'processing_times': {str(m): {str(k): v for k, v in modes.items()} for m, modes in self.processing_times.items()},
+            'transport_time': self.transport_time,
+            'waiting_time': self.waiting_time,
+            'eligible_machines': list(self.eligible_machines),
+            'eligible_workers': list(self.eligible_workers),
+            'start_time': self.start_time,
+            'completion_time': self.completion_time,
+            'assigned_machine': self.assigned_machine,
+            'assigned_worker': self.assigned_worker,
+            'assigned_mode': self.assigned_mode,
+            'is_completed': self.is_completed,
+            'is_scheduled': self.is_scheduled,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'Operation':
+        """Create operation from dictionary"""
+        op = cls(
+            job_id=data['job_id'],
+            op_id=data['op_id'],
+            transport_time=data.get('transport_time', 0.0),
+            waiting_time=data.get('waiting_time', 0.0),
+        )
+        # Convert machine IDs back to int
+        raw_pt = data.get('processing_times', {})
+        op.processing_times = {int(m): {int(k): v for k, v in modes.items()} for m, modes in raw_pt.items()}
+        op.eligible_machines = set(data.get('eligible_machines', []))
+        op.eligible_workers = set(data.get('eligible_workers', []))
+        op.start_time = data.get('start_time')
+        op.completion_time = data.get('completion_time')
+        op.assigned_machine = data.get('assigned_machine')
+        op.assigned_worker = data.get('assigned_worker')
+        op.assigned_mode = data.get('assigned_mode')
+        op.is_completed = data.get('is_completed', False)
+        op.is_scheduled = data.get('is_scheduled', False)
+        return op
+
     def is_ready(self, completed_ops: Set[int]) -> bool:
         """
         Check if operation is ready to start (predecessors completed)
@@ -176,6 +218,32 @@ class Job:
             if min_time < float('inf'):
                 total += min_time
         return total
+
+    def to_dict(self) -> dict:
+        """Convert job to dictionary for serialization"""
+        return {
+            'job_id': self.job_id,
+            'operations': [op.to_dict() for op in self.operations],
+            'arrival_time': self.arrival_time,
+            'due_date': self.due_date,
+            'weight': self.weight,
+            'is_completed': self.is_completed,
+            'completion_time': self.completion_time,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'Job':
+        """Create job from dictionary"""
+        job = cls(
+            job_id=data['job_id'],
+            arrival_time=data.get('arrival_time', 0.0),
+            due_date=data.get('due_date'),
+            weight=data.get('weight', 1.0),
+        )
+        job.operations = [Operation.from_dict(op_data) for op_data in data.get('operations', [])]
+        job.is_completed = data.get('is_completed', False)
+        job.completion_time = data.get('completion_time')
+        return job
 
     def check_is_completed(self) -> bool:
         """Check if all operations are completed"""

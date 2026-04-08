@@ -360,11 +360,12 @@ class BenchmarkGenerator:
             )
 
             due_date_margin = self.rng.uniform(*self.config.due_date_margin)
+            arrival_time = self.rng.uniform(*self.config.job_arrival_time)
             job = Job(
                 job_id=job_id,
                 operations=operations,
-                arrival_time=self.rng.uniform(*self.config.job_arrival_time),
-                due_date=total_min_processing * due_date_margin,
+                arrival_time=arrival_time,
+                due_date=arrival_time + (total_min_processing * due_date_margin),
                 weight=self.rng.uniform(*self.config.job_weight_range),
             )
 

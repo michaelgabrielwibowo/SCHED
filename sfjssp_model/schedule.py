@@ -268,9 +268,9 @@ class Schedule:
             if sched_op.setup_time > 0:
                 energy['setup'] += machine.power_setup * sched_op.setup_time
 
-            # [CHANGED] Transport energy calculation
+            # [FIX] Transport energy calculation
             if sched_op.transport_time > 0:
-                energy['transport'] += 5.0 * sched_op.transport_time
+                energy['transport'] += machine.power_transport * sched_op.transport_time
 
         # Idle energy
         for machine_id, machine_sched in self.machine_schedules.items():
@@ -576,8 +576,8 @@ class Schedule:
         for machine_sched in self.machine_schedules.values():
             ops = sorted(machine_sched.operations, key=lambda x: x.start_time)
             for i in range(len(ops) - 1):
-                # [CHANGED] Added setup_time
-                if (ops[i].completion_time + ops[i].setup_time) > ops[i + 1].start_time:
+                # [FIX] Gap must accommodate the NEXT operation's setup time
+                if (ops[i].completion_time + ops[i+1].setup_time) > ops[i + 1].start_time:
                     self.is_feasible = False
                     self.constraint_violations.append(
                         f"Machine overlap: M{machine_sched.machine_id} "

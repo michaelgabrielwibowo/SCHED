@@ -24,58 +24,57 @@ except ImportError:
 
 def parse_observation(obs) -> tuple:
     """
-    Parse SFJSSPObservation into separate state tensors for each agent.
-
-    Aggregates feature matrices into fixed-size state vectors by mean pooling
-    and projecting to state_dim=64.
-
-    Args:
-        obs: SFJSSPObservation from SFJSSPEnv.reset() or SFJSSPEnv.step()
-
-    Returns:
-        job_state, machine_state, worker_state tensors, each shape (1, 64)
+    Parse SFJSSPObservation into state tensors and masks for each agent.
     """
     if not TORCH_AVAILABLE:
-        return None, None, None
+        return None, None, None, None, None, None
 
     # Handle both SFJSSPObservation dataclass and dict formats
     if hasattr(obs, 'job_features'):
-        # SFJSSPObservation dataclass
         job_features = obs.job_features
         machine_features = obs.machine_features
         worker_features = obs.worker_features
+        action_mask = obs.action_mask
     elif isinstance(obs, dict):
-        # Dict format
         job_features = obs.get('job_features', obs.get('job_nodes', np.zeros((1, 6))))
         machine_features = obs.get('machine_features', obs.get('machine_nodes', np.zeros((1, 4))))
         worker_features = obs.get('worker_features', obs.get('worker_nodes', np.zeros((1, 4))))
+        action_mask = obs.get('action_mask', np.ones((1, 1, 1, 1, 1)))
     else:
-        # Unknown format
-        return None, None, None
+        return None, None, None, None, None, None
 
-    # Aggregate: mean across entity dimension
-    job_agg = np.mean(job_features, axis=0) if job_features.shape[0] > 0 else np.zeros(job_features.shape[1])
-    machine_agg = np.mean(machine_features, axis=0) if machine_features.shape[0] > 0 else np.zeros(machine_features.shape[1])
-    worker_agg = np.mean(worker_features, axis=0) if worker_features.shape[0] > 0 else np.zeros(worker_features.shape[1])
+    # Aggregate: mean across entity dimension (Step 6 will fix this in the network)
+    job_agg = np.mean(job_features, axis=0) if job_features.shape[0] > 0 else np.zeros(6)
+    machine_agg = np.mean(machine_features, axis=0) if machine_features.shape[0] > 0 else np.zeros(4)
+    worker_agg = np.mean(worker_features, axis=0) if worker_features.shape[0] > 0 else np.zeros(4)
 
     # Pad to state_dim=64
     state_dim = 64
+    def pad(arr, dim):
+        res = np.zeros(dim, dtype=np.float32)
+        res[:min(len(arr), dim)] = arr[:min(len(arr), dim)]
+        return torch.tensor(res).unsqueeze(0)
 
-    job_state = np.zeros(state_dim, dtype=np.float32)
-    job_state[:min(len(job_agg), state_dim)] = job_agg[:min(len(job_agg), state_dim)]
+    job_state = pad(job_agg, state_dim)
+    machine_state = pad(machine_agg, state_dim)
+    worker_state = pad(worker_agg, state_dim)
 
-    machine_state = np.zeros(state_dim, dtype=np.float32)
-    machine_state[:min(len(machine_agg), state_dim)] = machine_agg[:min(len(machine_agg), state_dim)]
+    # Project high-dim mask to per-agent masks
+    # action_mask shape: (n_jobs, n_ops, n_machines, n_workers, n_modes)
+    
+    # 1. Job mask: job is valid if ANY action is possible for it
+    job_m = (np.sum(action_mask, axis=(1, 2, 3, 4)) > 0).astype(np.float32)
+    job_mask = torch.tensor(job_m).unsqueeze(0)
 
-    worker_state = np.zeros(state_dim, dtype=np.float32)
-    worker_state[:min(len(worker_agg), state_dim)] = worker_agg[:min(len(worker_agg), state_dim)]
+    # 2. Machine mask: machine is valid if ANY job/op/worker/mode uses it
+    mach_m = (np.sum(action_mask, axis=(0, 1, 3, 4)) > 0).astype(np.float32)
+    machine_mask = torch.tensor(mach_m).unsqueeze(0)
 
-    # Convert to tensors with batch dimension
-    job_state = torch.tensor(job_state, dtype=torch.float32).unsqueeze(0)
-    machine_state = torch.tensor(machine_state, dtype=torch.float32).unsqueeze(0)
-    worker_state = torch.tensor(worker_state, dtype=torch.float32).unsqueeze(0)
+    # 3. Worker mask: worker is valid if ANY job/op/machine/mode uses it
+    work_m = (np.sum(action_mask, axis=(0, 1, 2, 4)) > 0).astype(np.float32)
+    worker_mask = torch.tensor(work_m).unsqueeze(0)
 
-    return job_state, machine_state, worker_state
+    return job_state, machine_state, worker_state, job_mask, machine_mask, worker_mask
 
 
 @dataclass
@@ -183,27 +182,41 @@ class TrainingPipeline:
                     action = env.action_space.sample()
                     next_obs, reward, terminated, truncated, info = env.step(action)
                 else:
-                    # Parse observation into agent-specific states
-                    job_state, machine_state, worker_state = parse_observation(obs)
+                    # Parse observation into agent-specific states and masks
+                    job_state, machine_state, worker_state, job_mask, machine_mask, worker_mask = parse_observation(obs)
 
-                    # Select actions from policy
+                    # Select actions from policy with masking
                     action_dict = self.agent.select_actions(
-                        job_state, machine_state, worker_state
+                        job_state, machine_state, worker_state,
+                        job_mask=job_mask,
+                        machine_mask=machine_mask,
+                        worker_mask=worker_mask
                     )
+
+                    # [FIX] Implementation of dynamic op_idx selection
+                    # Logic: Find the first unscheduled operation for the selected job
+                    job_idx = action_dict['job_action'].item()
+                    selected_job = env.instance.get_job(job_idx)
+                    op_idx = 0
+                    if selected_job:
+                        for i, op in enumerate(selected_job.operations):
+                            if not op.is_scheduled:
+                                op_idx = i
+                                break
 
                     # Convert to env action format
                     action = {
-                        'job_idx': action_dict['job_action'].item(),
-                        'op_idx': 0,  # Default: first unscheduled operation
+                        'job_idx': job_idx,
+                        'op_idx': op_idx,
                         'machine_idx': action_dict['machine_action'].item(),
                         'worker_idx': action_dict['worker_action'].item(),
-                        'mode_idx': 0,  # Default: first mode
+                        'mode_idx': action_dict['mode_action'].item() if 'mode_action' in action_dict else 0,
                     }
 
                     next_obs, reward, terminated, truncated, info = env.step(action)
 
                     # Parse next observation
-                    next_job_state, next_machine_state, next_worker_state = parse_observation(next_obs)
+                    next_job_state, next_machine_state, next_worker_state, _, _, _ = parse_observation(next_obs)
 
                     # Store transition for PPO update
                     self.agent.store_transition(
@@ -318,12 +331,10 @@ def run_training(
     # Load or create instance
     if instance_path and os.path.exists(instance_path):
         print(f"Loading instance from {instance_path}")
-        # TODO: Implement instance loading from JSON
-        # For now, use example instance
-        from experiments.generate_benchmarks import BenchmarkGenerator, GeneratorConfig, InstanceSize
-        config = GeneratorConfig(size=InstanceSize.SMALL, seed=42)
-        generator = BenchmarkGenerator(config)
-        instance = generator.generate()
+        with open(instance_path, 'r') as f:
+            data = json.load(f)
+        from sfjssp_model.instance import SFJSSPInstance
+        instance = SFJSSPInstance.from_dict(data)
     else:
         print("Creating new instance...")
         from experiments.generate_benchmarks import BenchmarkGenerator, GeneratorConfig, InstanceSize

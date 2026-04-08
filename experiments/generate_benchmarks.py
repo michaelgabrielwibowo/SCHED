@@ -188,12 +188,13 @@ class BenchmarkGenerator:
                 for op in operations
             )
             due_margin = self.rng.uniform(1.5, 3.0)
+            arrival_time = self.rng.uniform(0, 50)
 
             job = Job(
                 job_id=job_id,
                 operations=operations,
-                arrival_time=self.rng.uniform(0, 50),
-                due_date=total_min_pt * due_margin,
+                arrival_time=arrival_time,
+                due_date=arrival_time + (total_min_pt * due_margin),
                 weight=self.rng.uniform(1.0, 2.0),
             )
             instance.add_job(job)

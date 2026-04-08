@@ -387,7 +387,7 @@ def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List
             machine_available[m_id] + machine.setup_time,
             worker_available[w_id],
             worker.mandatory_shift_lockout_until,
-            job_last_completion[job_id] + getattr(op, 'transport_time', 0.0)
+            job_last_completion[job_id] # [FIX] Already includes prev op's transport/waiting
         )
         
         # Apply shift-skipping offset
@@ -413,6 +413,8 @@ def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List
             m_rest = worker.requires_mandatory_rest(pt, curr_t)
             if m_rest > 0:
                 curr_t += m_rest
+                # [FIX] FORMALLY RECORD REST so fatigue recovers and lockout timer resets
+                worker.record_rest(m_rest)
                 continue
             found = True
             break
@@ -431,7 +433,8 @@ def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List
         # 6. Update states
         machine_available[m_id] = curr_t + pt
         worker_available[w_id] = curr_t + pt
-        job_last_completion[job_id] = curr_t + pt
+        # [FIX] Add transport and waiting time to job availability for next op
+        job_last_completion[job_id] = curr_t + pt + getattr(op, 'transport_time', 0.0) + getattr(op, 'waiting_time', 0.0)
         worker.record_work(pt, instance.get_ergonomic_risk(job_id, op_idx), curr_t)
         job_op_ptr[job_id] += 1
         
