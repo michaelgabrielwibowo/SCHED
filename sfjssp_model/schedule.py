@@ -215,10 +215,11 @@ class Schedule:
     def compute_makespan(self) -> float:
         """Compute makespan (maximum completion time)"""
         if not self.scheduled_ops:
+            self.makespan = 0.0
             return 0.0
 
         self.makespan = max(
-            op.completion_time for op in self.scheduled_ops.values()
+            (op.completion_time or 0.0) for op in self.scheduled_ops.values()
         )
         return self.makespan
 
@@ -514,6 +515,21 @@ class Schedule:
         labor_cost = self.compute_labor_cost(instance)
         resilience = self.compute_resilience_metrics(instance)
 
+        # Tool wear calculation (INDUSTRY 5.0 Resilience)
+        # Based on mode-specific wear rates defined in machine.py
+        total_tool_wear = 0.0
+        for sched_op in self.scheduled_ops.values():
+            machine = instance.get_machine(sched_op.machine_id)
+            wear_rate = 0.0001 # Base rate
+            if machine and machine.modes:
+                mode = next((m for m in machine.modes if m.mode_id == sched_op.mode_id), None)
+                if mode:
+                    wear_rate *= getattr(mode, 'tool_wear_rate', 1.0)
+            
+            total_tool_wear += sched_op.processing_time * wear_rate
+
+        tool_replacement_cost = total_tool_wear * 0.5  # Arbitrary unit cost for tool replacement
+
         self.objectives = {
             'makespan': self.makespan,
             'total_energy': self.energy_breakdown.get('total', 0.0),
@@ -524,7 +540,9 @@ class Schedule:
             'mean_ergonomic_exposure': self.ergonomic_metrics.get('mean_exposure', 0.0),
             'max_fatigue': self.fatigue_metrics.get('max_fatigue', 0.0),
             'fatigue_variance': self.fatigue_metrics.get('fatigue_variance', 0.0),
-            'total_labor_cost': labor_cost,
+            'total_labor_cost': labor_cost + tool_replacement_cost,
+            'tool_replacement_cost': tool_replacement_cost,
+            'total_tool_wear': total_tool_wear,
             'total_tardiness': tardiness['total_tardiness'],
             'weighted_tardiness': tardiness['weighted_tardiness'],
             'n_tardy_jobs': tardiness['n_tardy_jobs'],

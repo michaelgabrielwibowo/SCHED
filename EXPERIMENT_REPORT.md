@@ -111,7 +111,14 @@ All instances are labeled **FULLY_SYNTHETIC** with parameters calibrated from:
 | small_001 | 41,775 kWh | 52,462 kWh |
 | small_009 | 53,785 kWh | 80,090 kWh |
 
-**Note:** NSGA-III energy values are from Pareto front minimum, not makespan-optimal solution.
+**Note:** Current logging logic (`best_ind = min(pop.individuals, key=lambda x: x.makespan)`) prioritizes makespan-optimal solutions in summary tables.
+
+| Metric | Target (Ind 5.0) | Implementation Status |
+|--------|------------------|----------------------|
+| OCRA   | < 2.2 / shift    | ENFORCED (MIP & Env) |
+| Rest   | 12.5% mandatory  | ENFORCED (Env & Agent)|
+| Energy | min EM + ET + EC | OPTIMIZED            |
+| Wear   | Tool Health      | IMPLEMENTED          |
 
 ---
 

@@ -217,10 +217,6 @@ class NSGA3:
         if self.rng.random() < self.mutation_rate:
             i1, i2 = self.rng.choice(len(g['sequence']), 2, replace=False)
             g['sequence'][i1], g['sequence'][i2] = g['sequence'][i2], g['sequence'][i1]
-            # [FIX] Resources must move with the job in the sequence if using sequence-index mapping
-            g['machines'][i1], g['machines'][i2] = g['machines'][i2], g['machines'][i1]
-            g['workers'][i1], g['workers'][i2] = g['workers'][i2], g['workers'][i1]
-            g['offsets'][i1], g['offsets'][i2] = g['offsets'][i2], g['offsets'][i1]
         for i in range(len(g['sequence'])):
             if self.rng.random() < self.mutation_rate:
                 if i < len(ops):
@@ -285,11 +281,26 @@ class NSGA3:
                     counts[rp] = counts.get(rp, 0) + 1
             pop = new_pop
             if gen % 10 == 0 or gen == self.n_generations - 1:
-                # [FIX] Select individual with minimum makespan (which includes penalty)
-                best_ind = min(pop.individuals, key=lambda x: x.makespan)
+                # [FIX] Select a balanced individual from the current population
+                # Instead of strictly min(makespan), we normalize objectives and find
+                # the one closest to the ideal point (minimum of all).
+                
+                all_m = np.array([ind.makespan for ind in pop.individuals])
+                all_e = np.array([ind.objectives[1] for ind in pop.individuals if ind.objectives])
+                
+                if len(all_e) == len(all_m):
+                    # Simple normalization
+                    norm_m = (all_m - all_m.min()) / (all_m.max() - all_m.min() + 1e-9)
+                    norm_e = (all_e - all_e.min()) / (all_e.max() - all_e.min() + 1e-9)
+                    dist = np.sqrt(norm_m**2 + norm_e**2)
+                    best_idx = np.argmin(dist)
+                    best_ind = pop.individuals[best_idx]
+                else:
+                    best_ind = min(pop.individuals, key=lambda x: x.makespan)
+                
                 best_m = best_ind.makespan
                 avg_m = np.mean([ind.makespan for ind in pop.individuals])
-                if verbose: print(f"  Gen {gen:3d}: Best={best_m:10.2f}, Avg={avg_m:10.2f}")
+                if verbose: print(f"  Gen {gen:3d}: Balanced_M={best_m:10.2f}, Avg_M={avg_m:10.2f}")
         self.pareto_front = [pop.individuals[i] for i in self._non_dominated_sort(pop)[0]]
         return pop
 
@@ -403,19 +414,15 @@ def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List
         curr_t = est
         for _ in range(50):
             # 1. Machine gap check (centralized)
-            if not machine.validate_gap(curr_t, machine.setup_time):
-                curr_t = machine.available_time + machine.setup_time
+            m_valid, m_next = machine.validate_gap(curr_t, machine.setup_time)
+            if not m_valid:
+                curr_t = max(curr_t, m_next)
                 continue
 
             # 2. Worker assignment check (centralized Industry 5.0 engine)
-            if not worker.validate_assignment(curr_t, pt, risk_rate):
-                # If worker rule is violated, jump to next period
-                curr_t = clock.period_start(clock.get_period(curr_t) + 1)
-                # Recalculate rest if needed at the new start time
-                m_rest = worker.requires_mandatory_rest(pt, curr_t)
-                if m_rest > 0:
-                    curr_t += m_rest
-                    worker.record_rest(m_rest)
+            w_valid, w_next = worker.validate_assignment(curr_t, pt, risk_rate)
+            if not w_valid:
+                curr_t = max(curr_t, w_next)
                 continue
                 
             found = True
@@ -465,9 +472,11 @@ def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List
     # Ergonomic penalty if OCRA > threshold
     max_ocra = metrics.get('max_ergonomic_exposure', 0.0)
     ocra_threshold = getattr(instance, 'ocra_max_per_shift', 2.2)
-    ocra_penalty = max(0.0, max_ocra - ocra_threshold) * 1e6
+    # [FIX] Scale penalty to be significant but not instantly front-collapsing (1e4 instead of 1e6)
+    ocra_penalty = max(0.0, max_ocra - ocra_threshold) * 1e4
     
-    total_penalty = (hard_violations * 1e7) + (n_tardy * 1e4) + (tardiness_penalty * 100.0) + ocra_penalty
+    # Balanced penalty structure
+    total_penalty = (hard_violations * 1e6) + (n_tardy * 1e3) + (tardiness_penalty * 10.0) + ocra_penalty
     
     return [
         metrics.get('makespan', 1e6) + total_penalty,

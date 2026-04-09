@@ -130,15 +130,14 @@ class TrainingPipeline:
         else:
             self._initialize_agents()
 
-    def _initialize_agents(self):
+    def _initialize_agents(self, n_machines: int = 5, n_workers: int = 5):
         """Initialize DRL agents"""
         from agents.policy_networks import MultiAgentPPO
 
         self.agent = MultiAgentPPO(
-            state_dim=self.config.state_dim,
-            n_jobs=10,  # Will be updated based on instance
-            n_machines=5,
-            n_workers=5,
+            embed_dim=self.config.state_dim,
+            n_machines=n_machines,
+            n_workers=n_workers,
             lr=self.config.lr,
             gamma=self.config.gamma,
             clip_epsilon=self.config.clip_epsilon,
@@ -153,14 +152,6 @@ class TrainingPipeline:
     ) -> Dict[str, List[float]]:
         """
         Run training loop
-
-        Args:
-            env: SFJSSPEnv environment
-            n_episodes: Number of episodes (overrides config)
-            verbose: Print progress
-
-        Returns:
-            Training history
         """
         n_episodes = n_episodes or self.config.n_episodes
 
@@ -168,6 +159,13 @@ class TrainingPipeline:
             print(f"Starting training for {n_episodes} episodes...")
             print(f"Device: {self.config.device}")
             print(f"PyTorch available: {TORCH_AVAILABLE}")
+
+        # Re-initialize agents with correct environment dimensions
+        if TORCH_AVAILABLE:
+            self._initialize_agents(
+                n_machines=env.instance.n_machines,
+                n_workers=env.instance.n_workers
+            )
 
         for episode in range(n_episodes):
             episode_reward = 0.0
@@ -185,19 +183,10 @@ class TrainingPipeline:
                     # [FIX] Direct pass of observation to graph-enabled agent
                     action_dict = self.agent.select_actions(obs, deterministic=False)
 
-                    # Dynamic op_idx selection logic (still needed for environment interface)
-                    job_idx = action_dict['job_action'].item()
-                    selected_job = env.instance.get_job(job_idx)
-                    op_idx = 0
-                    if selected_job:
-                        for i, op in enumerate(selected_job.operations):
-                            if not op.is_scheduled:
-                                op_idx = i
-                                break
-
+                    # [FIX] Use op_action selected by hierarchical mask in agent
                     action = {
-                        'job_idx': job_idx,
-                        'op_idx': op_idx,
+                        'job_idx': action_dict['job_action'].item(),
+                        'op_idx': action_dict['op_action'].item(),
                         'machine_idx': action_dict['machine_action'].item(),
                         'worker_idx': action_dict['worker_action'].item(),
                         'mode_idx': action_dict['mode_action'].item(),

@@ -38,15 +38,15 @@ class Operation:
     eligible_workers: Set[int] = field(default_factory=set)
 
     # Operation state (PROPOSED for dynamic scheduling)
-    start_time: Optional[float] = None
-    completion_time: Optional[float] = None
-    assigned_machine: Optional[int] = None
-    assigned_worker: Optional[int] = None
-    assigned_mode: Optional[int] = None
+    start_time: float = 0.0
+    completion_time: float = 0.0
+    assigned_machine: int = -1
+    assigned_worker: int = -1
+    assigned_mode: int = -1
 
     # --- ADDED: Task-related period constraints (PDF Section 5.2.3) ---
-    period_start: Optional[float] = None
-    period_end: Optional[float] = None
+    period_start: float = 0.0
+    period_end: float = 0.0
 
     # Status tracking
     is_completed: bool = False
@@ -162,11 +162,11 @@ class Operation:
 
     def reset(self):
         """Reset operation to unscheduled state"""
-        self.start_time = None
-        self.completion_time = None
-        self.assigned_machine = None
-        self.assigned_worker = None
-        self.assigned_mode = None
+        self.start_time = 0.0
+        self.completion_time = 0.0
+        self.assigned_machine = -1
+        self.assigned_worker = -1
+        self.assigned_mode = -1
         self.is_completed = False
         self.is_scheduled = False
 
@@ -196,7 +196,7 @@ class Job:
 
     # Job state
     is_completed: bool = False
-    completion_time: Optional[float] = None
+    completion_time: float = 0.0
 
     def get_tardiness(self) -> float:
         """
@@ -204,8 +204,9 @@ class Job:
 
         Evidence: Tardiness calculation CONFIRMED in standard FJSSP
         """
-        if self.completion_time is None or self.due_date is None:
+        if self.due_date is None:
             return 0.0
+        # completion_time is now guaranteed 0.0 or float
         return max(0.0, self.completion_time - self.due_date)
 
     def get_total_processing_time(self) -> float:
@@ -252,7 +253,7 @@ class Job:
     def reset(self):
         """Reset job to initial state"""
         self.is_completed = False
-        self.completion_time = None
+        self.completion_time = 0.0
         for op in self.operations:
             op.reset()
 

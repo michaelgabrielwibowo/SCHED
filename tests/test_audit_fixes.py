@@ -69,14 +69,14 @@ def test_feasibility_setup_time():
     instance.add_job(job1)
     
     schedule = Schedule(instance)
-    # Op (0,0) ends at 10.0, has 5.0 setup time.
+    # Op (0,0) ends at 10.0
     schedule.add_operation(job_id=0, op_id=0, machine_id=0, worker_id=0, mode_id=0,
-                           start_time=0.0, completion_time=10.0, processing_time=10.0,
-                           setup_time=5.0)
+                           start_time=0.0, completion_time=10.0, processing_time=10.0)
     
-    # Op (1,0) starts at 14.0 (Violation: 10.0 + 5.0 = 15.0 required)
+    # Op (1,0) starts at 14.0, has 5.0 setup time (Violation: 10.0 + 5.0 = 15.0 required)
     schedule.add_operation(job_id=1, op_id=0, machine_id=0, worker_id=0, mode_id=0,
-                           start_time=14.0, completion_time=24.0, processing_time=10.0)
+                           start_time=14.0, completion_time=24.0, processing_time=10.0,
+                           setup_time=5.0)
     
     assert schedule.check_feasibility(instance) is False
     assert any("Machine overlap" in v for v in schedule.constraint_violations)
@@ -116,6 +116,7 @@ def test_nsga3_penalty():
         'sequence': np.array([0]),
         'machines': np.array([0]),
         'workers': np.array([0]),
+        'offsets': np.array([0]),
         'op_list': [(0, 0)]
     }
     

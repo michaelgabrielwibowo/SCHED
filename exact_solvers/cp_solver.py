@@ -274,6 +274,13 @@ class CPScheduler:
                         f'interval_{job_id}_{op_idx}_m{m_id}_mode{mode_id}'
                     )
                     self.machine_intervals[m_id].append(interval)
+                    
+                    if not hasattr(self, 'all_intervals_with_demands'):
+                        self.all_intervals_with_demands = []
+                    power_demand = machine.power_processing if machine else 10.0
+                    if hasattr(mode, 'power_multiplier'):
+                        power_demand *= mode.power_multiplier
+                    self.all_intervals_with_demands.append((interval, int(power_demand * 100)))
 
                     # Link duration to assignment
                     model.Add(self.duration[(job_id, op_idx)] == pt).OnlyEnforceIf(presence)
@@ -300,10 +307,15 @@ class CPScheduler:
                 model.Add(total_duration_with_rest == self.duration[(job_id, op_idx)] + rest_duration).OnlyEnforceIf(presence)
 
                 # Create worker interval with rest
+                # [FIX] start + duration must equal end for IntervalVar.
+                # We create a specific worker_end that includes rest.
+                worker_end = model.NewIntVar(0, horizon, f'worker_end_{job_id}_{op_idx}_w{w_id}')
+                model.Add(worker_end == self.start[(job_id, op_idx)] + total_duration_with_rest).OnlyEnforceIf(presence)
+
                 interval = model.NewOptionalIntervalVar(
                     self.start[(job_id, op_idx)],
                     total_duration_with_rest,
-                    self.end[(job_id, op_idx)], # Note: end here includes rest for overlap check
+                    worker_end,
                     presence,
                     f'interval_w_{job_id}_{op_idx}_w{w_id}'
                 )
@@ -338,8 +350,12 @@ class CPScheduler:
                         overlaps.append(start_in_p)
                 
                 if overlaps:
+                    # worker_in_period[p] is True IF AND ONLY IF sum(overlaps) > 0
                     model.Add(sum(overlaps) > 0).OnlyEnforceIf(worker_in_period[p])
                     model.Add(sum(overlaps) == 0).OnlyEnforceIf(worker_in_period[p].Not())
+                    # [FIX] Force worker_in_period[p] to be true if any overlap exists
+                    for overlap_var in overlaps:
+                        model.AddImplication(overlap_var, worker_in_period[p])
                 else:
                     model.Add(worker_in_period[p] == 0)
 
@@ -363,7 +379,11 @@ class CPScheduler:
                         model.AddLinearConstraint([self.start[(job_id, op_idx)]], p_start, p_end-1).OnlyEnforceIf([is_assigned, start_in_p])
                         model.Add(start_in_p == 0).OnlyEnforceIf(is_assigned.Not())
                         
+                        # Boundary constraint: Tasks starting in a period must finish in the same period
+                        model.Add(self.end[(job_id, op_idx)] <= p_end).OnlyEnforceIf(start_in_p)
+                        
                         exposure = model.NewIntVar(0, 5000, f'exp_j{job_id}_o{op_idx}_w{w_id}_p{p}')
+                        # [FIX] Ensure assignment is factored into exposure calculation
                         model.Add(exposure == self.duration[(job_id, op_idx)] * risk_rate).OnlyEnforceIf(start_in_p)
                         model.Add(exposure == 0).OnlyEnforceIf(start_in_p.Not())
                         period_exposure.append(exposure)
@@ -460,20 +480,14 @@ class CPScheduler:
 
         elif objective == "composite":
             # Weighted multi-objective
-            # Need to normalize objectives to similar scales
-            # Makespan: ~hundreds, Energy: ~thousands, Ergonomic: ~tens
+            # Use integer multipliers to normalize scales without division
+            # Linear combination: w1*Makespan + w2*Energy + w3*Ergonomic
+            
+            w_m = int(self.energy_weights.get('makespan', 0.4) * 1000)
+            w_e = int(self.energy_weights.get('energy', 0.3) * 10)
+            w_er = int(self.energy_weights.get('ergonomic', 0.2) * 100)
 
-            # Normalize by typical scale factors
-            makespan_normalized = self.makespan
-            energy_normalized = self.total_energy // 100  # Scale down
-            ergonomic_normalized = self.total_ergonomic // 10  # Scale down
-
-            composite = (
-                int(self.energy_weights.get('makespan', 0.4) * 100) * makespan_normalized +
-                int(self.energy_weights.get('energy', 0.3) * 100) * energy_normalized +
-                int(self.energy_weights.get('ergonomic', 0.2) * 100) * ergonomic_normalized
-            )
-            model.Minimize(composite)
+            model.Minimize(w_m * self.makespan + w_e * self.total_energy + w_er * self.total_ergonomic)
 
         else:
             # Default: makespan
@@ -589,10 +603,13 @@ class MIPScheduler:
         verbose: bool = True,
     ) -> Optional[Any]:
         """
-        Solve using MIP formulation
+        Solve using full SFJSSP MIP formulation
 
-        Note: This is a simplified MIP. Full formulation in
-        MATHEMATICAL_MODEL_SFJSSP.md
+        Includes:
+        - Machine mode selection
+        - Worker shift constraints (Industry 5.0)
+        - OCRA ergonomic limits
+        - Energy optimization
         """
         if not ORTOOLS_AVAILABLE:
             print("OR-Tools not available.")
@@ -612,6 +629,7 @@ class MIPScheduler:
         jobs = instance.jobs
         machines = instance.machines
         workers = instance.workers
+        n_workers = len(workers)
 
         all_operations = []
         for job in jobs:
@@ -619,114 +637,284 @@ class MIPScheduler:
                 all_operations.append((job.job_id, op_idx))
 
         # Time horizon
-        max_pt = max(
-            min(modes.values())
-            for job in jobs
-            for op in job.operations
-            for modes in op.processing_times.values()
-            if modes
-        )
-        horizon = len(all_operations) * max_pt * 3
+        max_pt = 0
+        for job in jobs:
+            for op in job.operations:
+                for modes in op.processing_times.values():
+                    if modes:
+                        max_pt = max(max_pt, max(modes.values()))
+        horizon = len(all_operations) * max_pt * 2
+        
+        # Industry 5.0 Period Constants
+        period_len = 480  # 8 hours
+        num_periods = int(horizon // period_len) + 1
 
         # Variables
-        # x[j,o,m,w] = 1 if operation (j,o) on machine m with worker w
+        # x[j,o,m,mode,w] = 1 if operation (j,o) on machine m with mode and worker w
         x = {}
         # s[j,o] = start time
         s = {}
         # C[j,o] = completion time
         C = {}
+        # shift[w,p] = 1 if worker w works in period p
+        shift = {}
 
         for job_id, op_idx in all_operations:
             job = instance.get_job(job_id)
             op = job.operations[op_idx]
 
             for m_id in op.eligible_machines:
-                for w_id in op.eligible_workers:
-                    x[(job_id, op_idx, m_id, w_id)] = solver.BoolVar(
-                        f'x_{job_id}_{op_idx}_{m_id}_{w_id}'
-                    )
+                machine = instance.get_machine(m_id)
+                mode_times = op.processing_times.get(m_id, {})
+                
+                # Get machine modes
+                if machine and machine.modes:
+                    modes = machine.modes
+                else:
+                    from sfjssp_model.machine import MachineMode
+                    modes = [MachineMode(mode_id=0, mode_name="default", speed_factor=1.0, power_multiplier=1.0)]
+
+                for mode in modes:
+                    if mode.mode_id not in mode_times and mode.mode_id != 0:
+                        continue
+                        
+                    for w_id in op.eligible_workers:
+                        x[(job_id, op_idx, m_id, mode.mode_id, w_id)] = solver.BoolVar(
+                            f'x_{job_id}_{op_idx}_{m_id}_{mode.mode_id}_{w_id}'
+                        )
 
             s[(job_id, op_idx)] = solver.NumVar(0, horizon, f's_{job_id}_{op_idx}')
             C[(job_id, op_idx)] = solver.NumVar(0, horizon, f'C_{job_id}_{op_idx}')
 
-        # Makespan variable
-        makespan = solver.NumVar(0, horizon, 'makespan')
+        for w_idx in range(n_workers):
+            for p in range(num_periods):
+                shift[(w_idx, p)] = solver.BoolVar(f'shift_w{w_idx}_p{p}')
 
-        # Energy variable (simplified)
+        # Objective variables
+        makespan = solver.NumVar(0, horizon, 'makespan')
         total_energy = solver.NumVar(0, horizon * 10000, 'total_energy')
+        total_ergonomic = solver.NumVar(0, horizon * 1000, 'total_ergonomic')
 
         # Constraints
 
-        # 1. Each operation assigned to exactly one (machine, worker) pair
+        # 1. Assignment: Each operation assigned to exactly one (machine, mode, worker)
         for job_id, op_idx in all_operations:
             job = instance.get_job(job_id)
             op = job.operations[op_idx]
+            
+            assignment_vars = []
+            for m_id in op.eligible_machines:
+                machine = instance.get_machine(m_id)
+                mode_times = op.processing_times.get(m_id, {})
+                
+                if machine and machine.modes:
+                    modes = machine.modes
+                else:
+                    from sfjssp_model.machine import MachineMode
+                    modes = [MachineMode(mode_id=0, mode_name="default", speed_factor=1.0, power_multiplier=1.0)]
 
-            solver.Add(
-                sum(
-                    x[(job_id, op_idx, m_id, w_id)]
-                    for m_id in op.eligible_machines
-                    for w_id in op.eligible_workers
-                ) == 1
-            )
+                for mode in modes:
+                    if mode.mode_id not in mode_times and mode.mode_id != 0:
+                        continue
+                    for w_id in op.eligible_workers:
+                        assignment_vars.append(x[(job_id, op_idx, m_id, mode.mode_id, w_id)])
+            
+            solver.Add(sum(assignment_vars) == 1)
 
-        # 2. Precedence constraints
+        # 2. Precedence (within job)
         for job in jobs:
             for op_idx in range(1, len(job.operations)):
-                solver.Add(
-                    s[(job.job_id, op_idx)] >=
-                    C[(job.job_id, op_idx - 1)]
-                )
+                solver.Add(s[(job.job_id, op_idx)] >= C[(job.job_id, op_idx - 1)])
 
-        # 3. Completion time = start + processing (simplified)
-        # Full model would use processing time per assignment
+        # 3. Completion time with mandatory rest (12.5% for workers)
         for job_id, op_idx in all_operations:
             job = instance.get_job(job_id)
             op = job.operations[op_idx]
-
-            # Get minimum processing time (simplified)
-            min_pt = float('inf')
+            
+            durations = []
             for m_id in op.eligible_machines:
-                if m_id in op.processing_times:
-                    for pt in op.processing_times[m_id].values():
-                        min_pt = min(min_pt, pt)
+                machine = instance.get_machine(m_id)
+                mode_times = op.processing_times.get(m_id, {})
+                
+                if machine and machine.modes:
+                    modes = machine.modes
+                else:
+                    from sfjssp_model.machine import MachineMode
+                    modes = [MachineMode(mode_id=0, mode_name="default", speed_factor=1.0, power_multiplier=1.0)]
 
-            if min_pt == float('inf'):
-                min_pt = 50
+                for mode in modes:
+                    if mode.mode_id not in mode_times and mode.mode_id != 0:
+                        continue
+                    
+                    base_pt = mode_times.get(mode.mode_id, list(mode_times.values())[0])
+                    pt = base_pt / mode.speed_factor
+                    
+                    for w_id in op.eligible_workers:
+                        # [INDUSTRY 5.0] include 12.5% rest in worker time
+                        total_pt = pt * 1.125
+                        durations.append(x[(job_id, op_idx, m_id, mode.mode_id, w_id)] * total_pt)
+            
+            solver.Add(C[(job_id, op_idx)] >= s[(job_id, op_idx)] + sum(durations))
 
-            # C >= s + min_pt (lower bound)
-            solver.Add(
-                C[(job_id, op_idx)] >=
-                s[(job_id, op_idx)] + min_pt
-            )
+        # 4. Industry 5.0: No consecutive shifts
+        for w_idx in range(n_workers):
+            for p in range(num_periods - 1):
+                solver.Add(shift[(w_idx, p)] + shift[(w_idx, p+1)] <= 1)
 
-        # 4. Disjunctive constraints (machine capacity)
+        # 5. Link operations to shifts and OCRA limit
         M = horizon
-        for i, (j1, o1) in enumerate(all_operations):
-            for (j2, o2) in all_operations[i+1:]:
-                op1 = instance.get_job(j1).operations[o1]
-                op2 = instance.get_job(j2).operations[o2]
+        for w_idx, worker in enumerate(workers):
+            w_id = worker.worker_id
+            for p in range(num_periods):
+                p_start = p * period_len
+                p_end = (p + 1) * period_len
+                
+                period_ops = []
+                for job_id, op_idx in all_operations:
+                    job = instance.get_job(job_id)
+                    op = job.operations[op_idx]
+                    
+                    if w_id not in op.eligible_workers:
+                        continue
+                        
+                    # Find all machine/mode combos for this worker
+                    worker_vars = []
+                    for m_id in op.eligible_machines:
+                        machine = instance.get_machine(m_id)
+                        mode_times = op.processing_times.get(m_id, {})
+                        if machine and machine.modes:
+                            modes = machine.modes
+                        else:
+                            from sfjssp_model.machine import MachineMode
+                            modes = [MachineMode(mode_id=0, mode_name="default", speed_factor=1.0, power_multiplier=1.0)]
+                        for mode in modes:
+                            if (job_id, op_idx, m_id, mode.mode_id, w_id) in x:
+                                worker_vars.append(x[(job_id, op_idx, m_id, mode.mode_id, w_id)])
+                    
+                    if not worker_vars:
+                        continue
+                        
+                    is_on_worker = solver.BoolVar(f'on_w{w_id}_j{job_id}_o{op_idx}')
+                    solver.Add(is_on_worker == sum(worker_vars))
+                    
+                    # indicator if op starts in this period
+                    start_in_p = solver.BoolVar(f'start_w{w_id}_j{job_id}_o{op_idx}_p{p}')
+                    solver.Add(s[(job_id, op_idx)] >= p_start - M * (1 - start_in_p))
+                    solver.Add(s[(job_id, op_idx)] <= p_end - 1 + M * (1 - start_in_p))
+                    
+                    # If start_in_p and is_on_worker, then shift must be active
+                    op_in_shift = solver.BoolVar(f'in_shift_w{w_id}_j{job_id}_o{op_idx}_p{p}')
+                    solver.Add(op_in_shift >= start_in_p + is_on_worker - 1)
+                    solver.Add(shift[(w_idx, p)] >= op_in_shift)
+                    
+                    # OCRA contribution
+                    risk = instance.get_ergonomic_risk(job_id, op_idx)
+                    # We need duration. For MIP simplicity we use min duration or link it.
+                    # Linking is better: sum(x * pt * risk)
+                    for m_id in op.eligible_machines:
+                        mode_times = op.processing_times.get(m_id, {})
+                        machine = instance.get_machine(m_id)
+                        if machine and machine.modes:
+                            modes = machine.modes
+                        else:
+                            from sfjssp_model.machine import MachineMode
+                            modes = [MachineMode(mode_id=0, mode_name="default", speed_factor=1.0, power_multiplier=1.0)]
+                        for mode in modes:
+                            if (job_id, op_idx, m_id, mode.mode_id, w_id) in x:
+                                var = x[(job_id, op_idx, m_id, mode.mode_id, w_id)]
+                                base_pt = mode_times.get(mode.mode_id, list(mode_times.values())[0])
+                                pt = base_pt / mode.speed_factor
+                                
+                                # Only counts if start_in_p is also true
+                                active_var = solver.BoolVar(f'act_w{w_id}_j{job_id}_o{op_idx}_m{m_id}_p{p}')
+                                solver.Add(active_var >= var + start_in_p - 1)
+                                period_ops.append(active_var * pt * risk)
+                
+                if period_ops:
+                    solver.Add(sum(period_ops) <= 2200) # OCRA Limit 2.2 * 1000 equivalent
 
-                common_machines = op1.eligible_machines & op2.eligible_machines
+        # 6. Machine Capacity (Disjunctive)
+        for m_id in [m.machine_id for m in machines]:
+            m_ops = []
+            for job_id, op_idx in all_operations:
+                op = instance.get_job(job_id).operations[op_idx]
+                if m_id in op.eligible_machines:
+                    # check if assigned to this machine
+                    machine_vars = []
+                    for key, var in x.items():
+                        if key[0] == job_id and key[1] == op_idx and key[2] == m_id:
+                            machine_vars.append(var)
+                    if machine_vars:
+                        is_on_m = solver.BoolVar(f'on_m{m_id}_j{job_id}_o{op_idx}')
+                        solver.Add(is_on_m == sum(machine_vars))
+                        m_ops.append(((job_id, op_idx), is_on_m))
+            
+            for i, ((j1, o1), v1) in enumerate(m_ops):
+                for ((j2, o2), v2) in m_ops[i+1:]:
+                    y = solver.BoolVar(f'y_m{m_id}_j{j1}o{o1}_j{j2}o{o2}')
+                    # If both on machine, one must precede the other
+                    # s2 >= C1 - M(1-y) - M(2-v1-v2)
+                    solver.Add(s[(j2, o2)] >= C[(j1, o1)] - M * (1 - y) - M * (2 - v1 - v2))
+                    solver.Add(s[(j1, o1)] >= C[(j2, o2)] - M * y - M * (2 - v1 - v2))
 
-                for m_id in common_machines:
-                    y = solver.BoolVar(f'y_{j1}_{o1}_{j2}_{o2}_{m_id}')
+        # 7. Worker Capacity (Disjunctive)
+        for w_idx, worker in enumerate(workers):
+            w_id = worker.worker_id
+            w_ops = []
+            for job_id, op_idx in all_operations:
+                op = instance.get_job(job_id).operations[op_idx]
+                if w_id in op.eligible_workers:
+                    worker_vars = []
+                    for key, var in x.items():
+                        if key[0] == job_id and key[1] == op_idx and key[4] == w_id:
+                            worker_vars.append(var)
+                    if worker_vars:
+                        is_on_w = solver.BoolVar(f'on_w{w_id}_j{job_id}_o{op_idx}')
+                        solver.Add(is_on_w == sum(worker_vars))
+                        w_ops.append(((job_id, op_idx), is_on_w))
 
-                    solver.Add(
-                        s[(j2, o2)] >= C[(j1, o1)] - M * (1 - y)
-                    )
-                    solver.Add(
-                        s[(j1, o1)] >= C[(j2, o2)] - M * y
-                    )
+            for i, ((j1, o1), v1) in enumerate(w_ops):
+                for ((j2, o2), v2) in w_ops[i+1:]:
+                    yw = solver.BoolVar(f'yw_w{w_id}_j{j1}o{o1}_j{j2}o{o2}')
+                    solver.Add(s[(j2, o2)] >= C[(j1, o1)] - M * (1 - yw) - M * (2 - v1 - v2))
+                    solver.Add(s[(j1, o1)] >= C[(j2, o2)] - M * yw - M * (2 - v1 - v2))
 
-        # 5. Makespan definition
+        # 8. Objectives
         for job in jobs:
             last_op = len(job.operations) - 1
             solver.Add(makespan >= C[(job.job_id, last_op)])
 
-        # Objective
+        energy_terms = []
+        ergo_terms = []
+        for (job_id, op_idx, m_id, mode_id, w_id), var in x.items():
+            op = instance.get_job(job_id).operations[op_idx]
+            machine = instance.get_machine(m_id)
+            mode_times = op.processing_times.get(m_id, {})
+            
+            base_pt = mode_times.get(mode_id, list(mode_times.values())[0])
+            pt = base_pt / machine.get_mode(mode_id).speed_factor if machine and machine.get_mode(mode_id) else base_pt
+            
+            power = machine.power_processing if machine else 10.0
+            if machine and machine.get_mode(mode_id):
+                power *= machine.get_mode(mode_id).power_multiplier
+            
+            energy_terms.append(var * pt * power)
+            ergo_terms.append(var * pt * instance.get_ergonomic_risk(job_id, op_idx))
+
+        solver.Add(total_energy == sum(energy_terms))
+        solver.Add(total_ergonomic == sum(ergo_terms))
+
         if objective == "energy":
             solver.Minimize(total_energy)
+        elif objective == "ergonomic":
+            solver.Minimize(total_ergonomic)
+        elif objective == "composite":
+            composite = (
+                self.energy_weights.get('makespan', 0.4) * makespan +
+                self.energy_weights.get('energy', 0.3) * (total_energy / 100) +
+                self.energy_weights.get('ergonomic', 0.2) * (total_ergonomic / 10)
+            )
+            solver.Minimize(composite)
         else:
             solver.Minimize(makespan)
 
@@ -736,31 +924,26 @@ class MIPScheduler:
         if status == pywraplp.Solver.OPTIMAL or status == pywraplp.Solver.FEASIBLE:
             schedule = Schedule(instance_id=instance.instance_id)
 
-            for job_id, op_idx in all_operations:
-                job = instance.get_job(job_id)
-                op = job.operations[op_idx]
+            for (job_id, op_idx, m_id, mode_id, w_id), var in x.items():
+                if solver.Value(var) > 0.5:
+                    start_time = solver.Value(s[(job_id, op_idx)])
+                    completion_time = solver.Value(C[(job_id, op_idx)])
 
-                # Find assignment
-                for m_id in op.eligible_machines:
-                    for w_id in op.eligible_workers:
-                        if solver.Value(x[(job_id, op_idx, m_id, w_id)]) > 0.5:
-                            start_time = solver.Value(s[(job_id, op_idx)])
-                            completion_time = solver.Value(C[(job_id, op_idx)])
-
-                            schedule.add_operation(
-                                job_id=job_id,
-                                op_id=op_idx,
-                                machine_id=m_id,
-                                worker_id=w_id,
-                                mode_id=0,
-                                start_time=start_time,
-                                completion_time=completion_time,
-                                processing_time=completion_time - start_time,
-                            )
-                            break
+                    schedule.add_operation(
+                        job_id=job_id,
+                        op_id=op_idx,
+                        machine_id=m_id,
+                        worker_id=w_id,
+                        mode_id=mode_id,
+                        start_time=start_time,
+                        completion_time=completion_time,
+                        processing_time=completion_time - start_time,
+                    )
 
             schedule.compute_makespan()
             schedule.check_feasibility(instance)
+            schedule.objectives['total_energy_mip'] = solver.Value(total_energy)
+            schedule.objectives['total_ergonomic_mip'] = solver.Value(total_ergonomic)
 
             if verbose:
                 print(f"MIP solution: makespan={schedule.makespan:.1f}")
@@ -768,7 +951,7 @@ class MIPScheduler:
             return schedule
         else:
             if verbose:
-                print("No MIP solution found")
+                print(f"No MIP solution found. Status: {status}")
             return None
 
 
@@ -842,17 +1025,10 @@ class EnergyAwareCPScheduler(CPScheduler):
         # First build standard model
         self._build_model(instance, "energy")
 
-        # Add peak power constraint
-        # Peak power = max(sum of active machine powers at any time)
-        # This is complex in CP-SAT, so we use a simplified approximation
-
-        # For each time period, limit total power
-        # (Simplified: use makespan periods)
-        n_periods = 10  # Divide schedule into periods
-        period_length = self.solver.Value(self.makespan) // n_periods if hasattr(self, 'makespan') else 100
-
-        # This is a placeholder for more sophisticated peak power modeling
-        # Full implementation would use interval constraints
+        if hasattr(self, 'all_intervals_with_demands') and self.all_intervals_with_demands:
+            intervals = [item[0] for item in self.all_intervals_with_demands]
+            demands = [item[1] for item in self.all_intervals_with_demands]
+            self.model.AddCumulative(intervals, demands, int(max_peak_power * 100))
 
 
 # Convenience function

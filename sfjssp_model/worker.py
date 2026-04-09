@@ -11,7 +11,7 @@ Evidence Status:
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, Set, List, Optional
+from typing import Dict, Set, List, Optional, Tuple
 from enum import Enum
 import numpy as np
 from .period_clock import PeriodClock
@@ -150,28 +150,6 @@ class Worker:
     is_absent: bool = False
     absence_end_time: Optional[float] = None
 
-    def to_dict(self) -> dict:
-        """Convert worker to dictionary for serialization"""
-        return {
-            'worker_id': self.worker_id,
-            'worker_name': self.worker_name,
-            'skills': {str(k): v.to_dict() for k, v in self.skills.items()},
-            'eligible_operations': [list(op) for op in self.eligible_operations],
-            'labor_cost_per_hour': self.labor_cost_per_hour,
-            'base_efficiency': self.base_efficiency,
-            'fatigue_rate': self.fatigue_rate,
-            'recovery_rate': self.recovery_rate,
-            'fatigue_max': self.fatigue_max,
-            'fatigue_current': self.fatigue_current,
-            'ocra_max_per_shift': self.ocra_max_per_shift,
-            'ocra_current_shift': self.ocra_current_shift,
-            'learning_coefficient': self.learning_coefficient,
-            'min_rest_fraction': self.min_rest_fraction,
-            'current_state': self.current_state.value,
-            'available_time': self.available_time,
-            'is_absent': self.is_absent,
-        }
-
     @classmethod
     def from_dict(cls, data: dict) -> 'Worker':
         """Create worker from dictionary"""
@@ -221,10 +199,10 @@ class Worker:
                 return False
         return True
 
-    def validate_assignment(self, start_time: float, duration: float, risk_rate: float) -> bool:
+    def validate_assignment(self, start_time: float, duration: float, risk_rate: float) -> Tuple[bool, float]:
         """
         Industry 5.0 validation engine. Checks all worker constraints.
-        Returns True if valid, False if any constraint is violated.
+        Returns Tuple[bool, float] as (is_valid, suggested_start_time).
         
         Logic mapping to JMSY-9 §5.2.3:
         - Availability: Worker is not absent and not currently locked out.
@@ -236,19 +214,22 @@ class Worker:
         """
         # 1. Availability check (including lockout)
         if not self.is_available(start_time):
-            return False
+            return False, max(self.available_time, self.mandatory_shift_lockout_until)
 
         # 2. Period rule (no back-to-back periods)
-        if not self.can_work_in_period(start_time, start_time + duration):
-            return False
+        p = self.period_clock.get_period(start_time)
+        for q in self.worked_periods:
+            if abs(p - q) == 1:
+                return False, self.period_clock.period_start(p + 1)
 
         # 3. Mandatory rest rule (12.5%)
-        if self.requires_mandatory_rest(duration, start_time) > 0:
-            return False
+        m_rest = self.requires_mandatory_rest(duration, start_time)
+        if m_rest > 0:
+            return False, start_time + m_rest
 
         # 4. Period boundary rule (Task cannot span two periods)
         if self.period_clock.crosses_boundary(start_time, start_time + duration):
-            return False
+            return False, self.period_clock.period_start(p + 1)
 
         # 5. Ergonomic / OCRA limit check
         current_period = self.period_clock.get_period(start_time)
@@ -259,7 +240,7 @@ class Worker:
             temp_ocra = 0.0
             
         if temp_ocra + (risk_rate * duration) > self.ocra_max_per_shift:
-            return False
+            return False, self.period_clock.period_start(current_period + 1)
 
         # 6. Consecutive work limit
         temp_work_dur = self.current_work_duration
@@ -267,9 +248,9 @@ class Worker:
             temp_work_dur = 0.0
             
         if temp_work_dur + duration > self.max_consecutive_work_time:
-            return False
+            return False, self.period_clock.period_start(current_period + 1)
 
-        return True
+        return True, start_time
 
     def get_efficiency(self) -> float:
         """
@@ -373,19 +354,22 @@ class Worker:
         self.ocra_current_shift = 0.0
         self.current_work_duration = 0.0
 
-    def record_work(self, duration: float, risk_rate: float = 0.0, current_time: float = 0.0):
-        """Record work period; resets OCRA/fatigue at period boundaries."""
-        self.current_work_duration += duration
-        self.total_work_time += duration
-        self.update_fatigue(work_duration=duration, rest_duration=0.0)
-        self.ocra_current_shift += risk_rate * duration
-
+    def record_work(self, duration: float, risk_rate: float = 0.0, current_time: float = 0.0) -> float:
+        """Record work period; resets OCRA/fatigue at period boundaries. Returns start_time used."""
         # --- FIX 6: Period-boundary OCRA reset ---
         current_period = self.period_clock.get_period(current_time)
+        actual_start_t = current_time
+        
         if current_period != self._last_worked_period and self._last_worked_period >= 0:
             # Worker crossed into a new period — reset per-period OCRA accumulator
             self.ocra_current_shift = risk_rate * duration  # only this operation's exposure
             self.current_work_duration = duration           # reset consecutive-work counter
+        else:
+            self.current_work_duration += duration
+            self.ocra_current_shift += risk_rate * duration
+
+        self.total_work_time += duration
+        self.update_fatigue(work_duration=duration, rest_duration=0.0)
 
         self._last_worked_period = current_period
         self.worked_periods.add(current_period)
@@ -396,12 +380,12 @@ class Worker:
             self.ocra_current_shift >= self.ocra_max_per_shift):
             
             # Lock the worker out for the next 8-hour period
-            # They must "go home" to recover
-            # [FIX 6] period-aligned lockout
             next_period_start = self.period_clock.period_start(current_period + 1)
             self.mandatory_shift_lockout_until = next_period_start
             self.current_work_duration = 0.0 # Reset for their next shift
             self.ocra_current_shift = 0.0    # Reset daily ergonomic risk
+            
+        return actual_start_t
 
     def record_rest(self, duration: float):
         """Record rest period"""
@@ -459,15 +443,15 @@ class Worker:
             return 0.0
         return self.total_rest_time / total_time
 
-    def is_available(self, current_time: float) -> bool:
+    def is_available(self, current_time: float, ignore_temporal: bool = False) -> bool:
         """Check if worker is available at current time"""
         # [CHANGED] Check if the worker is currently locked out due to the consecutive shift rule
-        if current_time < self.mandatory_shift_lockout_until:
+        if not ignore_temporal and current_time < self.mandatory_shift_lockout_until:
             return False
             
         return (
             not self.is_absent and
-            self.available_time <= current_time and
+            (ignore_temporal or self.available_time <= current_time) and
             self.current_state != WorkerState.ABSENT
         )
 
@@ -538,6 +522,8 @@ class Worker:
         return {
             'worker_id': self.worker_id,
             'worker_name': self.worker_name,
+            'skills': {str(k): v.to_dict() for k, v in self.skills.items()},
+            'eligible_operations': [list(op) for op in self.eligible_operations],
             'labor_cost_per_hour': self.labor_cost_per_hour,
             'base_efficiency': self.base_efficiency,
             'fatigue_rate': self.fatigue_rate,
@@ -548,10 +534,12 @@ class Worker:
             'ocra_current_shift': self.ocra_current_shift,
             'learning_coefficient': self.learning_coefficient,
             'min_rest_fraction': self.min_rest_fraction,
-            'eligible_operations': list(self.eligible_operations),
             'current_state': self.current_state.value,
             'available_time': self.available_time,
             'is_absent': self.is_absent,
+            'total_work_time': self.total_work_time,
+            'total_rest_time': self.total_rest_time,
+            'mandatory_shift_lockout_until': self.mandatory_shift_lockout_until,
         }
 
     def __hash__(self):

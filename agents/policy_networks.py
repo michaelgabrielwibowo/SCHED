@@ -35,15 +35,13 @@ except ImportError:
 
 class SFJSSPGraphEncoder:
     """
-    Graph neural network encoder for SFJSSP state representation
+    Encoder for SFJSSP state representation using connectivity-masked attention.
 
-    Encodes heterogeneous graph with:
-    - Job nodes
-    - Operation nodes
-    - Machine nodes
-    - Worker nodes
+    Encodes entities (Jobs, Operations, Machines, Workers) using global self-attention
+    that is strictly masked by the problem's physical and logical connectivity 
+    (provided via the adjacency matrix).
 
-    Evidence: Graph-based state representation confirmed from DRL scheduling literature
+    Evidence: Entity-level representation confirmed from DRL scheduling literature
 
     Args:
         job_feature_dim: Dimension of job features
@@ -149,9 +147,19 @@ class SFJSSPGraphEncoder:
         op_features: torch.Tensor,
         machine_features: torch.Tensor,
         worker_features: torch.Tensor,
+        adjacency: Optional[torch.Tensor] = None,
+        padding_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
-        Forward pass returning global state embedding with message passing.
+        Forward pass with connectivity-aware attention.
+        
+        Args:
+            job_features: (batch, n_jobs, job_feature_dim)
+            op_features: (batch, n_ops, op_feature_dim)
+            machine_features: (batch, n_machines, machine_feature_dim)
+            worker_features: (batch, n_workers, worker_feature_dim)
+            adjacency: (batch, total_nodes, total_nodes) - Mask for connectivity
+            padding_mask: (batch, total_nodes) - 1 for real, 0 for padding
         """
         # 1. Initial encoding
         embeddings = self.encode(job_features, op_features, machine_features, worker_features)
@@ -161,29 +169,58 @@ class SFJSSPGraphEncoder:
         m_emb = embeddings['machines']
         w_emb = embeddings['workers']
 
-        # 2. Cross-entity message passing via attention
+        # 2. Connectivity-aware message passing
         # Concatenate all nodes into one sequence: (batch, total_nodes, output_dim)
         combined = torch.cat([job_emb, op_emb, m_emb, w_emb], dim=1)
         
-        # Apply self-attention (all nodes attend to all other nodes)
-        attn_out, _ = self.attention(combined, combined, combined)
+        # Prepare padding mask for MultiheadAttention (True means MASKED)
+        key_padding_mask = None
+        if padding_mask is not None:
+            key_padding_mask = (padding_mask == 0) # (batch, total_nodes)
+            
+        # Prepare attention mask from adjacency (0 means MASKED, 1 means ALLOWED)
+        attn_mask = None
+        if adjacency is not None:
+            # MultiheadAttention attn_mask: (L, S) or (N*num_heads, L, S)
+            # We have (batch, total_nodes, total_nodes)
+            # We need to transform it to additive mask (-inf for masked spots)
+            # and then repeat it for num_heads to satisfy PyTorch's (B*H, L, S) requirement.
+            
+            # 1. Convert 0/1 mask to -inf/0 mask
+            additive_mask = (adjacency == 0).float() * -1e9
+            
+            # 2. Repeat for each attention head: (B, L, S) -> (B*H, L, S)
+            num_heads = self.attention.num_heads
+            attn_mask = additive_mask.repeat_interleave(num_heads, dim=0)
         
-        # 3. Informative pooling
-        # Split back to entity types
+        # Apply connectivity-masked self-attention
+        attn_out, _ = self.attention(
+            combined, combined, combined, 
+            key_padding_mask=key_padding_mask,
+            attn_mask=attn_mask
+        )
+        
+        # 3. Informative pooling (ignoring padded nodes)
         n_jobs = job_emb.size(1)
         n_ops = op_emb.size(1)
         n_machines = m_emb.size(1)
-        # n_workers = w_emb.size(1)
         
-        job_final = attn_out[:, :n_jobs, :].mean(dim=1)
-        op_final = attn_out[:, n_jobs:n_jobs+n_ops, :].mean(dim=1)
-        m_final = attn_out[:, n_jobs+n_ops:n_jobs+n_ops+n_machines, :].mean(dim=1)
-        w_final = attn_out[:, n_jobs+n_ops+n_machines:, :].mean(dim=1)
+        # Pool real nodes only (using padding_mask)
+        def masked_mean(tensor, mask):
+            # tensor: (B, N, D), mask: (B, N)
+            mask = mask.unsqueeze(-1) # (B, N, 1)
+            return (tensor * mask).sum(dim=1) / (mask.sum(dim=1) + 1e-9)
+
+        job_final = masked_mean(attn_out[:, :n_jobs, :], padding_mask[:, :n_jobs])
+        op_final = masked_mean(attn_out[:, n_jobs:n_jobs+n_ops, :], padding_mask[:, n_jobs:n_jobs+n_ops])
+        m_final = masked_mean(attn_out[:, n_jobs+n_ops:n_jobs+n_ops+n_machines, :], padding_mask[:, n_jobs+n_ops:n_jobs+n_ops+n_machines])
+        w_final = masked_mean(attn_out[:, n_jobs+n_ops+n_machines:, :], padding_mask[:, n_jobs+n_ops+n_machines:])
 
         # Concatenate entity-level summaries
         all_emb = torch.cat([job_final, op_final, m_final, w_final], dim=-1)
 
         return self.fusion(all_emb)
+
 
 
 class JobAgentNetwork(nn.Module):
@@ -496,40 +533,65 @@ class MultiAgentPPO:
     def select_actions(
         self,
         obs: Dict[str, np.ndarray],
+        env: Any,  # Need env reference for on-demand resource mask
         deterministic: bool = False,
     ) -> Dict[str, torch.Tensor]:
-        """Select actions using graph-encoded state"""
-        # Convert to tensors
+        """Select actions using graph-encoded state and hierarchical masking"""
+        # 1. Convert features to tensors
         j_feat = torch.FloatTensor(obs['job_nodes']).unsqueeze(0).to(self.device)
         o_feat = torch.FloatTensor(obs['op_nodes']).unsqueeze(0).to(self.device)
         m_feat = torch.FloatTensor(obs['machine_nodes']).unsqueeze(0).to(self.device)
         w_feat = torch.FloatTensor(obs['worker_nodes']).unsqueeze(0).to(self.device)
         
-        mask = obs.get('action_mask')
-        # Job mask: valid if any machine/worker/mode is valid for any op of this job
-        job_mask = torch.FloatTensor(mask.sum(axis=(1, 2, 3, 4)) > 0).unsqueeze(0).to(self.device)
-
-        # 1. Encode
+        job_mask = obs.get('job_mask') # (n_jobs,)
+        
+        # 2. Global encoding
+        adj_t = torch.FloatTensor(obs['adjacency']).unsqueeze(0).to(self.device)
+        pad_t = torch.FloatTensor(obs['padding_mask']).unsqueeze(0).to(self.device)
+        
         node_embs = self.encoder.encode(j_feat, o_feat, m_feat, w_feat)
-        global_state = self.encoder.forward(j_feat, o_feat, m_feat, w_feat)
+        global_state = self.encoder.forward(j_feat, o_feat, m_feat, w_feat, adjacency=adj_t, padding_mask=pad_t)
 
-        # 2. Job Selection (Pointer)
+        # 3. Job Selection (Pointer)
+        job_mask_t = torch.FloatTensor(job_mask).unsqueeze(0).to(self.device)
+        
         job_action, job_log_prob = self.job_agent.get_action(
-            global_state, node_embs['jobs'], job_mask, deterministic
+            global_state, node_embs['jobs'], job_mask_t, deterministic
         )
+        job_idx = job_action.item()
 
-        # 3. Resource Selection (Standard MLP for now, conditioned on global state)
-        # Note: In a 10/10 model, machine/worker would also be Pointer-based
+        # 4. Hierarchical Resource Selection
+        # Get resource mask for selected job on-demand from environment
+        res_mask = env.compute_resource_mask(job_idx) # (n_mac, n_wrk, n_mod)
+        
+        # Machine mask for selected job
+        mac_m = (res_mask.sum(axis=(1, 2)) > 0).astype(np.float32)
+        mac_mask_t = torch.FloatTensor(mac_m).unsqueeze(0).to(self.device)
+        
         machine_action, mode_action, mac_log_prob = self.machine_agent.get_action(
-            global_state, None, deterministic
+            global_state, mac_mask_t, deterministic
         )
+        
+        # Worker mask for selected job/machine
+        mac_idx = machine_action.item()
+        wrk_m = (res_mask[mac_idx].sum(axis=1) > 0).astype(np.float32)
+        wrk_mask_t = torch.FloatTensor(wrk_m).unsqueeze(0).to(self.device)
 
         worker_action, wrk_log_prob = self.worker_agent.get_action(
-            global_state, None, deterministic
+            global_state, wrk_mask_t, deterministic
         )
+
+        # Determine current op_idx for this job
+        job = env.instance.get_job(job_idx)
+        op_idx = 0
+        for i, op in enumerate(job.operations):
+            if not op.is_scheduled:
+                op_idx = i
+                break
 
         return {
             'job_action': job_action,
+            'op_action': torch.tensor([op_idx], device=self.device),
             'machine_action': machine_action,
             'mode_action': mode_action,
             'worker_action': worker_action,
@@ -537,7 +599,8 @@ class MultiAgentPPO:
             'machine_log_prob': mac_log_prob,
             'worker_log_prob': wrk_log_prob,
             'states': {
-                'j': j_feat, 'o': o_feat, 'm': m_feat, 'w': w_feat
+                'j': j_feat, 'o': o_feat, 'm': m_feat, 'w': w_feat,
+                'adj': adj_t, 'pad': pad_t
             }
         }
 
@@ -570,12 +633,15 @@ class MultiAgentPPO:
         o_feats = torch.cat([t['states']['o'] for t in self.buffer]).to(self.device)
         m_feats = torch.cat([t['states']['m'] for t in self.buffer]).to(self.device)
         w_feats = torch.cat([t['states']['w'] for t in self.buffer]).to(self.device)
+        adj_feats = torch.cat([t['states']['adj'] for t in self.buffer]).to(self.device)
+        pad_feats = torch.cat([t['states']['pad'] for t in self.buffer]).to(self.device)
         
         rewards = torch.cat([t['rewards'] for t in self.buffer]).to(self.device)
         dones = torch.cat([t['dones'] for t in self.buffer]).to(self.device)
         
         job_actions = torch.stack([t['actions']['job_action'] for t in self.buffer]).to(self.device).squeeze()
         mac_actions = torch.stack([t['actions']['machine_action'] for t in self.buffer]).to(self.device).squeeze()
+        mode_actions = torch.stack([t['actions']['mode_action'] for t in self.buffer]).to(self.device).squeeze()
         wrk_actions = torch.stack([t['actions']['worker_action'] for t in self.buffer]).to(self.device).squeeze()
         
         old_job_log_probs = torch.stack([t['actions']['job_log_prob'] for t in self.buffer]).to(self.device).detach().squeeze()
@@ -585,7 +651,7 @@ class MultiAgentPPO:
         # 2. Compute returns and advantages
         with torch.no_grad():
             node_embs = self.encoder.encode(j_feats, o_feats, m_feats, w_feats)
-            global_state = self.encoder.forward(j_feats, o_feats, m_feats, w_feats)
+            global_state = self.encoder.forward(j_feats, o_feats, m_feats, w_feats, adjacency=adj_feats, padding_mask=pad_feats)
             
             _, v_job = self.job_agent(global_state, node_embs['jobs'])
             _, _, v_mac = self.machine_agent(global_state)
@@ -609,7 +675,7 @@ class MultiAgentPPO:
         for _ in range(n_epochs):
             # Encode for each epoch (shared encoder)
             node_embs = self.encoder.encode(j_feats, o_feats, m_feats, w_feats)
-            global_state = self.encoder.forward(j_feats, o_feats, m_feats, w_feats)
+            global_state = self.encoder.forward(j_feats, o_feats, m_feats, w_feats, adjacency=adj_feats, padding_mask=pad_feats)
 
             # Job Agent Update
             logits_j, val_j = self.job_agent(global_state, node_embs['jobs'])
@@ -621,9 +687,12 @@ class MultiAgentPPO:
             j_loss = -torch.min(surr1_j, surr2_j).mean() + 0.5 * F.mse_loss(val_j.squeeze(), returns)
             
             # Machine Agent Update
-            logits_m, _, val_m = self.machine_agent(global_state)
+            # [FIX] Joint log prob of machine AND mode selection must be used
+            logits_m, logits_mode, val_m = self.machine_agent(global_state)
             dist_m = torch.distributions.Categorical(F.softmax(logits_m, dim=-1))
-            new_log_probs_m = dist_m.log_prob(mac_actions)
+            dist_mode = torch.distributions.Categorical(F.softmax(logits_mode, dim=-1))
+            
+            new_log_probs_m = dist_m.log_prob(mac_actions) + dist_mode.log_prob(mode_actions)
             ratio_m = torch.exp(new_log_probs_m - old_mac_log_probs)
             surr1_m = ratio_m * mac_adv
             surr2_m = torch.clamp(ratio_m, 1-self.clip_epsilon, 1+self.clip_epsilon) * mac_adv

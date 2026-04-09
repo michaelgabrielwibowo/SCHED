@@ -357,16 +357,14 @@ class TestSFJSSPInstance:
     def test_to_dict(self):
         """Test instance serialization"""
         instance = SFJSSPInstance(
-            instance_id="TEST_001",
-            n_jobs=10,
-            n_machines=5,
-            n_workers=5,
+            instance_id="TEST_001"
         )
+        instance.add_job(Job(0))
 
         data = instance.to_dict()
 
         assert data['instance_id'] == "TEST_001"
-        assert data['n_jobs'] == 0
+        assert len(data['jobs']) == 1
         assert 'label' in data
 
 

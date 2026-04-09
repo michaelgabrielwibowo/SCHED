@@ -124,6 +124,21 @@ class Machine:
     breakdown_time: Optional[float] = None
     repair_time: Optional[float] = None
 
+    # Tool wear state (INDUSTRY 5.0 Resilience)
+    tool_health: float = 1.0  # 1.0 = new, 0.0 = broken
+    
+    def degrade_tool(self, duration: float, mode_id: Optional[int] = None):
+        """
+        Apply tool wear based on duration and mode.
+        """
+        wear_rate = 0.0001 # Base wear
+        if mode_id is not None and self.modes:
+            mode = next((m for m in self.modes if m.mode_id == mode_id), None)
+            if mode:
+                wear_rate *= mode.tool_wear_rate
+        
+        self.tool_health = max(0.0, self.tool_health - (wear_rate * duration))
+
     def to_dict(self) -> dict:
         """Convert machine to dictionary for serialization"""
         return {
@@ -164,14 +179,17 @@ class Machine:
         m.is_broken = data.get('is_broken', False)
         return m
 
-    def validate_gap(self, start_time: float, setup_duration: float) -> bool:
+    def validate_gap(self, start_time: float, setup_duration: float) -> Tuple[bool, float]:
         """
         Validate if the machine has enough gap for an incoming operation.
         Must accommodate current available_time plus setup duration.
         """
         if self.is_broken:
-            return False
-        return (self.available_time + setup_duration) <= start_time
+            return False, float('inf')
+        earliest_start = self.available_time + setup_duration
+        if earliest_start <= start_time:
+            return True, start_time
+        return False, earliest_start
 
     def get_power(self, state: MachineState, mode_id: Optional[int] = None) -> float:
         """
@@ -229,9 +247,9 @@ class Machine:
         energy['total'] = sum(energy.values()) # min ET + EM + EC
         return energy
 
-    def is_available(self, current_time: float) -> bool:
+    def is_available(self, current_time: float, ignore_temporal: bool = False) -> bool:
         """Check if machine is available at current time"""
-        return not self.is_broken and self.available_time <= current_time
+        return not self.is_broken and (ignore_temporal or self.available_time <= current_time)
 
     def schedule_breakdown(self, breakdown_time: float, repair_duration: float):
         """Schedule a machine breakdown"""

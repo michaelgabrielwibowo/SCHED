@@ -499,8 +499,30 @@ class GreedyScheduler:
             )
 
             # Update resource availability
+            last_machine_free = machine_available[machine_id]
             machine_available[machine_id] = completion_time
             worker_available[worker_id] = completion_time
+
+            # [FIX] Record idle and setup time for machine
+            if start_time > last_machine_free:
+                # If there's a gap, some of it is setup, the rest is idle
+                # In this simple model, we assume setup happens first if needed
+                idle_gap = start_time - last_machine_free
+                setup_needed = machine.setup_time
+                actual_setup = min(idle_gap, setup_needed)
+                actual_idle = idle_gap - actual_setup
+                
+                machine.total_setup_time += actual_setup
+                machine.total_idle_time += actual_idle
+
+            # [FIX] Record transport time for machine (if job moved)
+            if op_id > 0:
+                prev_op_sched = schedule.get_operation(job_id, op_id - 1)
+                if prev_op_sched and prev_op_sched.machine_id != machine_id:
+                    # In SFJSSP, transport is often modeled as part of the machine's 
+                    # auxiliary energy or a separate state. We record it here.
+                    transport_time = getattr(op, "transport_time", 5.0) # Default if not specified
+                    machine.total_transport_time += transport_time
 
             if machine.total_processing_time == 0.0:
                 machine.startup_count += 1
@@ -590,23 +612,19 @@ class GreedyScheduler:
                         found = False
                         for _ in range(max_tries):
                             # 1. Machine gap check (centralized)
-                            if not machine.validate_gap(temp_start, machine.setup_time):
-                                temp_start = machine.available_time + machine.setup_time
+                            m_valid, m_next = machine.validate_gap(temp_start, machine.setup_time)
+                            if not m_valid:
+                                temp_start = max(temp_start, m_next)
                                 continue
 
                             # 2. Worker check (centralized Industry 5.0 engine)
-                            if not worker.validate_assignment(temp_start, est_proc, risk_rate):
-                                # If invalid, jump to next period
-                                temp_start = clock.period_start(clock.get_period(temp_start) + 1)
-                                # Recalculate rest if needed
-                                m_rest = worker.requires_mandatory_rest(est_proc, temp_start)
-                                if m_rest > 0:
-                                    temp_start += m_rest
+                            w_valid, w_next = worker.validate_assignment(temp_start, est_proc, risk_rate)
+                            if not w_valid:
+                                temp_start = max(temp_start, w_next)
                                 continue
-                            
+
                             found = True
-                            break
-                        
+                            break                        
                         if not found:
                             continue
 
