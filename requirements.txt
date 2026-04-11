@@ -6,12 +6,12 @@ gymnasium>=0.28.0
 matplotlib>=3.7.0
 pandas>=2.0.0
 
-# Deep Reinforcement Learning
-torch>=2.0.0
-
-# Optimization Solvers
-ortools>=9.8.0
-
 # Development and Testing
 pytest>=7.0.0
 pytest-cov>=4.0.0
+
+# Optional: Deep Reinforcement Learning
+# pip install torch>=2.0.0
+
+# Optional: Exact Solvers
+# pip install ortools>=9.8.0

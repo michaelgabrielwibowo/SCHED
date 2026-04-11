@@ -9,6 +9,7 @@ Evidence Status:
 Requires: ortools >= 9.8.0
 """
 
+import math
 from typing import Dict, List, Tuple, Optional, Any
 import numpy as np
 
@@ -19,6 +20,18 @@ try:
     ORTOOLS_AVAILABLE = True
 except ImportError:
     ORTOOLS_AVAILABLE = False
+
+
+ORTOOLS_IMPORT_ERROR = (
+    "ortools is required for exact solver support: "
+    "pip install ortools>=9.8.0"
+)
+
+
+def _require_ortools() -> None:
+    """Raise a clear error when exact solvers are used without OR-Tools."""
+    if not ORTOOLS_AVAILABLE:
+        raise ImportError(ORTOOLS_IMPORT_ERROR)
 
 
 class CPScheduler:
@@ -46,10 +59,7 @@ class CPScheduler:
         num_workers: int = 4,
         energy_weights: Optional[Dict[str, float]] = None,
     ):
-        if not ORTOOLS_AVAILABLE:
-            self.available = False
-            return
-
+        _require_ortools()
         self.available = True
         self.time_limit = time_limit
         self.num_workers = num_workers
@@ -83,11 +93,10 @@ class CPScheduler:
         Returns:
             Schedule object or None if infeasible/timeout
         """
-        if not ORTOOLS_AVAILABLE:
-            print("OR-Tools not available. Install with: pip install ortools")
-            return None
-
-        from sfjssp_model.schedule import Schedule
+        try:
+            from ..sfjssp_model.schedule import Schedule
+        except ImportError:  # pragma: no cover - supports repo-root imports
+            from sfjssp_model.schedule import Schedule
 
         # Create CP model
         self.model = cp_model.CpModel()
@@ -345,7 +354,11 @@ class CPScheduler:
                         # Op overlaps with period if start < p_end AND end > p_start
                         # Simplified: start is in period
                         start_in_p = model.NewBoolVar(f'j{job_id}_o{op_idx}_w{w_id}_p{p}')
-                        model.AddLinearConstraint([self.start[(job_id, op_idx)]], p_start, p_end-1).OnlyEnforceIf([is_assigned, start_in_p])
+                        model.AddLinearConstraint(
+                            self.start[(job_id, op_idx)],
+                            p_start,
+                            p_end - 1,
+                        ).OnlyEnforceIf([is_assigned, start_in_p])
                         model.Add(start_in_p == 0).OnlyEnforceIf(is_assigned.Not())
                         overlaps.append(start_in_p)
                 
@@ -376,7 +389,11 @@ class CPScheduler:
                         risk_rate = int(instance.get_ergonomic_risk(job_id, op_idx) * ERGO_SCALE)
                         
                         start_in_p = model.NewBoolVar(f'ergo_j{job_id}_o{op_idx}_w{w_id}_p{p}')
-                        model.AddLinearConstraint([self.start[(job_id, op_idx)]], p_start, p_end-1).OnlyEnforceIf([is_assigned, start_in_p])
+                        model.AddLinearConstraint(
+                            self.start[(job_id, op_idx)],
+                            p_start,
+                            p_end - 1,
+                        ).OnlyEnforceIf([is_assigned, start_in_p])
                         model.Add(start_in_p == 0).OnlyEnforceIf(is_assigned.Not())
                         
                         # Boundary constraint: Tasks starting in a period must finish in the same period
@@ -421,15 +438,19 @@ class CPScheduler:
             op = job.operations[op_idx]
 
             worker_vars = [
-                self.assign_worker.get((job_id, op_idx, w_id), 0)
+                self.assign_worker[(job_id, op_idx, w_id)]
                 for w_id in op.eligible_workers
+                if (job_id, op_idx, w_id) in self.assign_worker
             ]
-            worker_vars = [v for v in worker_vars if v != 0]
             if worker_vars:
                 model.Add(sum(worker_vars) == 1)
 
         # 3. Precedence constraints (within job)
         for job in jobs:
+            if job.operations:
+                model.Add(
+                    self.start[(job.job_id, 0)] >= int(math.ceil(job.arrival_time))
+                )
             for op_idx in range(1, len(job.operations)):
                 prev_op_idx = op_idx - 1
                 model.Add(
@@ -495,7 +516,10 @@ class CPScheduler:
 
     def _extract_solution(self, instance: Any, objective: str) -> Any:
         """Extract solution from solver"""
-        from sfjssp_model.schedule import Schedule
+        try:
+            from ..sfjssp_model.schedule import Schedule
+        except ImportError:  # pragma: no cover - supports repo-root imports
+            from sfjssp_model.schedule import Schedule
 
         schedule = Schedule(instance_id=instance.instance_id)
 
@@ -582,10 +606,7 @@ class MIPScheduler:
         solver_name: str = "SCIP",
         energy_weights: Optional[Dict[str, float]] = None,
     ):
-        if not ORTOOLS_AVAILABLE:
-            self.available = False
-            return
-
+        _require_ortools()
         self.available = True
         self.time_limit = time_limit
         self.solver_name = solver_name
@@ -611,9 +632,11 @@ class MIPScheduler:
         - OCRA ergonomic limits
         - Energy optimization
         """
-        if not ORTOOLS_AVAILABLE:
-            print("OR-Tools not available.")
-            return None
+        raise NotImplementedError(
+            "MIP exact solving is currently quarantined. "
+            "The formulation is not yet validated against the current "
+            "schedule feasibility semantics; use CPScheduler instead."
+        )
 
         from sfjssp_model.schedule import Schedule
 
@@ -723,6 +746,8 @@ class MIPScheduler:
 
         # 2. Precedence (within job)
         for job in jobs:
+            if job.operations:
+                solver.Add(s[(job.job_id, 0)] >= job.arrival_time)
             for op_idx in range(1, len(job.operations)):
                 solver.Add(s[(job.job_id, op_idx)] >= C[(job.job_id, op_idx - 1)])
 
@@ -892,7 +917,7 @@ class MIPScheduler:
             mode_times = op.processing_times.get(m_id, {})
             
             base_pt = mode_times.get(mode_id, list(mode_times.values())[0])
-            pt = base_pt / machine.get_mode(mode_id).speed_factor if machine and machine.get_mode(mode_id) else base_pt
+            pt = base_pt
             
             power = machine.power_processing if machine else 10.0
             if machine and machine.get_mode(mode_id):
@@ -925,9 +950,9 @@ class MIPScheduler:
             schedule = Schedule(instance_id=instance.instance_id)
 
             for (job_id, op_idx, m_id, mode_id, w_id), var in x.items():
-                if solver.Value(var) > 0.5:
-                    start_time = solver.Value(s[(job_id, op_idx)])
-                    completion_time = solver.Value(C[(job_id, op_idx)])
+                if var.solution_value() > 0.5:
+                    start_time = s[(job_id, op_idx)].solution_value()
+                    completion_time = C[(job_id, op_idx)].solution_value()
 
                     schedule.add_operation(
                         job_id=job_id,
@@ -942,8 +967,8 @@ class MIPScheduler:
 
             schedule.compute_makespan()
             schedule.check_feasibility(instance)
-            schedule.objectives['total_energy_mip'] = solver.Value(total_energy)
-            schedule.objectives['total_ergonomic_mip'] = solver.Value(total_ergonomic)
+            schedule.objectives['total_energy_mip'] = total_energy.solution_value()
+            schedule.objectives['total_ergonomic_mip'] = total_ergonomic.solution_value()
 
             if verbose:
                 print(f"MIP solution: makespan={schedule.makespan:.1f}")

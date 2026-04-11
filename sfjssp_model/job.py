@@ -45,8 +45,8 @@ class Operation:
     assigned_mode: int = -1
 
     # --- ADDED: Task-related period constraints (PDF Section 5.2.3) ---
-    period_start: float = 0.0
-    period_end: float = 0.0
+    period_start: Optional[float] = None
+    period_end: Optional[float] = None
 
     # Status tracking
     is_completed: bool = False
@@ -101,6 +101,8 @@ class Operation:
 
         if mode_id not in self.processing_times[machine_id]:
             raise ValueError(f"Mode {mode_id} not available on machine {machine_id}")
+        if worker_efficiency <= 0:
+            raise ValueError("Worker efficiency must be positive")
 
         base_time = self.processing_times[machine_id][mode_id]
 
@@ -125,6 +127,8 @@ class Operation:
             'assigned_machine': self.assigned_machine,
             'assigned_worker': self.assigned_worker,
             'assigned_mode': self.assigned_mode,
+            'period_start': self.period_start,
+            'period_end': self.period_end,
             'is_completed': self.is_completed,
             'is_scheduled': self.is_scheduled,
         }
@@ -148,6 +152,8 @@ class Operation:
         op.assigned_machine = data.get('assigned_machine')
         op.assigned_worker = data.get('assigned_worker')
         op.assigned_mode = data.get('assigned_mode')
+        op.period_start = data.get('period_start')
+        op.period_end = data.get('period_end')
         op.is_completed = data.get('is_completed', False)
         op.is_scheduled = data.get('is_scheduled', False)
         return op
@@ -167,6 +173,8 @@ class Operation:
         self.assigned_machine = -1
         self.assigned_worker = -1
         self.assigned_mode = -1
+        self.period_start = None
+        self.period_end = None
         self.is_completed = False
         self.is_scheduled = False
 

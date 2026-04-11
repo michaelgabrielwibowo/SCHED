@@ -6,10 +6,7 @@ Creates comparison plots from solver comparison results.
 """
 
 import os
-import sys
 import json
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def load_results(filepath: str) -> list:

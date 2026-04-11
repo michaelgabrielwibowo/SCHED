@@ -20,7 +20,7 @@ This is a research implementation based on synthesis.
 __version__ = "0.1.0"
 __author__ = "SFJSSP Research Team"
 
-from sfjssp_model import (
+from .sfjssp_model import (
     Job,
     Operation,
     Machine,
@@ -30,11 +30,11 @@ from sfjssp_model import (
     SFJSSPInstance,
 )
 
-from environment import SFJSSPEnv
+from .environment import SFJSSPEnv
 
-from baseline_solver import GreedyScheduler, spt_rule, fifo_rule, edt_rule
+from .baseline_solver import GreedyScheduler, spt_rule, fifo_rule, edt_rule
 
-from utils import BenchmarkGenerator, GeneratorConfig
+from .utils import BenchmarkGenerator, GeneratorConfig
 
 __all__ = [
     # Core model

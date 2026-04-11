@@ -53,11 +53,16 @@ def generate_large_benchmarks():
         
         output_path = f"benchmarks/large/{instance_id}.json"
         
-        # We use convert_dict_keys_to_str to ensure all int keys in dicts are strings,
-        # sets are lists, and dataclasses are dicts.
-        data = convert_dict_keys_to_str(instance)
-        
-        with open(output_path, "w") as f:
+        data = instance.to_dict()
+        data["generator_config"] = {
+            "seed": config.seed,
+            "size": config.size.value,
+            "n_jobs": config.n_jobs,
+            "n_machines": config.n_machines,
+            "n_workers": config.n_workers,
+        }
+
+        with open(output_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
             
         print(f"Saved {instance_id} to {output_path}")

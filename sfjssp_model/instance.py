@@ -23,7 +23,7 @@ class InstanceLabel(Enum):
     """
     Dataset labeling system for transparency
 
-    Evidence: Labeling protocol from DATASET_INVENTORY_SFJSSP.md [PROPOSED]
+    Evidence: Proposed labeling protocol for synthetic and calibrated instances
     """
     REAL_INDUSTRIAL = "real_industrial"
     CALIBRATED_SYNTHETIC = "calibrated_synthetic"
@@ -181,6 +181,7 @@ class SFJSSPInstance:
 
     def add_worker(self, worker: Worker):
         """Add a worker to the instance"""
+        worker.period_clock = self.period_clock
         self.workers.append(worker)
         self._update_statistics()
 
@@ -216,11 +217,18 @@ class SFJSSPInstance:
 
     def get_eligible_workers(self, job_id: int, op_id: int) -> List[int]:
         """Get list of worker IDs eligible for an operation"""
-        eligible = []
-        for worker in self.workers:
-            if (job_id, op_id) in worker.eligible_operations:
-                eligible.append(worker.worker_id)
-        return eligible
+        op = self.get_operation(job_id, op_id)
+        if op is None:
+            return []
+
+        eligible = [
+            worker.worker_id
+            for worker in self.workers
+            if (job_id, op_id) in worker.eligible_operations
+        ]
+        if eligible:
+            return eligible
+        return list(op.eligible_workers)
 
     def get_eligible_machines(self, job_id: int, op_id: int) -> List[int]:
         """Get list of machine IDs eligible for an operation"""
@@ -403,6 +411,7 @@ class SFJSSPInstance:
             'calibration_sources': self.calibration_sources,
             'known_limitations': self.known_limitations,
             'carbon_emission_factor': self.carbon_emission_factor,
+            'electricity_prices': self.electricity_prices,
             'default_electricity_price': self.default_electricity_price,
             'auxiliary_power_total': self.auxiliary_power_total,
             'ergonomic_risks': {f"{k[0]}_{k[1]}": v for k, v in self.ergonomic_risk_map.items()},
@@ -411,6 +420,7 @@ class SFJSSPInstance:
                 'breakdown_rate': self.dynamic_params.breakdown_rate,
                 'repair_rate': self.dynamic_params.repair_rate,
                 'absence_probability': self.dynamic_params.absence_probability,
+                'rush_order_probability': self.dynamic_params.rush_order_probability,
             } if self.dynamic_params else None,
         }
 
@@ -431,6 +441,7 @@ class SFJSSPInstance:
                 breakdown_rate=data['dynamic_params'].get('breakdown_rate', 0.001),
                 repair_rate=data['dynamic_params'].get('repair_rate', 0.1),
                 absence_probability=data['dynamic_params'].get('absence_probability', 0.05),
+                rush_order_probability=data['dynamic_params'].get('rush_order_probability', 0.1),
             )
 
         instance = cls(
@@ -445,6 +456,7 @@ class SFJSSPInstance:
             calibration_sources=data.get('calibration_sources', []),
             known_limitations=data.get('known_limitations', []),
             carbon_emission_factor=data.get('carbon_emission_factor', 0.5),
+            electricity_prices={int(k): v for k, v in data.get('electricity_prices', {}).items()},
             default_electricity_price=data.get('default_electricity_price', 0.10),
             auxiliary_power_total=data.get('auxiliary_power_total', 50.0),
             dynamic_params=dynamic_params,
@@ -454,11 +466,20 @@ class SFJSSPInstance:
         instance.machines = [Machine.from_dict(m_data) for m_data in data.get('machines', [])]
         instance.workers = [Worker.from_dict(w_data) for w_data in data.get('workers', [])]
         instance.jobs = [Job.from_dict(j_data) for j_data in data.get('jobs', [])]
+        for worker in instance.workers:
+            worker.period_clock = instance.period_clock
         
         # Risk map reconstruction
-        raw_risks = data.get('ergonomic_risks', {})
+        raw_risks = data.get('ergonomic_risks')
+        if raw_risks is None:
+            raw_risks = data.get('ergonomic_risk_map', {})
         for k_str, val in raw_risks.items():
-            jid, oid = map(int, k_str.split('_'))
+            key_text = k_str.strip()
+            if key_text.startswith("(") and key_text.endswith(")"):
+                jid_text, oid_text = [part.strip() for part in key_text[1:-1].split(",")]
+            else:
+                jid_text, oid_text = key_text.split("_")
+            jid, oid = int(jid_text), int(oid_text)
             instance.ergonomic_risk_map[(jid, oid)] = val
             
         instance._update_statistics()

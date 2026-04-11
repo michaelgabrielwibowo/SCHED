@@ -6,9 +6,8 @@ Evidence Status:
 - Application to SFJSSP: PROPOSED
 """
 
+import json
 import os
-import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from typing import Dict, List, Optional
 import numpy as np
@@ -132,7 +131,10 @@ class TrainingPipeline:
 
     def _initialize_agents(self, n_machines: int = 5, n_workers: int = 5):
         """Initialize DRL agents"""
-        from agents.policy_networks import MultiAgentPPO
+        try:
+            from ..agents.policy_networks import MultiAgentPPO
+        except ImportError:  # pragma: no cover - supports repo-root imports
+            from agents.policy_networks import MultiAgentPPO
 
         self.agent = MultiAgentPPO(
             embed_dim=self.config.state_dim,
@@ -176,12 +178,46 @@ class TrainingPipeline:
 
             for step in range(self.config.max_steps_per_episode):
                 if not TORCH_AVAILABLE:
-                    # Random actions (fallback when PyTorch is not available)
-                    action = env.action_space.sample()
-                    next_obs, reward, terminated, truncated, info = env.step(action)
+                    action = self._sample_valid_action(env)
+                    if action is None:
+                        env._advance_time()
+                        next_obs = env._get_observation()
+                        reward = -0.1
+                        terminated = len(env.completed_jobs) == env.instance.n_jobs
+                        truncated = False
+                        info = {
+                            'current_time': env.current_time,
+                            'completed_jobs': len(env.completed_jobs),
+                            'makespan': env.schedule.makespan,
+                        }
+                    else:
+                        next_obs, reward, terminated, truncated, info = env.step(action)
                 else:
+                    if float(np.sum(obs.get('job_mask', 0.0))) <= 0.0:
+                        env._advance_time()
+                        next_obs = env._get_observation()
+                        reward = -0.1
+                        terminated = len(env.completed_jobs) == env.instance.n_jobs
+                        truncated = False
+                        info = {
+                            'current_time': env.current_time,
+                            'completed_jobs': len(env.completed_jobs),
+                            'makespan': env.schedule.makespan,
+                        }
+                        episode_reward += reward
+                        if 'makespan' in info:
+                            episode_makespan = info['makespan']
+                        obs = next_obs
+                        if terminated or truncated:
+                            break
+                        continue
+
                     # [FIX] Direct pass of observation to graph-enabled agent
-                    action_dict = self.agent.select_actions(obs, deterministic=False)
+                    action_dict = self.agent.select_actions(
+                        obs,
+                        env,
+                        deterministic=False,
+                    )
 
                     # [FIX] Use op_action selected by hierarchical mask in agent
                     action = {
@@ -236,6 +272,29 @@ class TrainingPipeline:
         return {
             'rewards': self.episode_rewards,
             'makespans': self.episode_makespans,
+        }
+
+    def _sample_valid_action(self, env) -> Optional[Dict[str, int]]:
+        """Sample a valid action from the environment masks for non-torch fallback."""
+        job_mask = env._compute_job_mask()
+        valid_jobs = np.flatnonzero(job_mask > 0)
+        if len(valid_jobs) == 0:
+            return None
+
+        job_idx = int(np.random.choice(valid_jobs))
+        resource_mask = env.compute_resource_mask(job_idx)
+        valid_assignments = np.argwhere(resource_mask > 0)
+        if len(valid_assignments) == 0:
+            return None
+
+        machine_idx, worker_idx, mode_idx = valid_assignments[
+            np.random.randint(len(valid_assignments))
+        ]
+        return {
+            'job_idx': job_idx,
+            'machine_idx': int(machine_idx),
+            'worker_idx': int(worker_idx),
+            'mode_idx': int(mode_idx),
         }
 
     def save(self, path: str):
@@ -293,25 +352,37 @@ def run_training(
         output_dir: Output directory for checkpoints
         n_episodes: Number of training episodes
     """
-    from sfjssp_model.instance import SFJSSPInstance
-    from environment.sfjssp_env import SFJSSPEnv
+    try:
+        from ..sfjssp_model.instance import SFJSSPInstance
+        from ..environment.sfjssp_env import SFJSSPEnv
+        from ..experiments.generate_benchmarks import (
+            BenchmarkGenerator,
+            GeneratorConfig,
+            InstanceSize,
+        )
+    except ImportError:  # pragma: no cover - supports repo-root imports
+        from sfjssp_model.instance import SFJSSPInstance
+        from environment.sfjssp_env import SFJSSPEnv
+        from experiments.generate_benchmarks import (
+            BenchmarkGenerator,
+            GeneratorConfig,
+            InstanceSize,
+        )
 
     # Load or create instance
     if instance_path and os.path.exists(instance_path):
         print(f"Loading instance from {instance_path}")
         with open(instance_path, 'r') as f:
             data = json.load(f)
-        from sfjssp_model.instance import SFJSSPInstance
         instance = SFJSSPInstance.from_dict(data)
     else:
         print("Creating new instance...")
-        from experiments.generate_benchmarks import BenchmarkGenerator, GeneratorConfig, InstanceSize
         config = GeneratorConfig(size=InstanceSize.SMALL, seed=42)
         generator = BenchmarkGenerator(config)
         instance = generator.generate()
 
     # Create environment
-    env = SFJSSPEnv(instance)
+    env = SFJSSPEnv(instance, use_graph_state=TORCH_AVAILABLE)
 
     # Create training config
     config = TrainingConfig(
@@ -332,6 +403,13 @@ def run_training(
     print(f"\nTraining complete!")
     print(f"Final avg reward: {np.mean(history['rewards'][-10:]):.2f}")
     print(f"Final avg makespan: {np.mean(history['makespans'][-10:]):.1f}")
+
+    return {
+        'episodes_trained': len(history['rewards']),
+        'best_makespan': min(history['makespans']) if history['makespans'] else None,
+        'history': history,
+        'output_dir': output_dir,
+    }
 
 
 if __name__ == "__main__":

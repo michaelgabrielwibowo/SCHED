@@ -8,10 +8,18 @@ Evidence Status:
 - Application to SFJSSP: PROPOSED synthesis
 """
 
-from .nsga3 import NSGA3, Individual, Population
+from .nsga3 import (
+    NSGA3,
+    Individual,
+    Population,
+    create_sfjssp_genome,
+    evaluate_sfjssp_genome,
+)
 
 __all__ = [
     'NSGA3',
     'Individual',
     'Population',
+    'create_sfjssp_genome',
+    'evaluate_sfjssp_genome',
 ]

@@ -3,7 +3,7 @@ Schedule data structure for SFJSSP
 
 Evidence Status:
 - Schedule representation: PROPOSED synthesis
-- Objective evaluation: Based on MATHEMATICAL_MODEL_SFJSSP.md [PROPOSED]
+- Objective evaluation: Proposed multi-objective synthesis
 - Constraint checking: Based on literature constraints [CONFIRMED components]
 """
 
@@ -137,8 +137,13 @@ class Schedule:
     ergonomic_metrics: Dict[str, float] = field(default_factory=dict)
     fatigue_metrics: Dict[str, float] = field(default_factory=dict)
 
-    # Resilience metrics (for dynamic scenarios)
-    resilience_metrics: Dict[str, float] = field(default_factory=dict)
+    # Robustness metrics (workload balance and schedule slack)
+    robustness_metrics: Dict[str, float] = field(default_factory=dict)
+
+    @staticmethod
+    def _minutes_to_hours(duration: float) -> float:
+        """Convert schedule durations stored in minutes to hours."""
+        return duration / 60.0
 
     def add_operation(
         self,
@@ -259,19 +264,21 @@ class Schedule:
                     None
                 )
 
-            # Processing energy
-            power = machine.power_processing
-            if mode:
-                power *= mode.power_multiplier
-            energy['processing'] += power * sched_op.processing_time
+            # Processing energy (kWh)
+            energy['processing'] += machine.get_processing_energy(
+                sched_op.processing_time,
+                sched_op.mode_id,
+            )
 
-            # Setup energy
+            # Setup energy (kWh)
             if sched_op.setup_time > 0:
-                energy['setup'] += machine.power_setup * sched_op.setup_time
+                energy['setup'] += machine.get_setup_energy(sched_op.setup_time)
 
-            # [FIX] Transport energy calculation
+            # Transport energy (kWh)
             if sched_op.transport_time > 0:
-                energy['transport'] += machine.power_transport * sched_op.transport_time
+                energy['transport'] += (
+                    machine.power_transport * self._minutes_to_hours(sched_op.transport_time)
+                )
 
         # Idle energy
         for machine_id, machine_sched in self.machine_schedules.items():
@@ -281,14 +288,14 @@ class Schedule:
 
             idle_periods = machine_sched.get_idle_periods(self.makespan)
             for start, end in idle_periods:
-                energy['idle'] += machine.power_idle * (end - start)
+                energy['idle'] += machine.get_idle_energy(end - start)
 
         # Auxiliary energy
         aux_power = instance.get_auxiliary_power_per_machine()
         for machine_id in self.machine_schedules:
             machine = instance.get_machine(machine_id)
             if machine:
-                energy['auxiliary'] += aux_power * self.makespan
+                energy['auxiliary'] += aux_power * self._minutes_to_hours(self.makespan)
 
         # Startup energy: sum of startup energy for all machines used
         for machine_id in self.machine_schedules:
@@ -296,7 +303,7 @@ class Schedule:
             if machine:
                 energy['startup'] += machine.startup_energy
 
-        energy['total'] = sum(energy.values())
+        energy['total'] = sum(value for key, value in energy.items() if key != 'total')
 
         self.energy_breakdown = energy
         return energy
@@ -377,7 +384,7 @@ class Schedule:
             total_work_time = sum(
                 op.processing_time for op in worker_sched.operations
             )
-            total_cost += worker.labor_cost_per_hour * total_work_time
+            total_cost += worker.get_labor_cost(total_work_time)
 
         return total_cost
 
@@ -440,17 +447,15 @@ class Schedule:
             'n_tardy_jobs': sum(1 for t in tardiness_values if t > 0)
         }
 
-    def compute_resilience_metrics(
+    def compute_robustness_metrics(
         self,
         instance: SFJSSPInstance
     ) -> Dict[str, float]:
         """
-        Compute resilience metrics
-
-        Evidence: L1.2 resilience metrics for dynamic scenarios [PROPOSED]
+        Compute schedule robustness proxy metrics.
 
         Returns:
-            Dict with resilience metrics
+            Dict with robustness metrics
         """
         # Machine workload variance
         machine_workloads = []
@@ -482,13 +487,20 @@ class Schedule:
                     
         avg_slack = total_slack / slack_instances if slack_instances > 0 else 0.0
 
-        self.resilience_metrics = {
+        self.robustness_metrics = {
             'machine_workload_variance': machine_variance,
             'worker_workload_variance': worker_variance,
             'average_slack_time': avg_slack
         }
-        
-        return self.resilience_metrics
+
+        return self.robustness_metrics
+
+    def compute_resilience_metrics(
+        self,
+        instance: SFJSSPInstance
+    ) -> Dict[str, float]:
+        """Backward-compatible alias for schedule robustness metrics."""
+        return self.compute_robustness_metrics(instance)
 
     def evaluate(
         self,
@@ -513,7 +525,7 @@ class Schedule:
         self.compute_fatigue_metrics(instance)
         tardiness = self.compute_tardiness_metrics(instance)
         labor_cost = self.compute_labor_cost(instance)
-        resilience = self.compute_resilience_metrics(instance)
+        robustness = self.compute_robustness_metrics(instance)
 
         # Tool wear calculation (INDUSTRY 5.0 Resilience)
         # Based on mode-specific wear rates defined in machine.py
@@ -546,9 +558,9 @@ class Schedule:
             'total_tardiness': tardiness['total_tardiness'],
             'weighted_tardiness': tardiness['weighted_tardiness'],
             'n_tardy_jobs': tardiness['n_tardy_jobs'],
-            'machine_workload_variance': resilience['machine_workload_variance'],
-            'worker_workload_variance': resilience['worker_workload_variance'],
-            'average_slack_time': resilience['average_slack_time'],
+            'machine_workload_variance': robustness['machine_workload_variance'],
+            'worker_workload_variance': robustness['worker_workload_variance'],
+            'average_slack_time': robustness['average_slack_time'],
         }
 
         # Compute composite score if weights provided
@@ -568,8 +580,24 @@ class Schedule:
         self.is_feasible = True
         self.constraint_violations = []
 
+        # Check that the schedule covers the full instance.
+        for job in instance.jobs:
+            for op in job.operations:
+                if not self.is_operation_scheduled(job.job_id, op.op_id):
+                    self.is_feasible = False
+                    self.constraint_violations.append(
+                        f"Unscheduled operation: Job {job.job_id} Op {op.op_id}"
+                    )
+
         # Check precedence constraints
         for job in instance.jobs:
+            first_op = self.get_operation(job.job_id, 0)
+            if first_op and first_op.start_time < job.arrival_time:
+                self.is_feasible = False
+                self.constraint_violations.append(
+                    f"Arrival violation: Job {job.job_id} starts before {job.arrival_time}"
+                )
+
             for i, op in enumerate(job.operations):
                 if i == 0:
                     continue
@@ -642,34 +670,24 @@ class Schedule:
                     continue
 
                 if op.period_start is not None and op.period_end is not None:
-                    if not op.is_within_period():
+                    if (
+                        sched_op.start_time < op.period_start
+                        or sched_op.completion_time > op.period_end
+                    ):
                         self.is_feasible = False
                         self.constraint_violations.append(
                             f"Period violation: Job {job.job_id} Op {op.op_id}"
                         )
 
-        # Check due-date constraints (job completion must not exceed due date)
-        for job in instance.jobs:
-            if job.due_date is None:
-                continue
-
-            completion = self.get_job_completion_time(job.job_id, instance)
-            if completion > job.due_date:
-                self.is_feasible = False
-                self.constraint_violations.append(
-                    f"Due date violation: Job {job.job_id} "
-                    f"(C={completion:.2f} > D={job.due_date:.2f})"
-                )
-
         # --- Human-related feasibility checks ---
 
         # 1) Rest fraction >= 12.5% of work time for each worker
-        MIN_REST_FRACTION = 0.125
-
         for worker_id, worker_sched in self.worker_schedules.items():
             ops = sorted(worker_sched.operations, key=lambda x: x.start_time)
             if not ops:
                 continue
+            worker = instance.get_worker(worker_id)
+            min_rest_fraction = worker.min_rest_fraction if worker else 0.125
 
             # [FIX] Count rest from t=0 to include initial idle time
             last_end = ops[-1].completion_time
@@ -678,11 +696,11 @@ class Schedule:
 
             if total_work > 0.0:
                 rest_fraction = total_rest / total_work
-                if rest_fraction < MIN_REST_FRACTION:
+                if rest_fraction < min_rest_fraction:
                     self.is_feasible = False
                     self.constraint_violations.append(
                         f"Rest fraction violation: W{worker_id} "
-                        f"(rest/work = {rest_fraction:.3f} < {MIN_REST_FRACTION:.3f})"
+                        f"(rest/work = {rest_fraction:.3f} < {min_rest_fraction:.3f})"
                     )
 
         # 2) OCRA / ergonomic exposure <= 2.2 per shift (approximate)

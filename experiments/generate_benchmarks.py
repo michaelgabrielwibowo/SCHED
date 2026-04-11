@@ -12,7 +12,6 @@ Evidence Status: Generator design PROPOSED, parameters CONFIRMED from sources.
 """
 
 import os
-import sys
 import json
 from datetime import datetime
 from dataclasses import dataclass, field
@@ -20,15 +19,26 @@ from typing import List, Tuple
 from enum import Enum
 import numpy as np
 
-# Add parent directory to path for imports
-script_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(script_dir)
-sys.path.insert(0, project_root)
-
-from sfjssp_model.instance import SFJSSPInstance, InstanceLabel, InstanceType, DynamicEventParams
-from sfjssp_model.machine import Machine, MachineMode
-from sfjssp_model.worker import Worker
-from sfjssp_model.job import Job, Operation
+try:
+    from ..sfjssp_model.instance import (
+        SFJSSPInstance,
+        InstanceLabel,
+        InstanceType,
+        DynamicEventParams,
+    )
+    from ..sfjssp_model.machine import Machine, MachineMode
+    from ..sfjssp_model.worker import Worker
+    from ..sfjssp_model.job import Job, Operation
+except ImportError:  # pragma: no cover - supports repo-root imports
+    from sfjssp_model.instance import (
+        SFJSSPInstance,
+        InstanceLabel,
+        InstanceType,
+        DynamicEventParams,
+    )
+    from sfjssp_model.machine import Machine, MachineMode
+    from sfjssp_model.worker import Worker
+    from sfjssp_model.job import Job, Operation
 
 
 class InstanceSize(Enum):
@@ -217,11 +227,10 @@ class BenchmarkGenerator:
         return instance
 
     def save_instance(self, instance: SFJSSPInstance, filepath: str):
-        """Save instance metadata to JSON"""
+        """Save a fully reconstructible benchmark instance to JSON."""
         data = instance.to_dict()
 
-        # Add summaries
-        data['machines'] = [
+        data['machines_summary'] = [
             {
                 'machine_id': m.machine_id,
                 'power_processing': m.power_processing,
@@ -231,7 +240,7 @@ class BenchmarkGenerator:
             for m in instance.machines
         ]
 
-        data['workers'] = [
+        data['workers_summary'] = [
             {
                 'worker_id': w.worker_id,
                 'labor_cost_per_hour': w.labor_cost_per_hour,
@@ -250,7 +259,7 @@ class BenchmarkGenerator:
             for j in instance.jobs
         ]
 
-        with open(filepath, 'w') as f:
+        with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
 
         print(f"  Saved: {filepath}")

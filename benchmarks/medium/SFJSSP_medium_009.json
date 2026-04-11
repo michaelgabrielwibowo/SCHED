@@ -4,12 +4,6263 @@
   "label": "fully_synthetic",
   "label_justification": "All parameters computer-generated",
   "instance_type": "static",
-  "n_jobs": 50,
-  "n_machines": 10,
-  "n_workers": 10,
-  "n_operations": 148,
+  "jobs": [
+    {
+      "job_id": 0,
+      "operations": [
+        {
+          "job_id": 0,
+          "op_id": 0,
+          "processing_times": {
+            "8": {
+              "0": 18.849395332878995,
+              "1": 94.5316211106625
+            },
+            "0": {
+              "0": 49.38787875036198,
+              "1": 40.6431813201065,
+              "2": 35.8944874034614
+            },
+            "6": {
+              "0": 44.45677687428924,
+              "1": 17.91641836915485
+            },
+            "7": {
+              "0": 76.2285600103358,
+              "1": 17.584033196512063
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            0,
+            6,
+            7
+          ],
+          "eligible_workers": [
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 0,
+          "op_id": 1,
+          "processing_times": {
+            "1": {
+              "0": 14.401745083756119,
+              "1": 83.33589339168951,
+              "2": 33.15979296256992
+            },
+            "3": {
+              "0": 105.11814127933422,
+              "1": 91.1339618395873,
+              "2": 12.226356465432232
+            },
+            "4": {
+              "0": 30.972714407133086,
+              "1": 18.667000741540225
+            },
+            "7": {
+              "0": 31.96564138919084,
+              "1": 32.780088921511
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            1,
+            3,
+            4,
+            7
+          ],
+          "eligible_workers": [
+            4
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 0,
+          "op_id": 2,
+          "processing_times": {
+            "1": {
+              "0": 106.73735060532628,
+              "1": 90.61865496700216,
+              "2": 68.82636332048865
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            1
+          ],
+          "eligible_workers": [
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 26.09953723127533,
+      "due_date": 303.52881749181546,
+      "weight": 1.135839462456261,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 1,
+      "operations": [
+        {
+          "job_id": 1,
+          "op_id": 0,
+          "processing_times": {
+            "8": {
+              "0": 51.79589025931148,
+              "1": 37.19091207867087
+            },
+            "1": {
+              "0": 55.74664363491462,
+              "1": 93.97879367626904,
+              "2": 12.24663159788059
+            },
+            "3": {
+              "0": 78.66586543756593,
+              "1": 84.11966321259102,
+              "2": 72.26828089812342
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            1,
+            3
+          ],
+          "eligible_workers": [
+            3
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 1,
+          "op_id": 1,
+          "processing_times": {
+            "2": {
+              "0": 101.66172057009109,
+              "1": 85.8781989095191,
+              "2": 28.80169517318151
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            2
+          ],
+          "eligible_workers": [
+            3
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 4.746167795364298,
+      "due_date": 97.85334685181748,
+      "weight": 1.9137490793824372,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 2,
+      "operations": [
+        {
+          "job_id": 2,
+          "op_id": 0,
+          "processing_times": {
+            "0": {
+              "0": 76.43511956574393,
+              "1": 44.31920108621565,
+              "2": 19.50557987932169
+            },
+            "2": {
+              "0": 58.27957395687027,
+              "1": 54.69994586929936,
+              "2": 13.045659677949223
+            },
+            "7": {
+              "0": 111.05053840537103,
+              "1": 84.17510617610192
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            2,
+            7
+          ],
+          "eligible_workers": [
+            0
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 2,
+          "op_id": 1,
+          "processing_times": {
+            "0": {
+              "0": 26.38786655853047,
+              "1": 49.3911834119048,
+              "2": 47.955282386041425
+            },
+            "7": {
+              "0": 36.59870093484907,
+              "1": 41.09744620733859
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            7
+          ],
+          "eligible_workers": [
+            1
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 34.91661605009155,
+      "due_date": 149.06499104749398,
+      "weight": 1.0901834110248516,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 3,
+      "operations": [
+        {
+          "job_id": 3,
+          "op_id": 0,
+          "processing_times": {
+            "9": {
+              "0": 32.546274684893696,
+              "1": 65.9098057696678,
+              "2": 41.33450482373991
+            },
+            "2": {
+              "0": 84.36963873724716,
+              "1": 32.58000716553493,
+              "2": 42.580896925918076
+            },
+            "4": {
+              "0": 19.973177147527018,
+              "1": 90.51292043207701
+            },
+            "6": {
+              "0": 59.80229819072385,
+              "1": 44.84301659434468
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            9,
+            2,
+            4,
+            6
+          ],
+          "eligible_workers": [
+            0,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 3,
+          "op_id": 1,
+          "processing_times": {
+            "8": {
+              "0": 121.92528072885446,
+              "1": 53.91586818671263
+            },
+            "0": {
+              "0": 105.48882067632024,
+              "1": 66.59010317303705,
+              "2": 36.27047578923418
+            },
+            "6": {
+              "0": 76.55884674953789,
+              "1": 11.900687285405944
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            0,
+            6
+          ],
+          "eligible_workers": [
+            0,
+            3,
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 3,
+          "op_id": 2,
+          "processing_times": {
+            "9": {
+              "0": 115.97819442233362,
+              "1": 71.78486657568129,
+              "2": 15.019004395552006
+            },
+            "3": {
+              "0": 60.246822207355294,
+              "1": 66.97009649109745,
+              "2": 46.06664916638634
+            },
+            "6": {
+              "0": 12.618946031197666,
+              "1": 89.10886443669214
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            9,
+            3,
+            6
+          ],
+          "eligible_workers": [
+            4
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 3,
+          "op_id": 3,
+          "processing_times": {
+            "9": {
+              "0": 113.03514903066393,
+              "1": 22.552349983156923,
+              "2": 31.989847109043552
+            },
+            "4": {
+              "0": 26.298971754792202,
+              "1": 61.75683901671175
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            9,
+            4
+          ],
+          "eligible_workers": [
+            8,
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 36.32560643534558,
+      "due_date": 149.05895631003352,
+      "weight": 1.480372284603244,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 4,
+      "operations": [
+        {
+          "job_id": 4,
+          "op_id": 0,
+          "processing_times": {
+            "3": {
+              "0": 78.91440743256128,
+              "1": 40.37913122815253,
+              "2": 30.81697210446358
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            3
+          ],
+          "eligible_workers": [
+            9
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 4,
+          "op_id": 1,
+          "processing_times": {
+            "8": {
+              "0": 25.677935340978635,
+              "1": 87.6679212980102
+            },
+            "0": {
+              "0": 100.17865349541695,
+              "1": 25.72884790785716,
+              "2": 49.6106470743987
+            },
+            "4": {
+              "0": 22.04737358240368,
+              "1": 46.09078404104246
+            },
+            "1": {
+              "0": 22.065839172535185,
+              "1": 27.79219694337639,
+              "2": 10.936359880210203
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            0,
+            4,
+            1
+          ],
+          "eligible_workers": [
+            8,
+            2
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 26.08518894003624,
+      "due_date": 125.26663883563862,
+      "weight": 1.7363906853669275,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 5,
+      "operations": [
+        {
+          "job_id": 5,
+          "op_id": 0,
+          "processing_times": {
+            "0": {
+              "0": 39.660492202811604,
+              "1": 62.13452729134153,
+              "2": 35.51187226312833
+            },
+            "1": {
+              "0": 94.4497599406084,
+              "1": 96.31166141295803,
+              "2": 56.653695228356554
+            },
+            "4": {
+              "0": 110.7462054867381,
+              "1": 74.56843818125098
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            1,
+            4
+          ],
+          "eligible_workers": [
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 5,
+          "op_id": 1,
+          "processing_times": {
+            "8": {
+              "0": 64.17068125967563,
+              "1": 26.071721279308107
+            },
+            "3": {
+              "0": 95.76868263778367,
+              "1": 59.35428825558055,
+              "2": 17.888158009253722
+            },
+            "4": {
+              "0": 59.28186553193268,
+              "1": 29.213849054922687
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            3,
+            4
+          ],
+          "eligible_workers": [
+            9
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 39.32494739767514,
+      "due_date": 139.87518726146862,
+      "weight": 1.2872802607325569,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 6,
+      "operations": [
+        {
+          "job_id": 6,
+          "op_id": 0,
+          "processing_times": {
+            "1": {
+              "0": 29.394297377103705,
+              "1": 26.703631935230177,
+              "2": 50.73234493299633
+            },
+            "7": {
+              "0": 89.39534226795455,
+              "1": 61.476630962063176
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            1,
+            7
+          ],
+          "eligible_workers": [
+            3
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 6,
+          "op_id": 1,
+          "processing_times": {
+            "8": {
+              "0": 111.55002474193725,
+              "1": 74.91584557970216
+            },
+            "0": {
+              "0": 18.190217769894808,
+              "1": 86.86800373921047,
+              "2": 66.22221401759668
+            },
+            "9": {
+              "0": 59.719213988803,
+              "1": 50.142861551107636,
+              "2": 71.03620699430226
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            0,
+            9
+          ],
+          "eligible_workers": [
+            8,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 6,
+          "op_id": 2,
+          "processing_times": {
+            "9": {
+              "0": 74.19093331989211,
+              "1": 91.49994994433222,
+              "2": 43.36757872549255
+            },
+            "4": {
+              "0": 17.38184497617513,
+              "1": 98.080304545159
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            9,
+            4
+          ],
+          "eligible_workers": [
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 6,
+          "op_id": 3,
+          "processing_times": {
+            "2": {
+              "0": 57.07890955986077,
+              "1": 87.65626255277148,
+              "2": 41.02298443536798
+            },
+            "5": {
+              "0": 13.994990041661422,
+              "1": 88.96487803341958
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            2,
+            5
+          ],
+          "eligible_workers": [
+            0,
+            6,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 37.12190160534079,
+      "due_date": 203.43712683165626,
+      "weight": 1.3098399384385737,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 7,
+      "operations": [
+        {
+          "job_id": 7,
+          "op_id": 0,
+          "processing_times": {
+            "8": {
+              "0": 56.60208034344308,
+              "1": 84.809370507892
+            },
+            "6": {
+              "0": 53.52315649113058,
+              "1": 29.829887868199638
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            6
+          ],
+          "eligible_workers": [
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 7,
+          "op_id": 1,
+          "processing_times": {
+            "0": {
+              "0": 94.00099945171087,
+              "1": 18.82467917353062,
+              "2": 66.83152591708533
+            },
+            "8": {
+              "0": 16.67140450577396,
+              "1": 81.52320756689565
+            },
+            "4": {
+              "0": 100.66998695524569,
+              "1": 90.80613870461791
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            8,
+            4
+          ],
+          "eligible_workers": [
+            0,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 7,
+          "op_id": 2,
+          "processing_times": {
+            "3": {
+              "0": 93.67304708084086,
+              "1": 68.1167733909876,
+              "2": 81.1166513496855
+            },
+            "5": {
+              "0": 23.2227696631617,
+              "1": 62.617470755132274
+            },
+            "7": {
+              "0": 98.16404261824187,
+              "1": 43.89983770288657
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            3,
+            5,
+            7
+          ],
+          "eligible_workers": [
+            9,
+            5,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 2.0651251390830963,
+      "due_date": 182.5200736945068,
+      "weight": 1.10738645154292,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 8,
+      "operations": [
+        {
+          "job_id": 8,
+          "op_id": 0,
+          "processing_times": {
+            "8": {
+              "0": 45.02025221251274,
+              "1": 81.02054456599056
+            },
+            "4": {
+              "0": 20.515475491977504,
+              "1": 81.9125057846035
+            },
+            "5": {
+              "0": 120.09428589203887,
+              "1": 94.35039827802632
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            4,
+            5
+          ],
+          "eligible_workers": [
+            0
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 8,
+          "op_id": 1,
+          "processing_times": {
+            "4": {
+              "0": 82.48363688686489,
+              "1": 72.53205818132228
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            4
+          ],
+          "eligible_workers": [
+            0,
+            9
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 8,
+          "op_id": 2,
+          "processing_times": {
+            "4": {
+              "0": 48.6335342009518,
+              "1": 95.04933895956752
+            },
+            "5": {
+              "0": 110.42182349408371,
+              "1": 52.63865690208428
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            4,
+            5
+          ],
+          "eligible_workers": [
+            0,
+            8,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 25.628150969921666,
+      "due_date": 254.2980024438823,
+      "weight": 1.6630822309561526,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 9,
+      "operations": [
+        {
+          "job_id": 9,
+          "op_id": 0,
+          "processing_times": {
+            "8": {
+              "0": 117.66358450017076,
+              "1": 79.00535329068714
+            },
+            "3": {
+              "0": 29.744311316361546,
+              "1": 24.242132005089758,
+              "2": 37.59756488570934
+            },
+            "6": {
+              "0": 90.08865061731485,
+              "1": 22.861343262250376
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            3,
+            6
+          ],
+          "eligible_workers": [
+            0
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 9,
+          "op_id": 1,
+          "processing_times": {
+            "0": {
+              "0": 117.47698314542775,
+              "1": 40.88294691238193,
+              "2": 38.92765130691703
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0
+          ],
+          "eligible_workers": [
+            9
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 49.518205633868156,
+      "due_date": 192.54285228016457,
+      "weight": 1.9174924520310748,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 10,
+      "operations": [
+        {
+          "job_id": 10,
+          "op_id": 0,
+          "processing_times": {
+            "0": {
+              "0": 97.46972675214887,
+              "1": 80.11036158790094,
+              "2": 77.7866426706544
+            },
+            "3": {
+              "0": 75.41883139111671,
+              "1": 98.29608724157822,
+              "2": 55.4124120754907
+            },
+            "7": {
+              "0": 13.964819135110789,
+              "1": 67.60775733562342
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            3,
+            7
+          ],
+          "eligible_workers": [
+            3
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 10,
+          "op_id": 1,
+          "processing_times": {
+            "2": {
+              "0": 44.89065988311319,
+              "1": 91.01530272093758,
+              "2": 65.68537085601285
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            2
+          ],
+          "eligible_workers": [
+            4
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 9.733376333079596,
+      "due_date": 156.3287601156597,
+      "weight": 1.434073165538821,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 11,
+      "operations": [
+        {
+          "job_id": 11,
+          "op_id": 0,
+          "processing_times": {
+            "8": {
+              "0": 73.56439443363502,
+              "1": 65.80553907920998
+            },
+            "9": {
+              "0": 34.67025747388264,
+              "1": 13.90132547521064,
+              "2": 35.298521641739086
+            },
+            "6": {
+              "0": 109.75087989608633,
+              "1": 15.79044232303774
+            },
+            "7": {
+              "0": 20.731496378126106,
+              "1": 79.0618904605174
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            9,
+            6,
+            7
+          ],
+          "eligible_workers": [
+            9
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 11,
+          "op_id": 1,
+          "processing_times": {
+            "5": {
+              "0": 96.37703244865033,
+              "1": 40.79494496789696
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            5
+          ],
+          "eligible_workers": [
+            5,
+            6,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 11,
+          "op_id": 2,
+          "processing_times": {
+            "9": {
+              "0": 47.157150149635264,
+              "1": 34.49626162980175,
+              "2": 60.63246271101521
+            },
+            "3": {
+              "0": 79.01049329932782,
+              "1": 32.98355076036157,
+              "2": 75.65916129300392
+            },
+            "5": {
+              "0": 20.999021785239158,
+              "1": 25.93677399645886
+            },
+            "6": {
+              "0": 53.02782058864326,
+              "1": 98.54573903415631
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            9,
+            3,
+            5,
+            6
+          ],
+          "eligible_workers": [
+            0,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 11,
+          "op_id": 3,
+          "processing_times": {
+            "2": {
+              "0": 106.33150080992388,
+              "1": 41.33349729888152,
+              "2": 44.474832308899096
+            },
+            "4": {
+              "0": 38.14970025513001,
+              "1": 42.74393492672965
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            2,
+            4
+          ],
+          "eligible_workers": [
+            9
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 28.643768312803463,
+      "due_date": 253.02997702207293,
+      "weight": 1.075406169976071,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 12,
+      "operations": [
+        {
+          "job_id": 12,
+          "op_id": 0,
+          "processing_times": {
+            "1": {
+              "0": 105.13666457146385,
+              "1": 79.33265187150391,
+              "2": 71.42677124522604
+            },
+            "3": {
+              "0": 74.1833039647936,
+              "1": 13.077431102098593,
+              "2": 70.0233526742763
+            },
+            "5": {
+              "0": 114.15750458790197,
+              "1": 24.516916741741912
+            },
+            "7": {
+              "0": 111.1955096980141,
+              "1": 46.29101828517989
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            1,
+            3,
+            5,
+            7
+          ],
+          "eligible_workers": [
+            8,
+            1,
+            3
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 12,
+          "op_id": 1,
+          "processing_times": {
+            "4": {
+              "0": 66.3021722669232,
+              "1": 49.28118033550838
+            },
+            "6": {
+              "0": 44.062251449017005,
+              "1": 68.73744190977138
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            4,
+            6
+          ],
+          "eligible_workers": [
+            8,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 12,
+          "op_id": 2,
+          "processing_times": {
+            "8": {
+              "0": 34.97908783072031,
+              "1": 32.7486784766717
+            },
+            "9": {
+              "0": 41.223893960709965,
+              "1": 29.087066064861144,
+              "2": 66.6977269053054
+            },
+            "2": {
+              "0": 113.3893529087806,
+              "1": 51.204671566481395,
+              "2": 13.481168207208894
+            },
+            "7": {
+              "0": 34.22152371467545,
+              "1": 95.23006913001717
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            9,
+            2,
+            7
+          ],
+          "eligible_workers": [
+            2,
+            4
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 12,
+          "op_id": 3,
+          "processing_times": {
+            "0": {
+              "0": 51.28561144370623,
+              "1": 77.52678474719589,
+              "2": 74.119670882214
+            },
+            "2": {
+              "0": 116.6130029457569,
+              "1": 39.42322688563727,
+              "2": 24.58234620002415
+            },
+            "6": {
+              "0": 63.450219804826276,
+              "1": 10.10129815135141
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            2,
+            6
+          ],
+          "eligible_workers": [
+            4
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 20.6657914415337,
+      "due_date": 228.9904070389125,
+      "weight": 1.6751763966131674,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 13,
+      "operations": [
+        {
+          "job_id": 13,
+          "op_id": 0,
+          "processing_times": {
+            "0": {
+              "0": 111.00426037154553,
+              "1": 33.44325538979419,
+              "2": 79.24411612938843
+            },
+            "8": {
+              "0": 23.58596971148213,
+              "1": 37.843295860089924
+            },
+            "5": {
+              "0": 94.93923402708553,
+              "1": 74.45619186486633
+            },
+            "1": {
+              "0": 80.69140841829636,
+              "1": 41.90971554881325,
+              "2": 54.37031480315399
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            8,
+            5,
+            1
+          ],
+          "eligible_workers": [
+            3
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 13,
+          "op_id": 1,
+          "processing_times": {
+            "0": {
+              "0": 80.28733399714976,
+              "1": 77.43557717222785,
+              "2": 37.427056522450606
+            },
+            "9": {
+              "0": 37.6723082428779,
+              "1": 69.73008240350714,
+              "2": 81.83894018602504
+            },
+            "2": {
+              "0": 65.17057318671627,
+              "1": 56.77086801834874,
+              "2": 79.89477284569834
+            },
+            "4": {
+              "0": 76.31935738547209,
+              "1": 64.11775536172844
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            9,
+            2,
+            4
+          ],
+          "eligible_workers": [
+            1,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 24.921508879363998,
+      "due_date": 206.26225611781047,
+      "weight": 1.9586794641483927,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 14,
+      "operations": [
+        {
+          "job_id": 14,
+          "op_id": 0,
+          "processing_times": {
+            "5": {
+              "0": 31.64168124926646,
+              "1": 99.62970273226634
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            5
+          ],
+          "eligible_workers": [
+            4,
+            5,
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 14,
+          "op_id": 1,
+          "processing_times": {
+            "0": {
+              "0": 48.98892088684146,
+              "1": 34.75768826682586,
+              "2": 82.06090524888884
+            },
+            "5": {
+              "0": 87.81788118693058,
+              "1": 21.437817402099874
+            },
+            "6": {
+              "0": 16.164658163183464,
+              "1": 33.36133756929269
+            },
+            "7": {
+              "0": 66.67340528858664,
+              "1": 91.58192720381824
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            5,
+            6,
+            7
+          ],
+          "eligible_workers": [
+            8,
+            9
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 9.79931340641118,
+      "due_date": 117.69286531721727,
+      "weight": 1.8548688001240925,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 15,
+      "operations": [
+        {
+          "job_id": 15,
+          "op_id": 0,
+          "processing_times": {
+            "0": {
+              "0": 110.75755628565479,
+              "1": 34.15978730997306,
+              "2": 60.36437169979492
+            },
+            "5": {
+              "0": 78.78956896456009,
+              "1": 67.28559599473263
+            },
+            "6": {
+              "0": 24.169555440499114,
+              "1": 95.89980463061264
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            5,
+            6
+          ],
+          "eligible_workers": [
+            1,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 15,
+          "op_id": 1,
+          "processing_times": {
+            "0": {
+              "0": 80.38221335061458,
+              "1": 61.70447419558285,
+              "2": 22.53319901550539
+            },
+            "1": {
+              "0": 38.523553159431444,
+              "1": 14.45173343042004,
+              "2": 28.969572515972065
+            },
+            "8": {
+              "0": 12.574105856947991,
+              "1": 13.994602076620545
+            },
+            "9": {
+              "0": 84.7061345323755,
+              "1": 50.81020970713371,
+              "2": 38.7761614420184
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            1,
+            8,
+            9
+          ],
+          "eligible_workers": [
+            8,
+            9,
+            2
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 48.005757231228934,
+      "due_date": 121.45850388140948,
+      "weight": 1.2413073057871733,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 16,
+      "operations": [
+        {
+          "job_id": 16,
+          "op_id": 0,
+          "processing_times": {
+            "9": {
+              "0": 31.93876201618201,
+              "1": 27.385762792489768,
+              "2": 46.6848112530772
+            },
+            "5": {
+              "0": 122.48535880752685,
+              "1": 93.35631571417869
+            },
+            "7": {
+              "0": 76.9658735223026,
+              "1": 78.94735096210917
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            9,
+            5,
+            7
+          ],
+          "eligible_workers": [
+            9
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 16,
+          "op_id": 1,
+          "processing_times": {
+            "8": {
+              "0": 89.41052265837274,
+              "1": 26.602063174156516
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8
+          ],
+          "eligible_workers": [
+            0
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 16,
+          "op_id": 2,
+          "processing_times": {
+            "9": {
+              "0": 76.273891984425,
+              "1": 42.132006479703506,
+              "2": 35.99569908990346
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            9
+          ],
+          "eligible_workers": [
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 18.067852998236074,
+      "due_date": 262.6429130112534,
+      "weight": 1.7279859978735073,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 17,
+      "operations": [
+        {
+          "job_id": 17,
+          "op_id": 0,
+          "processing_times": {
+            "8": {
+              "0": 13.895058859878565,
+              "1": 54.984276466464536
+            },
+            "7": {
+              "0": 44.931561133757945,
+              "1": 73.29014485281976
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            7
+          ],
+          "eligible_workers": [
+            5,
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 17,
+          "op_id": 1,
+          "processing_times": {
+            "2": {
+              "0": 30.88421808533351,
+              "1": 47.108759061824145,
+              "2": 53.58397789710579
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            2
+          ],
+          "eligible_workers": [
+            2,
+            3,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 17,
+          "op_id": 2,
+          "processing_times": {
+            "4": {
+              "0": 103.47495643241731,
+              "1": 10.645993891507203
+            },
+            "7": {
+              "0": 25.691123522796488,
+              "1": 18.51807012559061
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            4,
+            7
+          ],
+          "eligible_workers": [
+            9,
+            1
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 17,
+          "op_id": 3,
+          "processing_times": {
+            "0": {
+              "0": 33.72196619852378,
+              "1": 48.610026733569626,
+              "2": 43.28680148489352
+            },
+            "3": {
+              "0": 89.43311943299598,
+              "1": 99.41083092924275,
+              "2": 24.070072779458947
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            3
+          ],
+          "eligible_workers": [
+            0
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 47.926403628398404,
+      "due_date": 258.5972552705404,
+      "weight": 1.0410097103518865,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 18,
+      "operations": [
+        {
+          "job_id": 18,
+          "op_id": 0,
+          "processing_times": {
+            "1": {
+              "0": 101.57015620869117,
+              "1": 86.03248624460645,
+              "2": 26.85640766136919
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            1
+          ],
+          "eligible_workers": [
+            2,
+            3,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 18,
+          "op_id": 1,
+          "processing_times": {
+            "3": {
+              "0": 93.56121630314514,
+              "1": 12.805032569219202,
+              "2": 66.98461235969265
+            },
+            "7": {
+              "0": 72.207876500098,
+              "1": 64.00587196603387
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            3,
+            7
+          ],
+          "eligible_workers": [
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 18,
+          "op_id": 2,
+          "processing_times": {
+            "0": {
+              "0": 67.51048260407264,
+              "1": 63.55263356230585,
+              "2": 11.392140467041893
+            },
+            "2": {
+              "0": 35.54467630453715,
+              "1": 69.18292282250975,
+              "2": 49.375183405013715
+            },
+            "6": {
+              "0": 20.754939979558458,
+              "1": 58.78387189673785
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            2,
+            6
+          ],
+          "eligible_workers": [
+            8,
+            1,
+            2
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 27.177958516553186,
+      "due_date": 132.5518356645835,
+      "weight": 1.959878875770026,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 19,
+      "operations": [
+        {
+          "job_id": 19,
+          "op_id": 0,
+          "processing_times": {
+            "2": {
+              "0": 121.13206400954837,
+              "1": 74.78753592023516,
+              "2": 8.413809274858089
+            },
+            "7": {
+              "0": 68.83834172936223,
+              "1": 82.89787826137643
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            2,
+            7
+          ],
+          "eligible_workers": [
+            2,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 19,
+          "op_id": 1,
+          "processing_times": {
+            "1": {
+              "0": 51.77662615354792,
+              "1": 12.896003448214522,
+              "2": 14.607859972953445
+            },
+            "2": {
+              "0": 41.81935339772815,
+              "1": 48.9510943372223,
+              "2": 41.758593335412925
+            },
+            "5": {
+              "0": 118.25291741745663,
+              "1": 32.498803001811766
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            1,
+            2,
+            5
+          ],
+          "eligible_workers": [
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 19,
+          "op_id": 2,
+          "processing_times": {
+            "8": {
+              "0": 44.18518984160752,
+              "1": 35.208783624768415
+            },
+            "7": {
+              "0": 80.06047085020444,
+              "1": 20.47340124101551
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            7
+          ],
+          "eligible_workers": [
+            9,
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 19,
+          "op_id": 3,
+          "processing_times": {
+            "9": {
+              "0": 32.62038040629412,
+              "1": 49.151657693820745,
+              "2": 73.68975348718676
+            },
+            "2": {
+              "0": 103.53819939807217,
+              "1": 25.99018280441808,
+              "2": 11.7244007094714
+            },
+            "1": {
+              "0": 106.42384689930427,
+              "1": 62.605400215681584,
+              "2": 42.31916210209148
+            },
+            "7": {
+              "0": 25.727977701311783,
+              "1": 41.335812853722615
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            9,
+            2,
+            1,
+            7
+          ],
+          "eligible_workers": [
+            1,
+            3,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 7.260783471181314,
+      "due_date": 137.7222774802142,
+      "weight": 1.6519626608514375,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 20,
+      "operations": [
+        {
+          "job_id": 20,
+          "op_id": 0,
+          "processing_times": {
+            "8": {
+              "0": 82.4614787960203,
+              "1": 99.9183496649949
+            },
+            "2": {
+              "0": 56.55586508320868,
+              "1": 34.05489949155654,
+              "2": 81.34472754403329
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            2
+          ],
+          "eligible_workers": [
+            0,
+            3,
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 20,
+          "op_id": 1,
+          "processing_times": {
+            "0": {
+              "0": 12.639300445958385,
+              "1": 96.39890255210163,
+              "2": 54.06649209196613
+            },
+            "6": {
+              "0": 117.48643022337771,
+              "1": 70.45430628585976
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            6
+          ],
+          "eligible_workers": [
+            4
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 20,
+          "op_id": 2,
+          "processing_times": {
+            "0": {
+              "0": 120.0382959838063,
+              "1": 74.68634641489803,
+              "2": 51.782094401645736
+            },
+            "2": {
+              "0": 47.49788239018259,
+              "1": 40.44415709811428,
+              "2": 20.69317835440317
+            },
+            "6": {
+              "0": 78.98669754670316,
+              "1": 35.364616361237154
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            2,
+            6
+          ],
+          "eligible_workers": [
+            2,
+            3,
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 1.5638354345731575,
+      "due_date": 151.19109701510314,
+      "weight": 1.2739539797514796,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 21,
+      "operations": [
+        {
+          "job_id": 21,
+          "op_id": 0,
+          "processing_times": {
+            "8": {
+              "0": 73.04265074457344,
+              "1": 77.84614557132899
+            },
+            "3": {
+              "0": 118.93996477315682,
+              "1": 26.673910420397128,
+              "2": 64.82988363393618
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            3
+          ],
+          "eligible_workers": [
+            2,
+            3
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 21,
+          "op_id": 1,
+          "processing_times": {
+            "9": {
+              "0": 87.66553000382788,
+              "1": 63.00017604989107,
+              "2": 77.21483017408057
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            9
+          ],
+          "eligible_workers": [
+            9,
+            2
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 21,
+          "op_id": 2,
+          "processing_times": {
+            "3": {
+              "0": 66.09489567629048,
+              "1": 68.68964733332655,
+              "2": 83.28912904850029
+            },
+            "4": {
+              "0": 106.81954049016551,
+              "1": 38.995377301356214
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            3,
+            4
+          ],
+          "eligible_workers": [
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 8.93275837326864,
+      "due_date": 227.72371080717255,
+      "weight": 1.7776228873555096,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 22,
+      "operations": [
+        {
+          "job_id": 22,
+          "op_id": 0,
+          "processing_times": {
+            "1": {
+              "0": 93.56022893274087,
+              "1": 25.602498349691565,
+              "2": 73.16606182000211
+            },
+            "6": {
+              "0": 88.21879503289509,
+              "1": 72.59155430406048
+            },
+            "7": {
+              "0": 33.090378667451716,
+              "1": 81.87722469718297
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            1,
+            6,
+            7
+          ],
+          "eligible_workers": [
+            3,
+            5,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 22,
+          "op_id": 1,
+          "processing_times": {
+            "3": {
+              "0": 16.064028618246613,
+              "1": 29.6567716008071,
+              "2": 73.3908444771534
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            3
+          ],
+          "eligible_workers": [
+            0,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 22,
+          "op_id": 2,
+          "processing_times": {
+            "8": {
+              "0": 58.3075436709397,
+              "1": 58.33154183733375
+            },
+            "1": {
+              "0": 119.3340338948341,
+              "1": 38.77299492997023,
+              "2": 17.97017316451184
+            },
+            "3": {
+              "0": 117.98109597342197,
+              "1": 91.15616694669725,
+              "2": 22.7203521405717
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            1,
+            3
+          ],
+          "eligible_workers": [
+            0,
+            9,
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 43.18859198298352,
+      "due_date": 148.67850456211275,
+      "weight": 1.951379597341359,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 23,
+      "operations": [
+        {
+          "job_id": 23,
+          "op_id": 0,
+          "processing_times": {
+            "0": {
+              "0": 75.77774822572401,
+              "1": 81.70928701268599,
+              "2": 63.43793642875823
+            },
+            "5": {
+              "0": 112.2237485979048,
+              "1": 39.67518651374921
+            },
+            "6": {
+              "0": 52.313879724222545,
+              "1": 53.52592046797633
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            5,
+            6
+          ],
+          "eligible_workers": [
+            3,
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 23,
+          "op_id": 1,
+          "processing_times": {
+            "8": {
+              "0": 30.279496592587154,
+              "1": 98.06309275071222
+            },
+            "4": {
+              "0": 102.83063109905517,
+              "1": 40.62285040164622
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            4
+          ],
+          "eligible_workers": [
+            1,
+            4,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 23,
+          "op_id": 2,
+          "processing_times": {
+            "0": {
+              "0": 73.14332518734173,
+              "1": 65.67375441318487,
+              "2": 9.433764160013377
+            },
+            "9": {
+              "0": 98.26981428149526,
+              "1": 77.90147382695392,
+              "2": 9.385400524351404
+            },
+            "2": {
+              "0": 25.897362170293306,
+              "1": 37.10458954121568,
+              "2": 51.19163432141296
+            },
+            "1": {
+              "0": 93.63629675368239,
+              "1": 84.22046567146779,
+              "2": 49.90332619734593
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            9,
+            2,
+            1
+          ],
+          "eligible_workers": [
+            0,
+            1,
+            4
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 23,
+          "op_id": 3,
+          "processing_times": {
+            "8": {
+              "0": 15.135972932171118,
+              "1": 45.56398958612703
+            },
+            "3": {
+              "0": 51.73994068272714,
+              "1": 15.483886470884027,
+              "2": 27.71098716135907
+            },
+            "6": {
+              "0": 58.11507882021791,
+              "1": 46.301503193225194
+            },
+            "7": {
+              "0": 25.937872599486276,
+              "1": 19.63830852608685
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            3,
+            6,
+            7
+          ],
+          "eligible_workers": [
+            2
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 23.666377470842605,
+      "due_date": 277.8668432154095,
+      "weight": 1.4881318607044844,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 24,
+      "operations": [
+        {
+          "job_id": 24,
+          "op_id": 0,
+          "processing_times": {
+            "9": {
+              "0": 110.92263429024622,
+              "1": 24.174924756007,
+              "2": 75.63364312138236
+            },
+            "6": {
+              "0": 17.499916812204017,
+              "1": 48.73558475150437
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            9,
+            6
+          ],
+          "eligible_workers": [
+            1,
+            2
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 24,
+          "op_id": 1,
+          "processing_times": {
+            "8": {
+              "0": 77.22919202249732,
+              "1": 64.97728192307389
+            },
+            "0": {
+              "0": 12.879911283020014,
+              "1": 42.188506189626096,
+              "2": 35.6711914950016
+            },
+            "9": {
+              "0": 47.236031606278175,
+              "1": 38.95989150301919,
+              "2": 54.607424364297444
+            },
+            "6": {
+              "0": 79.99574972408286,
+              "1": 21.319011684418037
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            0,
+            9,
+            6
+          ],
+          "eligible_workers": [
+            0,
+            9,
+            4
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 24,
+          "op_id": 2,
+          "processing_times": {
+            "9": {
+              "0": 61.40229038898744,
+              "1": 38.9525912569589,
+              "2": 63.767077687466696
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            9
+          ],
+          "eligible_workers": [
+            2
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 30.938199560683486,
+      "due_date": 177.10627570591407,
+      "weight": 1.509141697512046,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 25,
+      "operations": [
+        {
+          "job_id": 25,
+          "op_id": 0,
+          "processing_times": {
+            "8": {
+              "0": 28.373015346475476,
+              "1": 13.371858970590868
+            },
+            "7": {
+              "0": 86.56839489121498,
+              "1": 48.638176354933435
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            7
+          ],
+          "eligible_workers": [
+            1,
+            3,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 25,
+          "op_id": 1,
+          "processing_times": {
+            "8": {
+              "0": 31.808231738780844,
+              "1": 58.51302011168579
+            },
+            "0": {
+              "0": 54.539415268357935,
+              "1": 72.11833412839545,
+              "2": 32.32143682260415
+            },
+            "2": {
+              "0": 76.06433721339017,
+              "1": 15.775704590099348,
+              "2": 60.5527413571418
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            0,
+            2
+          ],
+          "eligible_workers": [
+            9
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 25,
+          "op_id": 2,
+          "processing_times": {
+            "8": {
+              "0": 102.03193575426504,
+              "1": 96.4753591489882
+            },
+            "9": {
+              "0": 51.833364564197275,
+              "1": 88.65448694216452,
+              "2": 58.12561294182794
+            },
+            "4": {
+              "0": 92.00975052432443,
+              "1": 81.87492564192245
+            },
+            "6": {
+              "0": 32.54625909659333,
+              "1": 70.2334863961162
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            9,
+            4,
+            6
+          ],
+          "eligible_workers": [
+            0,
+            5,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 25,
+          "op_id": 3,
+          "processing_times": {
+            "0": {
+              "0": 37.074599890868285,
+              "1": 45.673230693354526,
+              "2": 47.14816248980265
+            },
+            "7": {
+              "0": 33.375923120658825,
+              "1": 32.212082031937754
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            7
+          ],
+          "eligible_workers": [
+            8,
+            1,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 8.002655135161534,
+      "due_date": 197.35163362079356,
+      "weight": 1.1906757795644984,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 26,
+      "operations": [
+        {
+          "job_id": 26,
+          "op_id": 0,
+          "processing_times": {
+            "8": {
+              "0": 63.31427118085658,
+              "1": 85.49182681753604
+            },
+            "9": {
+              "0": 121.31909287319242,
+              "1": 28.50494428001795,
+              "2": 26.968195355717704
+            },
+            "5": {
+              "0": 99.00393566789027,
+              "1": 55.07733302925767
+            },
+            "1": {
+              "0": 40.271759078265944,
+              "1": 19.436158524355967,
+              "2": 25.540860228025913
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            9,
+            5,
+            1
+          ],
+          "eligible_workers": [
+            8,
+            9,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 26,
+          "op_id": 1,
+          "processing_times": {
+            "8": {
+              "0": 93.736587185771,
+              "1": 77.8929036237689
+            },
+            "2": {
+              "0": 77.10372266411406,
+              "1": 14.212959706221199,
+              "2": 52.380710712044234
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            2
+          ],
+          "eligible_workers": [
+            8,
+            9,
+            4
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 31.915696218853295,
+      "due_date": 94.49021294326552,
+      "weight": 1.7796550512724472,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 27,
+      "operations": [
+        {
+          "job_id": 27,
+          "op_id": 0,
+          "processing_times": {
+            "8": {
+              "0": 100.41496709683564,
+              "1": 49.44904381216463
+            },
+            "1": {
+              "0": 114.39503201153236,
+              "1": 66.35770977003227,
+              "2": 13.45741576357068
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            1
+          ],
+          "eligible_workers": [
+            8,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 27,
+          "op_id": 1,
+          "processing_times": {
+            "8": {
+              "0": 100.46037241481031,
+              "1": 43.684194504588625
+            },
+            "9": {
+              "0": 23.177660265211735,
+              "1": 46.27457118796925,
+              "2": 12.26936193521475
+            },
+            "1": {
+              "0": 72.0948592015073,
+              "1": 79.5770298056806,
+              "2": 66.02830702356253
+            },
+            "7": {
+              "0": 64.79407203805404,
+              "1": 44.70475364652035
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            9,
+            1,
+            7
+          ],
+          "eligible_workers": [
+            1,
+            3,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 27,
+          "op_id": 2,
+          "processing_times": {
+            "1": {
+              "0": 86.16459179315903,
+              "1": 66.41673387105268,
+              "2": 62.415898793873176
+            },
+            "2": {
+              "0": 53.20532038730157,
+              "1": 97.69147883662777,
+              "2": 38.136962944020425
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            1,
+            2
+          ],
+          "eligible_workers": [
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 27,
+          "op_id": 3,
+          "processing_times": {
+            "2": {
+              "0": 24.20124846608938,
+              "1": 26.893835243858796,
+              "2": 24.634307320775566
+            },
+            "3": {
+              "0": 53.77477703787022,
+              "1": 19.83143676881805,
+              "2": 72.604778746121
+            },
+            "4": {
+              "0": 36.142962256997116,
+              "1": 68.49474172978418
+            },
+            "5": {
+              "0": 85.09363488568923,
+              "1": 46.50577696508445
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            2,
+            3,
+            4,
+            5
+          ],
+          "eligible_workers": [
+            0
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 19.41315944497352,
+      "due_date": 236.04657668492285,
+      "weight": 1.1236492483070935,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 28,
+      "operations": [
+        {
+          "job_id": 28,
+          "op_id": 0,
+          "processing_times": {
+            "0": {
+              "0": 17.8913371725029,
+              "1": 99.28974134799887,
+              "2": 35.213516568122024
+            },
+            "9": {
+              "0": 64.78944979382284,
+              "1": 40.716663411471075,
+              "2": 21.741441700660225
+            },
+            "5": {
+              "0": 102.1309590159616,
+              "1": 92.23625989706075
+            },
+            "7": {
+              "0": 44.19391496605994,
+              "1": 94.81718002500055
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            9,
+            5,
+            7
+          ],
+          "eligible_workers": [
+            9,
+            2,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 28,
+          "op_id": 1,
+          "processing_times": {
+            "1": {
+              "0": 112.02492076747077,
+              "1": 96.29591937183068,
+              "2": 13.391975552201986
+            },
+            "2": {
+              "0": 101.25211634362391,
+              "1": 87.20011743910952,
+              "2": 56.374606268079766
+            },
+            "5": {
+              "0": 44.191313854339285,
+              "1": 27.743920394165514
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            1,
+            2,
+            5
+          ],
+          "eligible_workers": [
+            4
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 28,
+          "op_id": 2,
+          "processing_times": {
+            "9": {
+              "0": 112.28687647468416,
+              "1": 32.014691236094485,
+              "2": 22.92528329539391
+            },
+            "2": {
+              "0": 18.40356789285408,
+              "1": 97.93163149878433,
+              "2": 41.96647400023808
+            },
+            "3": {
+              "0": 100.55583473044373,
+              "1": 75.97034692332937,
+              "2": 76.11848670580682
+            },
+            "4": {
+              "0": 60.172433374602456,
+              "1": 92.99155731455352
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            9,
+            2,
+            3,
+            4
+          ],
+          "eligible_workers": [
+            4,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 23.113870099244814,
+      "due_date": 145.22996349978058,
+      "weight": 1.9349729155940285,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 29,
+      "operations": [
+        {
+          "job_id": 29,
+          "op_id": 0,
+          "processing_times": {
+            "6": {
+              "0": 48.26851722035851,
+              "1": 89.74712756459401
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            6
+          ],
+          "eligible_workers": [
+            8,
+            9,
+            3
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 29,
+          "op_id": 1,
+          "processing_times": {
+            "0": {
+              "0": 50.31628789685891,
+              "1": 27.2046347951117,
+              "2": 72.77292940741184
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0
+          ],
+          "eligible_workers": [
+            3,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 29,
+          "op_id": 2,
+          "processing_times": {
+            "2": {
+              "0": 45.08650657253124,
+              "1": 65.19551393526132,
+              "2": 17.499528954604692
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            2
+          ],
+          "eligible_workers": [
+            0,
+            3
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 29,
+          "op_id": 3,
+          "processing_times": {
+            "1": {
+              "0": 49.72568959033525,
+              "1": 36.445798379116766,
+              "2": 33.92252138478264
+            },
+            "2": {
+              "0": 16.922700629021314,
+              "1": 27.957963792900664,
+              "2": 56.08678197069702
+            },
+            "4": {
+              "0": 52.58020458512091,
+              "1": 90.06093182663365
+            },
+            "7": {
+              "0": 16.31595947144938,
+              "1": 22.537823341214164
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            1,
+            2,
+            4,
+            7
+          ],
+          "eligible_workers": [
+            8,
+            4,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 34.95060616556335,
+      "due_date": 305.69934212516705,
+      "weight": 1.5601851605218524,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 30,
+      "operations": [
+        {
+          "job_id": 30,
+          "op_id": 0,
+          "processing_times": {
+            "8": {
+              "0": 93.10810947970477,
+              "1": 96.90905297049223
+            },
+            "3": {
+              "0": 68.31900693958725,
+              "1": 17.176216328946165,
+              "2": 53.82660327508241
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            3
+          ],
+          "eligible_workers": [
+            0,
+            3,
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 30,
+          "op_id": 1,
+          "processing_times": {
+            "1": {
+              "0": 41.99063914183914,
+              "1": 81.35703262082389,
+              "2": 55.35121122752938
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            1
+          ],
+          "eligible_workers": [
+            3,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 30,
+          "op_id": 2,
+          "processing_times": {
+            "8": {
+              "0": 72.7778352378241,
+              "1": 40.148090733074724
+            },
+            "3": {
+              "0": 94.40123443295585,
+              "1": 71.8823832677502,
+              "2": 78.39738256332994
+            },
+            "7": {
+              "0": 97.98753145149217,
+              "1": 94.14268072850624
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            3,
+            7
+          ],
+          "eligible_workers": [
+            8,
+            3,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 30,
+          "op_id": 3,
+          "processing_times": {
+            "7": {
+              "0": 32.853845635100974,
+              "1": 16.778272896887646
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            7
+          ],
+          "eligible_workers": [
+            0,
+            3,
+            4
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 26.07079782786965,
+      "due_date": 336.34712092673396,
+      "weight": 1.672016369156871,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 31,
+      "operations": [
+        {
+          "job_id": 31,
+          "op_id": 0,
+          "processing_times": {
+            "8": {
+              "0": 59.57561838284336,
+              "1": 75.87024594335055
+            },
+            "1": {
+              "0": 23.483487170086555,
+              "1": 91.78899014479168,
+              "2": 37.183468561784444
+            },
+            "2": {
+              "0": 84.24008105876932,
+              "1": 60.433326927332665,
+              "2": 76.78158728910267
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            1,
+            2
+          ],
+          "eligible_workers": [
+            8
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 31,
+          "op_id": 1,
+          "processing_times": {
+            "8": {
+              "0": 56.58276264282323,
+              "1": 39.70411349124517
+            },
+            "4": {
+              "0": 60.72819498598227,
+              "1": 55.63269073210387
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            4
+          ],
+          "eligible_workers": [
+            1
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 31,
+          "op_id": 2,
+          "processing_times": {
+            "1": {
+              "0": 34.28581720225265,
+              "1": 96.33648158168798,
+              "2": 51.751362101135285
+            },
+            "2": {
+              "0": 53.69926739148525,
+              "1": 34.49829762200872,
+              "2": 11.09261188868444
+            },
+            "5": {
+              "0": 40.10819797636317,
+              "1": 80.01009066591514
+            },
+            "6": {
+              "0": 68.9743553418149,
+              "1": 57.390033738881925
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            1,
+            2,
+            5,
+            6
+          ],
+          "eligible_workers": [
+            0
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 31,
+          "op_id": 3,
+          "processing_times": {
+            "0": {
+              "0": 49.18441826708895,
+              "1": 38.140727848729284,
+              "2": 64.8445090265533
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0
+          ],
+          "eligible_workers": [
+            2,
+            3
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 7.275835754507143,
+      "due_date": 228.52696868967956,
+      "weight": 1.633493089677092,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 32,
+      "operations": [
+        {
+          "job_id": 32,
+          "op_id": 0,
+          "processing_times": {
+            "0": {
+              "0": 106.02145247584788,
+              "1": 83.9172971175593,
+              "2": 65.76718837146569
+            },
+            "3": {
+              "0": 67.74397470972022,
+              "1": 81.30866997891488,
+              "2": 75.60914367371082
+            },
+            "4": {
+              "0": 24.05266868620105,
+              "1": 96.14584455260612
+            },
+            "5": {
+              "0": 36.095517133940554,
+              "1": 64.2963017149691
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            3,
+            4,
+            5
+          ],
+          "eligible_workers": [
+            3
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 32,
+          "op_id": 1,
+          "processing_times": {
+            "0": {
+              "0": 38.80714635795988,
+              "1": 20.686071597845025,
+              "2": 22.832181671696894
+            },
+            "4": {
+              "0": 95.27831388838291,
+              "1": 50.762695873901706
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            4
+          ],
+          "eligible_workers": [
+            1,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 32,
+          "op_id": 2,
+          "processing_times": {
+            "1": {
+              "0": 120.0057922718435,
+              "1": 27.76519645246754,
+              "2": 9.789826044994891
+            },
+            "5": {
+              "0": 48.81420228914977,
+              "1": 28.450534199444757
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            1,
+            5
+          ],
+          "eligible_workers": [
+            1,
+            4,
+            9
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 4.397114593102697,
+      "due_date": 87.31697962321167,
+      "weight": 1.3730577767404113,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 33,
+      "operations": [
+        {
+          "job_id": 33,
+          "op_id": 0,
+          "processing_times": {
+            "8": {
+              "0": 22.733583996278163,
+              "1": 59.52787016785522
+            },
+            "4": {
+              "0": 103.56271023871055,
+              "1": 54.643044700918914
+            },
+            "6": {
+              "0": 56.90196704254516,
+              "1": 49.30529543459054
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            4,
+            6
+          ],
+          "eligible_workers": [
+            8,
+            9
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 33,
+          "op_id": 1,
+          "processing_times": {
+            "4": {
+              "0": 71.27155658501583,
+              "1": 55.81506282288404
+            },
+            "5": {
+              "0": 45.795470884513826,
+              "1": 47.18188370319137
+            },
+            "7": {
+              "0": 87.10147471843437,
+              "1": 30.41263914121633
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            4,
+            5,
+            7
+          ],
+          "eligible_workers": [
+            3,
+            5,
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 9.87228031695253,
+      "due_date": 93.41183833285703,
+      "weight": 1.8758464917345776,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 34,
+      "operations": [
+        {
+          "job_id": 34,
+          "op_id": 0,
+          "processing_times": {
+            "3": {
+              "0": 122.23682572703656,
+              "1": 21.97361206394046,
+              "2": 37.25318649675721
+            },
+            "4": {
+              "0": 24.0690958536572,
+              "1": 76.87584540312425
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            3,
+            4
+          ],
+          "eligible_workers": [
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 34,
+          "op_id": 1,
+          "processing_times": {
+            "8": {
+              "0": 25.358661679483458,
+              "1": 53.63265309063703
+            },
+            "2": {
+              "0": 58.57407661565111,
+              "1": 75.21807049486011,
+              "2": 21.47252744251627
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            2
+          ],
+          "eligible_workers": [
+            1,
+            4,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 1.8108414692631303,
+      "due_date": 117.96365564216173,
+      "weight": 1.50325376048509,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 35,
+      "operations": [
+        {
+          "job_id": 35,
+          "op_id": 0,
+          "processing_times": {
+            "1": {
+              "0": 91.00150140038934,
+              "1": 97.21044788713537,
+              "2": 49.03174236414007
+            },
+            "5": {
+              "0": 119.59690320893417,
+              "1": 80.73412888078374
+            },
+            "9": {
+              "0": 108.49879566627715,
+              "1": 80.0061632735586,
+              "2": 49.070200510403296
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            1,
+            5,
+            9
+          ],
+          "eligible_workers": [
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 35,
+          "op_id": 1,
+          "processing_times": {
+            "1": {
+              "0": 13.168180630579897,
+              "1": 14.40446747462936,
+              "2": 81.90505038443202
+            },
+            "3": {
+              "0": 19.26025446752571,
+              "1": 53.70084523317986,
+              "2": 57.63287420568367
+            },
+            "4": {
+              "0": 44.23954096220045,
+              "1": 35.96237008440603
+            },
+            "5": {
+              "0": 25.934019113295747,
+              "1": 75.40579507490851
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            1,
+            3,
+            4,
+            5
+          ],
+          "eligible_workers": [
+            1,
+            3
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 35,
+          "op_id": 2,
+          "processing_times": {
+            "8": {
+              "0": 78.31084082396377,
+              "1": 28.70411460045552
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8
+          ],
+          "eligible_workers": [
+            8,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 35,
+          "op_id": 3,
+          "processing_times": {
+            "0": {
+              "0": 20.50845749213428,
+              "1": 70.21371867627349,
+              "2": 22.079118342165895
+            },
+            "2": {
+              "0": 74.51078793923732,
+              "1": 38.22415420272644,
+              "2": 9.7409000302384
+            },
+            "3": {
+              "0": 90.20705092809375,
+              "1": 10.648988559820651,
+              "2": 56.11326301678154
+            },
+            "7": {
+              "0": 95.52216335604773,
+              "1": 22.062149561742075
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            2,
+            3,
+            7
+          ],
+          "eligible_workers": [
+            1,
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 17.789977010590153,
+      "due_date": 172.86922612014936,
+      "weight": 1.0564224743483528,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 36,
+      "operations": [
+        {
+          "job_id": 36,
+          "op_id": 0,
+          "processing_times": {
+            "9": {
+              "0": 51.88288238067711,
+              "1": 43.37931421367501,
+              "2": 58.84398168876105
+            },
+            "2": {
+              "0": 82.65514759423759,
+              "1": 98.51655653965074,
+              "2": 55.63182813651498
+            },
+            "3": {
+              "0": 96.9327866180514,
+              "1": 91.66537860327134,
+              "2": 70.15133581298802
+            },
+            "7": {
+              "0": 28.544663402367068,
+              "1": 78.39511094851376
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            9,
+            2,
+            3,
+            7
+          ],
+          "eligible_workers": [
+            9,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 36,
+          "op_id": 1,
+          "processing_times": {
+            "1": {
+              "0": 67.46766375795352,
+              "1": 69.52110329813078,
+              "2": 52.884318185276804
+            },
+            "2": {
+              "0": 79.92585971082704,
+              "1": 30.782364403308495,
+              "2": 64.53321271309527
+            },
+            "6": {
+              "0": 98.67141361466264,
+              "1": 94.71344041503781
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            1,
+            2,
+            6
+          ],
+          "eligible_workers": [
+            8,
+            3,
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 36,
+          "op_id": 2,
+          "processing_times": {
+            "8": {
+              "0": 74.14993914941792,
+              "1": 71.78995464105289
+            },
+            "9": {
+              "0": 47.40962286312709,
+              "1": 39.47279110190958,
+              "2": 40.69064257219848
+            },
+            "2": {
+              "0": 115.83468792930506,
+              "1": 71.89694362981801,
+              "2": 22.611262865900322
+            },
+            "6": {
+              "0": 20.425669178006807,
+              "1": 71.77637203710171
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            9,
+            2,
+            6
+          ],
+          "eligible_workers": [
+            8,
+            1,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 13.855014419632427,
+      "due_date": 215.33830966121965,
+      "weight": 1.1935385972728616,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 37,
+      "operations": [
+        {
+          "job_id": 37,
+          "op_id": 0,
+          "processing_times": {
+            "8": {
+              "0": 53.97752751975157,
+              "1": 56.654264625487144
+            },
+            "9": {
+              "0": 98.6981718836637,
+              "1": 35.66244301645263,
+              "2": 76.47640866096849
+            },
+            "3": {
+              "0": 76.53731478387196,
+              "1": 92.98974023574216,
+              "2": 60.21804796576887
+            },
+            "6": {
+              "0": 108.64883875304326,
+              "1": 31.494361655471675
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            9,
+            3,
+            6
+          ],
+          "eligible_workers": [
+            3,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 37,
+          "op_id": 1,
+          "processing_times": {
+            "0": {
+              "0": 85.70765968436213,
+              "1": 35.3552673948474,
+              "2": 45.67591576688019
+            },
+            "3": {
+              "0": 78.01189235416307,
+              "1": 53.79040006877066,
+              "2": 11.870772201398902
+            },
+            "5": {
+              "0": 86.15501425769622,
+              "1": 51.53842808175843
+            },
+            "6": {
+              "0": 117.25167113865687,
+              "1": 43.42239506321684
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            3,
+            5,
+            6
+          ],
+          "eligible_workers": [
+            0,
+            3,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 37,
+          "op_id": 2,
+          "processing_times": {
+            "7": {
+              "0": 71.75027422428799,
+              "1": 75.35164855248738
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            7
+          ],
+          "eligible_workers": [
+            1,
+            9,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 37,
+          "op_id": 3,
+          "processing_times": {
+            "9": {
+              "0": 121.70903514372561,
+              "1": 21.201759835953986,
+              "2": 47.60545949803438
+            },
+            "4": {
+              "0": 32.369870545600875,
+              "1": 92.5087635855737
+            },
+            "6": {
+              "0": 86.48942400335265,
+              "1": 85.75191759189332
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            9,
+            4,
+            6
+          ],
+          "eligible_workers": [
+            4
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 25.03668028214453,
+      "due_date": 244.717894527216,
+      "weight": 1.149879155016579,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 38,
+      "operations": [
+        {
+          "job_id": 38,
+          "op_id": 0,
+          "processing_times": {
+            "9": {
+              "0": 14.274169611050223,
+              "1": 48.89592648628759,
+              "2": 8.709227536332802
+            },
+            "3": {
+              "0": 118.16244662848594,
+              "1": 19.611844315380914,
+              "2": 21.178773730258424
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            9,
+            3
+          ],
+          "eligible_workers": [
+            0,
+            2
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 38,
+          "op_id": 1,
+          "processing_times": {
+            "3": {
+              "0": 47.599039219338884,
+              "1": 11.20366936558147,
+              "2": 76.77400950454226
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            3
+          ],
+          "eligible_workers": [
+            8
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 34.57282231973341,
+      "due_date": 68.14926050734326,
+      "weight": 1.1565013844015861,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 39,
+      "operations": [
+        {
+          "job_id": 39,
+          "op_id": 0,
+          "processing_times": {
+            "2": {
+              "0": 103.26999897398989,
+              "1": 31.193384652517288,
+              "2": 31.31632728978946
+            },
+            "4": {
+              "0": 14.28239794582048,
+              "1": 64.69788881110324
+            },
+            "7": {
+              "0": 53.31609009140419,
+              "1": 54.323029100402266
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            2,
+            4,
+            7
+          ],
+          "eligible_workers": [
+            8,
+            1,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 39,
+          "op_id": 1,
+          "processing_times": {
+            "8": {
+              "0": 29.160781248086625,
+              "1": 97.85835113766282
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8
+          ],
+          "eligible_workers": [
+            9,
+            3,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 9.968154176170085,
+      "due_date": 139.21477750422983,
+      "weight": 1.2846318390176974,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 40,
+      "operations": [
+        {
+          "job_id": 40,
+          "op_id": 0,
+          "processing_times": {
+            "4": {
+              "0": 29.29558552014396,
+              "1": 63.08230706563958
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            4
+          ],
+          "eligible_workers": [
+            8,
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 40,
+          "op_id": 1,
+          "processing_times": {
+            "0": {
+              "0": 85.94594152331818,
+              "1": 39.38218466549043,
+              "2": 48.149172784478836
+            },
+            "8": {
+              "0": 121.30467512713925,
+              "1": 41.20543443946106
+            },
+            "3": {
+              "0": 61.664880280043995,
+              "1": 93.14685948882638,
+              "2": 70.24476407366147
+            },
+            "5": {
+              "0": 50.54473477502616,
+              "1": 54.45801741306789
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            8,
+            3,
+            5
+          ],
+          "eligible_workers": [
+            0,
+            3,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 40,
+          "op_id": 2,
+          "processing_times": {
+            "8": {
+              "0": 24.99822018580412,
+              "1": 47.16382246677902
+            },
+            "2": {
+              "0": 104.89564118658717,
+              "1": 75.8752687874364,
+              "2": 30.609118447705455
+            },
+            "3": {
+              "0": 22.76648022847031,
+              "1": 85.9689399120625,
+              "2": 68.82321959977978
+            },
+            "7": {
+              "0": 60.101210731135026,
+              "1": 16.347579645921897
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            2,
+            3,
+            7
+          ],
+          "eligible_workers": [
+            1,
+            3
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 36.556281836666656,
+      "due_date": 224.5636534548044,
+      "weight": 1.0045738787869603,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 41,
+      "operations": [
+        {
+          "job_id": 41,
+          "op_id": 0,
+          "processing_times": {
+            "1": {
+              "0": 36.2203595179423,
+              "1": 40.76439680200509,
+              "2": 37.921119450424015
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            1
+          ],
+          "eligible_workers": [
+            0,
+            8,
+            2
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 41,
+          "op_id": 1,
+          "processing_times": {
+            "2": {
+              "0": 72.99760639963702,
+              "1": 76.22826256270626,
+              "2": 76.13419722732783
+            },
+            "4": {
+              "0": 108.27863190744361,
+              "1": 51.94110712230256
+            },
+            "5": {
+              "0": 35.350043909439094,
+              "1": 95.40063025019217
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            2,
+            4,
+            5
+          ],
+          "eligible_workers": [
+            1,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 38.97707843114588,
+      "due_date": 188.74022914199335,
+      "weight": 1.405839432192841,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 42,
+      "operations": [
+        {
+          "job_id": 42,
+          "op_id": 0,
+          "processing_times": {
+            "8": {
+              "0": 57.248835351543455,
+              "1": 56.42908361395597
+            },
+            "1": {
+              "0": 119.49298807880362,
+              "1": 30.81719098883734,
+              "2": 58.153539697546265
+            },
+            "4": {
+              "0": 56.32721574029841,
+              "1": 62.31319728940519
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            1,
+            4
+          ],
+          "eligible_workers": [
+            2,
+            4
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 42,
+          "op_id": 1,
+          "processing_times": {
+            "8": {
+              "0": 70.88410326272658,
+              "1": 50.998012070460135
+            },
+            "1": {
+              "0": 72.89388804308216,
+              "1": 92.79993431959902,
+              "2": 32.00941174508141
+            },
+            "2": {
+              "0": 100.98223232230588,
+              "1": 85.55634878253335,
+              "2": 64.51863699324477
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            1,
+            2
+          ],
+          "eligible_workers": [
+            3
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 42,
+          "op_id": 2,
+          "processing_times": {
+            "0": {
+              "0": 103.38232505750004,
+              "1": 10.591553104055071,
+              "2": 19.491641055809847
+            },
+            "9": {
+              "0": 78.86023301532062,
+              "1": 33.108616133099375,
+              "2": 40.1496123787769
+            },
+            "3": {
+              "0": 13.843692066188087,
+              "1": 21.171340691888993,
+              "2": 30.567096540799557
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            9,
+            3
+          ],
+          "eligible_workers": [
+            5,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 42,
+          "op_id": 3,
+          "processing_times": {
+            "9": {
+              "0": 24.854115393538645,
+              "1": 93.21636977805046,
+              "2": 55.29733286535698
+            },
+            "3": {
+              "0": 92.61163102551632,
+              "1": 71.73906316708297,
+              "2": 77.51167819994556
+            },
+            "6": {
+              "0": 87.33116775968082,
+              "1": 18.780979508452614
+            },
+            "7": {
+              "0": 38.974633639603674,
+              "1": 59.27805164533286
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            9,
+            3,
+            6,
+            7
+          ],
+          "eligible_workers": [
+            0,
+            3,
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 27.264817446031884,
+      "due_date": 198.82643589248187,
+      "weight": 1.8543977039589743,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 43,
+      "operations": [
+        {
+          "job_id": 43,
+          "op_id": 0,
+          "processing_times": {
+            "8": {
+              "0": 41.46385423547292,
+              "1": 75.2542908746546
+            },
+            "9": {
+              "0": 116.53668177406018,
+              "1": 89.79231406115744,
+              "2": 81.06679208247239
+            },
+            "4": {
+              "0": 86.27201220159428,
+              "1": 93.80215927455546
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            9,
+            4
+          ],
+          "eligible_workers": [
+            1,
+            2,
+            4
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 43,
+          "op_id": 1,
+          "processing_times": {
+            "1": {
+              "0": 44.16133719165307,
+              "1": 23.82674308275177,
+              "2": 64.94951585950652
+            },
+            "4": {
+              "0": 105.08633722683489,
+              "1": 41.9097520967734
+            },
+            "5": {
+              "0": 109.16782902330868,
+              "1": 31.548297565315835
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            1,
+            4,
+            5
+          ],
+          "eligible_workers": [
+            3,
+            5
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 43,
+          "op_id": 2,
+          "processing_times": {
+            "2": {
+              "0": 80.51706665062703,
+              "1": 63.89072333692243,
+              "2": 10.948310884384295
+            },
+            "6": {
+              "0": 110.79398518543687,
+              "1": 89.9986376222357
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            2,
+            6
+          ],
+          "eligible_workers": [
+            9,
+            4
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 19.966271661713066,
+      "due_date": 177.4399292167572,
+      "weight": 1.3913071497408196,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 44,
+      "operations": [
+        {
+          "job_id": 44,
+          "op_id": 0,
+          "processing_times": {
+            "0": {
+              "0": 68.80359919098613,
+              "1": 97.05503806031892,
+              "2": 76.95723167326273
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0
+          ],
+          "eligible_workers": [
+            2
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 44,
+          "op_id": 1,
+          "processing_times": {
+            "0": {
+              "0": 102.8078629321003,
+              "1": 88.21504524573977,
+              "2": 46.54720457610237
+            },
+            "1": {
+              "0": 60.920736897492645,
+              "1": 58.03816995438568,
+              "2": 14.706268141777885
+            },
+            "3": {
+              "0": 110.47893221078144,
+              "1": 92.99423943834897,
+              "2": 33.34169046162416
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            1,
+            3
+          ],
+          "eligible_workers": [
+            8,
+            9,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 44,
+          "op_id": 2,
+          "processing_times": {
+            "9": {
+              "0": 83.09836104323055,
+              "1": 26.813521089895968,
+              "2": 55.61276773697604
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            9
+          ],
+          "eligible_workers": [
+            0,
+            9,
+            2
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 40.00235049745919,
+      "due_date": 316.89112585622433,
+      "weight": 1.738908830328519,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 45,
+      "operations": [
+        {
+          "job_id": 45,
+          "op_id": 0,
+          "processing_times": {
+            "3": {
+              "0": 23.387564345632956,
+              "1": 10.210906350239627,
+              "2": 21.664396206452178
+            },
+            "6": {
+              "0": 109.12018485952204,
+              "1": 67.12548611742666
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            3,
+            6
+          ],
+          "eligible_workers": [
+            9
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 45,
+          "op_id": 1,
+          "processing_times": {
+            "0": {
+              "0": 96.72622097165814,
+              "1": 49.54560608277937,
+              "2": 58.2886610453394
+            },
+            "9": {
+              "0": 15.706155771159791,
+              "1": 26.383689597775586,
+              "2": 53.09450771364471
+            },
+            "2": {
+              "0": 109.19372516954977,
+              "1": 15.829477916938751,
+              "2": 66.32152448581573
+            },
+            "4": {
+              "0": 70.28743310812058,
+              "1": 95.7769604330235
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            9,
+            2,
+            4
+          ],
+          "eligible_workers": [
+            0,
+            3
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 45,
+          "op_id": 2,
+          "processing_times": {
+            "6": {
+              "0": 101.0568777297057,
+              "1": 95.18502890399527
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            6
+          ],
+          "eligible_workers": [
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 7.22781035211037,
+      "due_date": 223.89722557605998,
+      "weight": 1.376762068674428,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 46,
+      "operations": [
+        {
+          "job_id": 46,
+          "op_id": 0,
+          "processing_times": {
+            "1": {
+              "0": 110.93851327677804,
+              "1": 43.8275030545951,
+              "2": 28.10851515612519
+            },
+            "5": {
+              "0": 119.95925513784891,
+              "1": 80.11854345414791
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            1,
+            5
+          ],
+          "eligible_workers": [
+            9,
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 46,
+          "op_id": 1,
+          "processing_times": {
+            "2": {
+              "0": 71.23741024981119,
+              "1": 73.20819041064505,
+              "2": 22.257008573819142
+            },
+            "5": {
+              "0": 107.92449849045443,
+              "1": 47.91768194745319
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            2,
+            5
+          ],
+          "eligible_workers": [
+            8
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 46,
+          "op_id": 2,
+          "processing_times": {
+            "0": {
+              "0": 62.23645728473571,
+              "1": 89.92096149065193,
+              "2": 48.75831551837572
+            },
+            "2": {
+              "0": 70.9043841620391,
+              "1": 93.92488031432997,
+              "2": 51.29796643416222
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0,
+            2
+          ],
+          "eligible_workers": [
+            8,
+            1
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 49.67423732298916,
+      "due_date": 253.43171646590486,
+      "weight": 1.2769691302912882,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 47,
+      "operations": [
+        {
+          "job_id": 47,
+          "op_id": 0,
+          "processing_times": {
+            "6": {
+              "0": 64.95987342668634,
+              "1": 95.08760486162801
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            6
+          ],
+          "eligible_workers": [
+            0,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 47,
+          "op_id": 1,
+          "processing_times": {
+            "4": {
+              "0": 123.75363876652091,
+              "1": 70.53560870637416
+            },
+            "5": {
+              "0": 91.49818539195282,
+              "1": 16.887244796787627
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            4,
+            5
+          ],
+          "eligible_workers": [
+            2,
+            3,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 19.0587974660921,
+      "due_date": 169.1650704677479,
+      "weight": 1.7287245897971337,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 48,
+      "operations": [
+        {
+          "job_id": 48,
+          "op_id": 0,
+          "processing_times": {
+            "8": {
+              "0": 85.69866695302473,
+              "1": 56.963178089600234
+            },
+            "9": {
+              "0": 17.851842692008955,
+              "1": 71.86649511998579,
+              "2": 73.78393679931136
+            },
+            "3": {
+              "0": 55.578816116938164,
+              "1": 18.258307966259597,
+              "2": 35.35887740256126
+            },
+            "5": {
+              "0": 40.59447336036667,
+              "1": 57.82078926873181
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            8,
+            9,
+            3,
+            5
+          ],
+          "eligible_workers": [
+            1,
+            3,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 48,
+          "op_id": 1,
+          "processing_times": {
+            "3": {
+              "0": 31.42457970932569,
+              "1": 19.213593894487595,
+              "2": 21.336063620777644
+            },
+            "5": {
+              "0": 109.46520531245415,
+              "1": 51.77773290591465
+            },
+            "6": {
+              "0": 121.04042366236072,
+              "1": 30.93547345964336
+            },
+            "7": {
+              "0": 76.2686933796846,
+              "1": 36.5541910033394
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            3,
+            5,
+            6,
+            7
+          ],
+          "eligible_workers": [
+            8,
+            1,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 19.806766348270266,
+      "due_date": 127.24717884670514,
+      "weight": 1.2769576825751185,
+      "is_completed": false,
+      "completion_time": 0.0
+    },
+    {
+      "job_id": 49,
+      "operations": [
+        {
+          "job_id": 49,
+          "op_id": 0,
+          "processing_times": {
+            "9": {
+              "0": 13.469456866754404,
+              "1": 65.22477326632236,
+              "2": 68.43473860717586
+            },
+            "4": {
+              "0": 98.30249210509729,
+              "1": 83.20378827019161
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            9,
+            4
+          ],
+          "eligible_workers": [
+            9,
+            2,
+            1
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 49,
+          "op_id": 1,
+          "processing_times": {
+            "0": {
+              "0": 70.95913378634326,
+              "1": 21.473769507455977,
+              "2": 60.33099029869195
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            0
+          ],
+          "eligible_workers": [
+            5,
+            6,
+            7
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        },
+        {
+          "job_id": 49,
+          "op_id": 2,
+          "processing_times": {
+            "9": {
+              "0": 13.927704487623979,
+              "1": 85.45919964267463,
+              "2": 81.47228422477158
+            },
+            "2": {
+              "0": 77.18133792637063,
+              "1": 27.214469125464547,
+              "2": 74.36657105231285
+            },
+            "5": {
+              "0": 25.255105930434773,
+              "1": 92.97757617966047
+            }
+          },
+          "transport_time": 0.0,
+          "waiting_time": 0.0,
+          "eligible_machines": [
+            9,
+            2,
+            5
+          ],
+          "eligible_workers": [
+            4,
+            5,
+            6
+          ],
+          "start_time": 0.0,
+          "completion_time": 0.0,
+          "assigned_machine": -1,
+          "assigned_worker": -1,
+          "assigned_mode": -1,
+          "is_completed": false,
+          "is_scheduled": false
+        }
+      ],
+      "arrival_time": 41.765556236602265,
+      "due_date": 183.06401119518807,
+      "weight": 1.0173797412973018,
+      "is_completed": false,
+      "completion_time": 0.0
+    }
+  ],
+  "machines": [
+    {
+      "machine_id": 0,
+      "machine_name": "Machine_0",
+      "modes": [
+        {
+          "mode_id": 0,
+          "mode_name": "",
+          "speed_factor": 0.8,
+          "power_multiplier": 0.7,
+          "tool_wear_rate": 1.0
+        },
+        {
+          "mode_id": 1,
+          "mode_name": "",
+          "speed_factor": 1.0,
+          "power_multiplier": 1.0,
+          "tool_wear_rate": 1.0
+        },
+        {
+          "mode_id": 2,
+          "mode_name": "",
+          "speed_factor": 1.2000000000000002,
+          "power_multiplier": 1.2999999999999998,
+          "tool_wear_rate": 1.0
+        }
+      ],
+      "default_mode_id": 0,
+      "power_processing": 47.40985383216876,
+      "power_idle": 3.7642452470986614,
+      "power_setup": 9.882479129187663,
+      "startup_energy": 50.0,
+      "setup_time": 2.2261852499022092,
+      "power_transport": 2.0,
+      "auxiliary_power_share": 0.0,
+      "current_state": "idle",
+      "available_time": 0.0,
+      "is_broken": false
+    },
+    {
+      "machine_id": 1,
+      "machine_name": "Machine_1",
+      "modes": [
+        {
+          "mode_id": 0,
+          "mode_name": "",
+          "speed_factor": 0.8,
+          "power_multiplier": 0.7,
+          "tool_wear_rate": 1.0
+        },
+        {
+          "mode_id": 1,
+          "mode_name": "",
+          "speed_factor": 1.0,
+          "power_multiplier": 1.0,
+          "tool_wear_rate": 1.0
+        },
+        {
+          "mode_id": 2,
+          "mode_name": "",
+          "speed_factor": 1.2000000000000002,
+          "power_multiplier": 1.2999999999999998,
+          "tool_wear_rate": 1.0
+        }
+      ],
+      "default_mode_id": 0,
+      "power_processing": 14.751862012717208,
+      "power_idle": 8.251538534299899,
+      "power_setup": 22.781769955626505,
+      "startup_energy": 50.0,
+      "setup_time": 4.217747333544183,
+      "power_transport": 2.0,
+      "auxiliary_power_share": 0.0,
+      "current_state": "idle",
+      "available_time": 0.0,
+      "is_broken": false
+    },
+    {
+      "machine_id": 2,
+      "machine_name": "Machine_2",
+      "modes": [
+        {
+          "mode_id": 0,
+          "mode_name": "",
+          "speed_factor": 0.8,
+          "power_multiplier": 0.7,
+          "tool_wear_rate": 1.0
+        },
+        {
+          "mode_id": 1,
+          "mode_name": "",
+          "speed_factor": 1.0,
+          "power_multiplier": 1.0,
+          "tool_wear_rate": 1.0
+        },
+        {
+          "mode_id": 2,
+          "mode_name": "",
+          "speed_factor": 1.2000000000000002,
+          "power_multiplier": 1.2999999999999998,
+          "tool_wear_rate": 1.0
+        }
+      ],
+      "default_mode_id": 0,
+      "power_processing": 27.132509706606694,
+      "power_idle": 9.183167290121741,
+      "power_setup": 24.356247579615022,
+      "startup_energy": 50.0,
+      "setup_time": 1.5380728780750696,
+      "power_transport": 2.0,
+      "auxiliary_power_share": 0.0,
+      "current_state": "idle",
+      "available_time": 0.0,
+      "is_broken": false
+    },
+    {
+      "machine_id": 3,
+      "machine_name": "Machine_3",
+      "modes": [
+        {
+          "mode_id": 0,
+          "mode_name": "",
+          "speed_factor": 0.8,
+          "power_multiplier": 0.7,
+          "tool_wear_rate": 1.0
+        },
+        {
+          "mode_id": 1,
+          "mode_name": "",
+          "speed_factor": 1.0,
+          "power_multiplier": 1.0,
+          "tool_wear_rate": 1.0
+        },
+        {
+          "mode_id": 2,
+          "mode_name": "",
+          "speed_factor": 1.2000000000000002,
+          "power_multiplier": 1.2999999999999998,
+          "tool_wear_rate": 1.0
+        }
+      ],
+      "default_mode_id": 0,
+      "power_processing": 23.13538802344432,
+      "power_idle": 9.922664446651549,
+      "power_setup": 8.713408612653739,
+      "startup_energy": 50.0,
+      "setup_time": 4.104755828190502,
+      "power_transport": 2.0,
+      "auxiliary_power_share": 0.0,
+      "current_state": "idle",
+      "available_time": 0.0,
+      "is_broken": false
+    },
+    {
+      "machine_id": 4,
+      "machine_name": "Machine_4",
+      "modes": [
+        {
+          "mode_id": 0,
+          "mode_name": "",
+          "speed_factor": 0.8,
+          "power_multiplier": 0.7,
+          "tool_wear_rate": 1.0
+        },
+        {
+          "mode_id": 1,
+          "mode_name": "",
+          "speed_factor": 1.0,
+          "power_multiplier": 1.0,
+          "tool_wear_rate": 1.0
+        }
+      ],
+      "default_mode_id": 0,
+      "power_processing": 47.44794087974909,
+      "power_idle": 6.221829202035183,
+      "power_setup": 22.86526818340761,
+      "startup_energy": 50.0,
+      "setup_time": 6.047510026095619,
+      "power_transport": 2.0,
+      "auxiliary_power_share": 0.0,
+      "current_state": "idle",
+      "available_time": 0.0,
+      "is_broken": false
+    },
+    {
+      "machine_id": 5,
+      "machine_name": "Machine_5",
+      "modes": [
+        {
+          "mode_id": 0,
+          "mode_name": "",
+          "speed_factor": 0.8,
+          "power_multiplier": 0.7,
+          "tool_wear_rate": 1.0
+        },
+        {
+          "mode_id": 1,
+          "mode_name": "",
+          "speed_factor": 1.0,
+          "power_multiplier": 1.0,
+          "tool_wear_rate": 1.0
+        }
+      ],
+      "default_mode_id": 0,
+      "power_processing": 7.454505639348591,
+      "power_idle": 1.855416119200052,
+      "power_setup": 12.723545117200844,
+      "startup_energy": 50.0,
+      "setup_time": 0.9207632918571018,
+      "power_transport": 2.0,
+      "auxiliary_power_share": 0.0,
+      "current_state": "idle",
+      "available_time": 0.0,
+      "is_broken": false
+    },
+    {
+      "machine_id": 6,
+      "machine_name": "Machine_6",
+      "modes": [
+        {
+          "mode_id": 0,
+          "mode_name": "",
+          "speed_factor": 0.8,
+          "power_multiplier": 0.7,
+          "tool_wear_rate": 1.0
+        },
+        {
+          "mode_id": 1,
+          "mode_name": "",
+          "speed_factor": 1.0,
+          "power_multiplier": 1.0,
+          "tool_wear_rate": 1.0
+        }
+      ],
+      "default_mode_id": 0,
+      "power_processing": 12.646035818118968,
+      "power_idle": 5.373021805784013,
+      "power_setup": 12.589904898531975,
+      "startup_energy": 50.0,
+      "setup_time": 5.621430332963191,
+      "power_transport": 2.0,
+      "auxiliary_power_share": 0.0,
+      "current_state": "idle",
+      "available_time": 0.0,
+      "is_broken": false
+    },
+    {
+      "machine_id": 7,
+      "machine_name": "Machine_7",
+      "modes": [
+        {
+          "mode_id": 0,
+          "mode_name": "",
+          "speed_factor": 0.8,
+          "power_multiplier": 0.7,
+          "tool_wear_rate": 1.0
+        },
+        {
+          "mode_id": 1,
+          "mode_name": "",
+          "speed_factor": 1.0,
+          "power_multiplier": 1.0,
+          "tool_wear_rate": 1.0
+        }
+      ],
+      "default_mode_id": 0,
+      "power_processing": 30.022590507094936,
+      "power_idle": 6.7866856468183805,
+      "power_setup": 26.06687050713769,
+      "startup_energy": 50.0,
+      "setup_time": 0.33516123312539725,
+      "power_transport": 2.0,
+      "auxiliary_power_share": 0.0,
+      "current_state": "idle",
+      "available_time": 0.0,
+      "is_broken": false
+    },
+    {
+      "machine_id": 8,
+      "machine_name": "Machine_8",
+      "modes": [
+        {
+          "mode_id": 0,
+          "mode_name": "",
+          "speed_factor": 0.8,
+          "power_multiplier": 0.7,
+          "tool_wear_rate": 1.0
+        },
+        {
+          "mode_id": 1,
+          "mode_name": "",
+          "speed_factor": 1.0,
+          "power_multiplier": 1.0,
+          "tool_wear_rate": 1.0
+        }
+      ],
+      "default_mode_id": 0,
+      "power_processing": 38.78441489887206,
+      "power_idle": 4.36320319727919,
+      "power_setup": 9.728944196944424,
+      "startup_energy": 50.0,
+      "setup_time": 1.115275677510712,
+      "power_transport": 2.0,
+      "auxiliary_power_share": 0.0,
+      "current_state": "idle",
+      "available_time": 0.0,
+      "is_broken": false
+    },
+    {
+      "machine_id": 9,
+      "machine_name": "Machine_9",
+      "modes": [
+        {
+          "mode_id": 0,
+          "mode_name": "",
+          "speed_factor": 0.8,
+          "power_multiplier": 0.7,
+          "tool_wear_rate": 1.0
+        },
+        {
+          "mode_id": 1,
+          "mode_name": "",
+          "speed_factor": 1.0,
+          "power_multiplier": 1.0,
+          "tool_wear_rate": 1.0
+        },
+        {
+          "mode_id": 2,
+          "mode_name": "",
+          "speed_factor": 1.2000000000000002,
+          "power_multiplier": 1.2999999999999998,
+          "tool_wear_rate": 1.0
+        }
+      ],
+      "default_mode_id": 0,
+      "power_processing": 36.774588990814316,
+      "power_idle": 9.997346114370954,
+      "power_setup": 11.384178664569921,
+      "startup_energy": 50.0,
+      "setup_time": 9.823668770854516,
+      "power_transport": 2.0,
+      "auxiliary_power_share": 0.0,
+      "current_state": "idle",
+      "available_time": 0.0,
+      "is_broken": false
+    }
+  ],
+  "workers": [
+    {
+      "worker_id": 0,
+      "worker_name": "Worker_0",
+      "skills": {},
+      "eligible_operations": [],
+      "labor_cost_per_hour": 31.078380373079852,
+      "base_efficiency": 1.1579632901349413,
+      "fatigue_rate": 0.013619768440492806,
+      "recovery_rate": 0.024522157307320186,
+      "fatigue_max": 1.0,
+      "fatigue_current": 0.0,
+      "ocra_max_per_shift": 2.2,
+      "ocra_current_shift": 0.0,
+      "learning_coefficient": 0.1,
+      "min_rest_fraction": 0.125,
+      "current_state": "idle",
+      "available_time": 0.0,
+      "is_absent": false,
+      "total_work_time": 0.0,
+      "total_rest_time": 0.0,
+      "mandatory_shift_lockout_until": 0.0
+    },
+    {
+      "worker_id": 1,
+      "worker_name": "Worker_1",
+      "skills": {},
+      "eligible_operations": [],
+      "labor_cost_per_hour": 10.898814013704028,
+      "base_efficiency": 0.9228490323994294,
+      "fatigue_rate": 0.01120147287716338,
+      "recovery_rate": 0.08548623682168455,
+      "fatigue_max": 1.0,
+      "fatigue_current": 0.0,
+      "ocra_max_per_shift": 2.2,
+      "ocra_current_shift": 0.0,
+      "learning_coefficient": 0.1,
+      "min_rest_fraction": 0.125,
+      "current_state": "idle",
+      "available_time": 0.0,
+      "is_absent": false,
+      "total_work_time": 0.0,
+      "total_rest_time": 0.0,
+      "mandatory_shift_lockout_until": 0.0
+    },
+    {
+      "worker_id": 2,
+      "worker_name": "Worker_2",
+      "skills": {},
+      "eligible_operations": [],
+      "labor_cost_per_hour": 32.1323809592171,
+      "base_efficiency": 1.1874085037185234,
+      "fatigue_rate": 0.028821499422509597,
+      "recovery_rate": 0.04482211806103673,
+      "fatigue_max": 1.0,
+      "fatigue_current": 0.0,
+      "ocra_max_per_shift": 2.2,
+      "ocra_current_shift": 0.0,
+      "learning_coefficient": 0.1,
+      "min_rest_fraction": 0.125,
+      "current_state": "idle",
+      "available_time": 0.0,
+      "is_absent": false,
+      "total_work_time": 0.0,
+      "total_rest_time": 0.0,
+      "mandatory_shift_lockout_until": 0.0
+    },
+    {
+      "worker_id": 3,
+      "worker_name": "Worker_3",
+      "skills": {},
+      "eligible_operations": [],
+      "labor_cost_per_hour": 39.577816480788236,
+      "base_efficiency": 0.85499753329004,
+      "fatigue_rate": 0.027244887358852894,
+      "recovery_rate": 0.04852995434465812,
+      "fatigue_max": 1.0,
+      "fatigue_current": 0.0,
+      "ocra_max_per_shift": 2.2,
+      "ocra_current_shift": 0.0,
+      "learning_coefficient": 0.1,
+      "min_rest_fraction": 0.125,
+      "current_state": "idle",
+      "available_time": 0.0,
+      "is_absent": false,
+      "total_work_time": 0.0,
+      "total_rest_time": 0.0,
+      "mandatory_shift_lockout_until": 0.0
+    },
+    {
+      "worker_id": 4,
+      "worker_name": "Worker_4",
+      "skills": {},
+      "eligible_operations": [],
+      "labor_cost_per_hour": 29.62648229887662,
+      "base_efficiency": 0.9679136951544812,
+      "fatigue_rate": 0.026807003984952185,
+      "recovery_rate": 0.07781907692456337,
+      "fatigue_max": 1.0,
+      "fatigue_current": 0.0,
+      "ocra_max_per_shift": 2.2,
+      "ocra_current_shift": 0.0,
+      "learning_coefficient": 0.1,
+      "min_rest_fraction": 0.125,
+      "current_state": "idle",
+      "available_time": 0.0,
+      "is_absent": false,
+      "total_work_time": 0.0,
+      "total_rest_time": 0.0,
+      "mandatory_shift_lockout_until": 0.0
+    },
+    {
+      "worker_id": 5,
+      "worker_name": "Worker_5",
+      "skills": {},
+      "eligible_operations": [],
+      "labor_cost_per_hour": 35.45687685187179,
+      "base_efficiency": 0.970292636621343,
+      "fatigue_rate": 0.03475802507656099,
+      "recovery_rate": 0.09988762945058054,
+      "fatigue_max": 1.0,
+      "fatigue_current": 0.0,
+      "ocra_max_per_shift": 2.2,
+      "ocra_current_shift": 0.0,
+      "learning_coefficient": 0.1,
+      "min_rest_fraction": 0.125,
+      "current_state": "idle",
+      "available_time": 0.0,
+      "is_absent": false,
+      "total_work_time": 0.0,
+      "total_rest_time": 0.0,
+      "mandatory_shift_lockout_until": 0.0
+    },
+    {
+      "worker_id": 6,
+      "worker_name": "Worker_6",
+      "skills": {},
+      "eligible_operations": [],
+      "labor_cost_per_hour": 13.751572697820356,
+      "base_efficiency": 0.8966553132189677,
+      "fatigue_rate": 0.0317461966274963,
+      "recovery_rate": 0.05819302748873799,
+      "fatigue_max": 1.0,
+      "fatigue_current": 0.0,
+      "ocra_max_per_shift": 2.2,
+      "ocra_current_shift": 0.0,
+      "learning_coefficient": 0.1,
+      "min_rest_fraction": 0.125,
+      "current_state": "idle",
+      "available_time": 0.0,
+      "is_absent": false,
+      "total_work_time": 0.0,
+      "total_rest_time": 0.0,
+      "mandatory_shift_lockout_until": 0.0
+    },
+    {
+      "worker_id": 7,
+      "worker_name": "Worker_7",
+      "skills": {},
+      "eligible_operations": [],
+      "labor_cost_per_hour": 23.107619726074972,
+      "base_efficiency": 1.130220938751404,
+      "fatigue_rate": 0.03091320687847845,
+      "recovery_rate": 0.02374161700380668,
+      "fatigue_max": 1.0,
+      "fatigue_current": 0.0,
+      "ocra_max_per_shift": 2.2,
+      "ocra_current_shift": 0.0,
+      "learning_coefficient": 0.1,
+      "min_rest_fraction": 0.125,
+      "current_state": "idle",
+      "available_time": 0.0,
+      "is_absent": false,
+      "total_work_time": 0.0,
+      "total_rest_time": 0.0,
+      "mandatory_shift_lockout_until": 0.0
+    },
+    {
+      "worker_id": 8,
+      "worker_name": "Worker_8",
+      "skills": {},
+      "eligible_operations": [],
+      "labor_cost_per_hour": 49.40909907553096,
+      "base_efficiency": 0.9495976204434077,
+      "fatigue_rate": 0.025276864874557395,
+      "recovery_rate": 0.08771049603434027,
+      "fatigue_max": 1.0,
+      "fatigue_current": 0.0,
+      "ocra_max_per_shift": 2.2,
+      "ocra_current_shift": 0.0,
+      "learning_coefficient": 0.1,
+      "min_rest_fraction": 0.125,
+      "current_state": "idle",
+      "available_time": 0.0,
+      "is_absent": false,
+      "total_work_time": 0.0,
+      "total_rest_time": 0.0,
+      "mandatory_shift_lockout_until": 0.0
+    },
+    {
+      "worker_id": 9,
+      "worker_name": "Worker_9",
+      "skills": {},
+      "eligible_operations": [],
+      "labor_cost_per_hour": 31.34664571101434,
+      "base_efficiency": 0.8742348266524239,
+      "fatigue_rate": 0.0322641088927082,
+      "recovery_rate": 0.033018512841632666,
+      "fatigue_max": 1.0,
+      "fatigue_current": 0.0,
+      "ocra_max_per_shift": 2.2,
+      "ocra_current_shift": 0.0,
+      "learning_coefficient": 0.1,
+      "min_rest_fraction": 0.125,
+      "current_state": "idle",
+      "available_time": 0.0,
+      "is_absent": false,
+      "total_work_time": 0.0,
+      "total_rest_time": 0.0,
+      "mandatory_shift_lockout_until": 0.0
+    }
+  ],
   "planning_horizon": 1000.0,
-  "creation_date": "2026-03-24T22:56:43.022466",
+  "creation_date": "2026-04-11T00:32:44.580613",
   "source": "Synthetic Generator v1.0",
   "calibration_sources": [
     "DyDFJSP 2023 (fatigue)",
@@ -22,10 +6273,161 @@
     "No real breakdown patterns"
   ],
   "carbon_emission_factor": 0.5,
+  "electricity_prices": {},
   "default_electricity_price": 0.1,
   "auxiliary_power_total": 50.0,
+  "ergonomic_risks": {
+    "0_0": 0.0038708385562268004,
+    "0_1": 0.0013979151304852882,
+    "0_2": 0.004787662492304921,
+    "1_0": 0.001978470695031826,
+    "1_1": 0.001668462165783247,
+    "2_0": 0.004569570540563365,
+    "2_1": 0.003747087887569757,
+    "3_0": 0.002616563801029953,
+    "3_1": 0.0017790976166583345,
+    "3_2": 0.0017039544616154587,
+    "3_3": 0.001374760613369526,
+    "4_0": 0.0033500254923676358,
+    "4_1": 0.003048352782165095,
+    "5_0": 0.0025284262645860565,
+    "5_1": 0.0035862995285269256,
+    "6_0": 0.001983531769296538,
+    "6_1": 0.004678613730259212,
+    "6_2": 0.001034030587210199,
+    "6_3": 0.0030399114527191033,
+    "7_0": 0.002741819664681086,
+    "7_1": 0.0033525100292677223,
+    "7_2": 0.003158922095875065,
+    "8_0": 0.0033821729292742102,
+    "8_1": 0.004048495673224588,
+    "8_2": 0.002496436390982947,
+    "9_0": 0.004053971190077105,
+    "9_1": 0.0037383332393286723,
+    "10_0": 0.0026792732071493405,
+    "10_1": 0.003841085092698529,
+    "11_0": 0.0028373223748702882,
+    "11_1": 0.002486258743600039,
+    "11_2": 0.004555626443624755,
+    "11_3": 0.0020577978114365986,
+    "12_0": 0.001150031995175187,
+    "12_1": 0.0014924805333034331,
+    "12_2": 0.00315043295594883,
+    "12_3": 0.0038911596091456397,
+    "13_0": 0.0015619667513819572,
+    "13_1": 0.002067100834531619,
+    "14_0": 0.003530002203775369,
+    "14_1": 0.0015383729058379779,
+    "15_0": 0.0013959946499392055,
+    "15_1": 0.004376586637177578,
+    "16_0": 0.004777429860511802,
+    "16_1": 0.002878926997011969,
+    "16_2": 0.0022133435728869137,
+    "17_0": 0.004300284497671511,
+    "17_1": 0.0024511003598635516,
+    "17_2": 0.004122757628623009,
+    "17_3": 0.004673914191905344,
+    "18_0": 0.002109820724266853,
+    "18_1": 0.0031238151662188055,
+    "18_2": 0.0019700630761699807,
+    "19_0": 0.003413019272985092,
+    "19_1": 0.0028311411215929307,
+    "19_2": 0.003152074008274102,
+    "19_3": 0.003100780926331093,
+    "20_0": 0.0026093870167954664,
+    "20_1": 0.004129858750648729,
+    "20_2": 0.0017530144623152753,
+    "21_0": 0.0018958183502673256,
+    "21_1": 0.001909483639167457,
+    "21_2": 0.0013700866904020254,
+    "22_0": 0.0013835823799249508,
+    "22_1": 0.001959731456079965,
+    "22_2": 0.0014383027877620234,
+    "23_0": 0.002765694430527654,
+    "23_1": 0.004634256264717961,
+    "23_2": 0.004951802664032313,
+    "23_3": 0.0027104179521667765,
+    "24_0": 0.0019917545277750356,
+    "24_1": 0.0015157385798135166,
+    "24_2": 0.0014320445634244984,
+    "25_0": 0.0016243513077341106,
+    "25_1": 0.0031238408613383497,
+    "25_2": 0.002611560321226453,
+    "25_3": 0.004478939535199124,
+    "26_0": 0.00487153808179161,
+    "26_1": 0.003404544126110899,
+    "27_0": 0.002529919058297358,
+    "27_1": 0.00155380516893915,
+    "27_2": 0.0038569506606961966,
+    "27_3": 0.004462606337379838,
+    "28_0": 0.0019044165045452054,
+    "28_1": 0.003130556286692215,
+    "28_2": 0.0012975084175109361,
+    "29_0": 0.0016484424355877692,
+    "29_1": 0.004015815148635768,
+    "29_2": 0.004656022698122956,
+    "29_3": 0.0030175597879750983,
+    "30_0": 0.003807911911647568,
+    "30_1": 0.0010743703609763999,
+    "30_2": 0.00246899245029033,
+    "30_3": 0.0020281676018659607,
+    "31_0": 0.0013194270611100087,
+    "31_1": 0.001466019752582639,
+    "31_2": 0.0049225184402359266,
+    "31_3": 0.0017485704735210397,
+    "32_0": 0.004705037503510015,
+    "32_1": 0.0032009688242942516,
+    "32_2": 0.0037024015052944284,
+    "33_0": 0.004801171635623664,
+    "33_1": 0.0016221812622403704,
+    "34_0": 0.0016928264131101612,
+    "34_1": 0.004974930642342727,
+    "35_0": 0.003852089512487168,
+    "35_1": 0.0023728142512578,
+    "35_2": 0.0013075904386392954,
+    "35_3": 0.002316505140801825,
+    "36_0": 0.003430205524401222,
+    "36_1": 0.002925168896013358,
+    "36_2": 0.004478161697836595,
+    "37_0": 0.0022338927483120637,
+    "37_1": 0.0036006868016519333,
+    "37_2": 0.0033159889790849266,
+    "37_3": 0.004361813075083809,
+    "38_0": 0.002652064483839466,
+    "38_1": 0.002274367739675146,
+    "39_0": 0.0014907538516629225,
+    "39_1": 0.0021884695818787997,
+    "40_0": 0.0022109455295171547,
+    "40_1": 0.0038187057922565333,
+    "40_2": 0.0017875092359963666,
+    "41_0": 0.0013030626345481636,
+    "41_1": 0.0038234666680617693,
+    "42_0": 0.0025958201757921634,
+    "42_1": 0.0019352800478968253,
+    "42_2": 0.0025577970103735324,
+    "42_3": 0.0010162330026774638,
+    "43_0": 0.00494220861314478,
+    "43_1": 0.0021743713876946685,
+    "43_2": 0.0024464364793742558,
+    "44_0": 0.0031005903143199592,
+    "44_1": 0.0028619795330093655,
+    "44_2": 0.0037040540046333246,
+    "45_0": 0.0037262621899243477,
+    "45_1": 0.001386570041695447,
+    "45_2": 0.004654884349922695,
+    "46_0": 0.002408840936163785,
+    "46_1": 0.002263671851841906,
+    "46_2": 0.003892985467732437,
+    "47_0": 0.002802313291950151,
+    "47_1": 0.0010010396292031642,
+    "48_0": 0.0036157354075657053,
+    "48_1": 0.004593789386362365,
+    "49_0": 0.003137529293602445,
+    "49_1": 0.004173586367977324,
+    "49_2": 0.001439702588196719
+  },
   "dynamic_params": null,
-  "machines": [
+  "machines_summary": [
     {
       "machine_id": 0,
       "power_processing": 47.40985383216876,
@@ -87,318 +6489,318 @@
       "n_modes": 3
     }
   ],
-  "workers": [
+  "workers_summary": [
     {
       "worker_id": 0,
       "labor_cost_per_hour": 31.078380373079852,
       "fatigue_rate": 0.013619768440492806,
-      "ocra_max": 2.878026682490438
+      "ocra_max": 2.2
     },
     {
       "worker_id": 1,
       "labor_cost_per_hour": 10.898814013704028,
       "fatigue_rate": 0.01120147287716338,
-      "ocra_max": 2.161775468221464
+      "ocra_max": 2.2
     },
     {
       "worker_id": 2,
       "labor_cost_per_hour": 32.1323809592171,
       "fatigue_rate": 0.028821499422509597,
-      "ocra_max": 3.7128721058180476
+      "ocra_max": 2.2
     },
     {
       "worker_id": 3,
       "labor_cost_per_hour": 39.577816480788236,
       "fatigue_rate": 0.027244887358852894,
-      "ocra_max": 3.6074194871363976
+      "ocra_max": 2.2
     },
     {
       "worker_id": 4,
       "labor_cost_per_hour": 29.62648229887662,
       "fatigue_rate": 0.026807003984952185,
-      "ocra_max": 3.949268281267466
+      "ocra_max": 2.2
     },
     {
       "worker_id": 5,
       "labor_cost_per_hour": 35.45687685187179,
       "fatigue_rate": 0.03475802507656099,
-      "ocra_max": 3.8006542849700926
+      "ocra_max": 2.2
     },
     {
       "worker_id": 6,
       "labor_cost_per_hour": 13.751572697820356,
       "fatigue_rate": 0.0317461966274963,
-      "ocra_max": 2.855894799343222
+      "ocra_max": 2.2
     },
     {
       "worker_id": 7,
       "labor_cost_per_hour": 23.107619726074972,
       "fatigue_rate": 0.03091320687847845,
-      "ocra_max": 3.1471763267282378
+      "ocra_max": 2.2
     },
     {
       "worker_id": 8,
       "labor_cost_per_hour": 49.40909907553096,
       "fatigue_rate": 0.025276864874557395,
-      "ocra_max": 3.182485660694641
+      "ocra_max": 2.2
     },
     {
       "worker_id": 9,
       "labor_cost_per_hour": 31.34664571101434,
       "fatigue_rate": 0.0322641088927082,
-      "ocra_max": 3.1392371821667266
+      "ocra_max": 2.2
     }
   ],
   "jobs_summary": [
     {
       "job_id": 0,
       "n_operations": 3,
-      "due_date": 277.4292802605401
+      "due_date": 303.52881749181546
     },
     {
       "job_id": 1,
       "n_operations": 2,
-      "due_date": 93.10717905645318
+      "due_date": 97.85334685181748
     },
     {
       "job_id": 2,
       "n_operations": 2,
-      "due_date": 114.14837499740243
+      "due_date": 149.06499104749398
     },
     {
       "job_id": 3,
       "n_operations": 4,
-      "due_date": 112.73334987468795
+      "due_date": 149.05895631003352
     },
     {
       "job_id": 4,
       "n_operations": 2,
-      "due_date": 99.18144989560237
+      "due_date": 125.26663883563862
     },
     {
       "job_id": 5,
       "n_operations": 2,
-      "due_date": 100.5502398637935
+      "due_date": 139.87518726146862
     },
     {
       "job_id": 6,
       "n_operations": 4,
-      "due_date": 166.31522522631548
+      "due_date": 203.43712683165626
     },
     {
       "job_id": 7,
       "n_operations": 3,
-      "due_date": 180.4549485554237
+      "due_date": 182.5200736945068
     },
     {
       "job_id": 8,
       "n_operations": 3,
-      "due_date": 228.66985147396062
+      "due_date": 254.2980024438823
     },
     {
       "job_id": 9,
       "n_operations": 2,
-      "due_date": 143.02464664629642
+      "due_date": 192.54285228016457
     },
     {
       "job_id": 10,
       "n_operations": 2,
-      "due_date": 146.5953837825801
+      "due_date": 156.3287601156597
     },
     {
       "job_id": 11,
       "n_operations": 4,
-      "due_date": 224.38620870926945
+      "due_date": 253.02997702207293
     },
     {
       "job_id": 12,
       "n_operations": 4,
-      "due_date": 208.32461559737882
+      "due_date": 228.9904070389125
     },
     {
       "job_id": 13,
       "n_operations": 2,
-      "due_date": 181.34074723844648
+      "due_date": 206.26225611781047
     },
     {
       "job_id": 14,
       "n_operations": 2,
-      "due_date": 107.8935519108061
+      "due_date": 117.69286531721727
     },
     {
       "job_id": 15,
       "n_operations": 2,
-      "due_date": 73.45274665018054
+      "due_date": 121.45850388140948
     },
     {
       "job_id": 16,
       "n_operations": 3,
-      "due_date": 244.57506001301738
+      "due_date": 262.6429130112534
     },
     {
       "job_id": 17,
       "n_operations": 4,
-      "due_date": 210.67085164214203
+      "due_date": 258.5972552705404
     },
     {
       "job_id": 18,
       "n_operations": 3,
-      "due_date": 105.37387714803032
+      "due_date": 132.5518356645835
     },
     {
       "job_id": 19,
       "n_operations": 4,
-      "due_date": 130.46149400903286
+      "due_date": 137.7222774802142
     },
     {
       "job_id": 20,
       "n_operations": 3,
-      "due_date": 149.62726158053
+      "due_date": 151.19109701510314
     },
     {
       "job_id": 21,
       "n_operations": 3,
-      "due_date": 218.7909524339039
+      "due_date": 227.72371080717255
     },
     {
       "job_id": 22,
       "n_operations": 3,
-      "due_date": 105.48991257912922
+      "due_date": 148.67850456211275
     },
     {
       "job_id": 23,
       "n_operations": 4,
-      "due_date": 254.20046574456694
+      "due_date": 277.8668432154095
     },
     {
       "job_id": 24,
       "n_operations": 3,
-      "due_date": 146.16807614523057
+      "due_date": 177.10627570591407
     },
     {
       "job_id": 25,
       "n_operations": 4,
-      "due_date": 189.34897848563202
+      "due_date": 197.35163362079356
     },
     {
       "job_id": 26,
       "n_operations": 2,
-      "due_date": 62.57451672441222
+      "due_date": 94.49021294326552
     },
     {
       "job_id": 27,
       "n_operations": 4,
-      "due_date": 216.63341723994932
+      "due_date": 236.04657668492285
     },
     {
       "job_id": 28,
       "n_operations": 3,
-      "due_date": 122.11609340053577
+      "due_date": 145.22996349978058
     },
     {
       "job_id": 29,
       "n_operations": 4,
-      "due_date": 270.7487359596037
+      "due_date": 305.69934212516705
     },
     {
       "job_id": 30,
       "n_operations": 4,
-      "due_date": 310.27632309886434
+      "due_date": 336.34712092673396
     },
     {
       "job_id": 31,
       "n_operations": 4,
-      "due_date": 221.25113293517242
+      "due_date": 228.52696868967956
     },
     {
       "job_id": 32,
       "n_operations": 3,
-      "due_date": 82.91986503010897
+      "due_date": 87.31697962321167
     },
     {
       "job_id": 33,
       "n_operations": 2,
-      "due_date": 83.5395580159045
+      "due_date": 93.41183833285703
     },
     {
       "job_id": 34,
       "n_operations": 2,
-      "due_date": 116.1528141728986
+      "due_date": 117.96365564216173
     },
     {
       "job_id": 35,
       "n_operations": 4,
-      "due_date": 155.0792491095592
+      "due_date": 172.86922612014936
     },
     {
       "job_id": 36,
       "n_operations": 3,
-      "due_date": 201.48329524158723
+      "due_date": 215.33830966121965
     },
     {
       "job_id": 37,
       "n_operations": 4,
-      "due_date": 219.68121424507146
+      "due_date": 244.717894527216
     },
     {
       "job_id": 38,
       "n_operations": 2,
-      "due_date": 33.576438187609845
+      "due_date": 68.14926050734326
     },
     {
       "job_id": 39,
       "n_operations": 2,
-      "due_date": 129.24662332805974
+      "due_date": 139.21477750422983
     },
     {
       "job_id": 40,
       "n_operations": 3,
-      "due_date": 188.00737161813774
+      "due_date": 224.5636534548044
     },
     {
       "job_id": 41,
       "n_operations": 2,
-      "due_date": 149.76315071084747
+      "due_date": 188.74022914199335
     },
     {
       "job_id": 42,
       "n_operations": 4,
-      "due_date": 171.56161844644998
+      "due_date": 198.82643589248187
     },
     {
       "job_id": 43,
       "n_operations": 3,
-      "due_date": 157.47365755504413
+      "due_date": 177.4399292167572
     },
     {
       "job_id": 44,
       "n_operations": 3,
-      "due_date": 276.88877535876514
+      "due_date": 316.89112585622433
     },
     {
       "job_id": 45,
       "n_operations": 3,
-      "due_date": 216.6694152239496
+      "due_date": 223.89722557605998
     },
     {
       "job_id": 46,
       "n_operations": 3,
-      "due_date": 203.75747914291568
+      "due_date": 253.43171646590486
     },
     {
       "job_id": 47,
       "n_operations": 2,
-      "due_date": 150.1062730016558
+      "due_date": 169.1650704677479
     },
     {
       "job_id": 48,
       "n_operations": 2,
-      "due_date": 107.44041249843488
+      "due_date": 127.24717884670514
     },
     {
       "job_id": 49,
       "n_operations": 3,
-      "due_date": 141.2984549585858
+      "due_date": 183.06401119518807
     }
   ]
 }

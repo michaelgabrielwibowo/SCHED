@@ -177,6 +177,13 @@ class Worker:
         w.current_state = WorkerState(data.get('current_state', 'idle'))
         w.available_time = data.get('available_time', 0.0)
         w.is_absent = data.get('is_absent', False)
+        w.total_work_time = data.get('total_work_time', 0.0)
+        w.total_rest_time = data.get('total_rest_time', 0.0)
+        w.mandatory_shift_lockout_until = data.get('mandatory_shift_lockout_until', 0.0)
+        w.current_work_duration = data.get('current_work_duration', 0.0)
+        w.worked_periods = set(data.get('worked_periods', []))
+        raw_completed = data.get('operations_completed', {})
+        w.operations_completed = {int(k): int(v) for k, v in raw_completed.items()}
         return w
 
     def _get_period_index(self, t: float) -> int:
@@ -354,7 +361,13 @@ class Worker:
         self.ocra_current_shift = 0.0
         self.current_work_duration = 0.0
 
-    def record_work(self, duration: float, risk_rate: float = 0.0, current_time: float = 0.0) -> float:
+    def record_work(
+        self,
+        duration: float,
+        risk_rate: float = 0.0,
+        current_time: float = 0.0,
+        operation_type: Optional[int] = None,
+    ) -> float:
         """Record work period; resets OCRA/fatigue at period boundaries. Returns start_time used."""
         # --- FIX 6: Period-boundary OCRA reset ---
         current_period = self.period_clock.get_period(current_time)
@@ -370,6 +383,10 @@ class Worker:
 
         self.total_work_time += duration
         self.update_fatigue(work_duration=duration, rest_duration=0.0)
+        if operation_type is not None:
+            self.operations_completed[operation_type] = (
+                self.operations_completed.get(operation_type, 0) + 1
+            )
 
         self._last_worked_period = current_period
         self.worked_periods.add(current_period)
@@ -474,7 +491,7 @@ class Worker:
 
         Evidence: Labor cost minimization [CONFIRMED DRCFJSSP]
         """
-        return self.labor_cost_per_hour * work_duration
+        return self.labor_cost_per_hour * (work_duration / 60.0)
 
     def get_ergonomic_risk_rate(
         self,
@@ -540,6 +557,11 @@ class Worker:
             'total_work_time': self.total_work_time,
             'total_rest_time': self.total_rest_time,
             'mandatory_shift_lockout_until': self.mandatory_shift_lockout_until,
+            'current_work_duration': self.current_work_duration,
+            'worked_periods': sorted(self.worked_periods),
+            'operations_completed': {
+                str(k): v for k, v in self.operations_completed.items()
+            },
         }
 
     def __hash__(self):

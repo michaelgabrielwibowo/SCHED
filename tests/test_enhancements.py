@@ -1,13 +1,22 @@
 import pytest
 import numpy as np
 
-from sfjssp_model.job import Job, Operation
-from sfjssp_model.machine import Machine, MachineMode, MachineState
-from sfjssp_model.worker import Worker, WorkerState
-from sfjssp_model.instance import SFJSSPInstance, InstanceType
-from sfjssp_model.schedule import Schedule, ScheduledOperation
-from baseline_solver.greedy_solvers import GreedyScheduler
-from exact_solvers.cp_solver import EnergyAwareCPScheduler
+try:
+    from ..sfjssp_model.job import Job, Operation
+    from ..sfjssp_model.machine import Machine, MachineMode, MachineState
+    from ..sfjssp_model.worker import Worker, WorkerState
+    from ..sfjssp_model.instance import SFJSSPInstance, InstanceType
+    from ..sfjssp_model.schedule import Schedule, ScheduledOperation
+    from ..baseline_solver.greedy_solvers import GreedyScheduler
+    from ..exact_solvers.cp_solver import EnergyAwareCPScheduler, ORTOOLS_AVAILABLE
+except ImportError:  # pragma: no cover - supports repo-root imports
+    from sfjssp_model.job import Job, Operation
+    from sfjssp_model.machine import Machine, MachineMode, MachineState
+    from sfjssp_model.worker import Worker, WorkerState
+    from sfjssp_model.instance import SFJSSPInstance, InstanceType
+    from sfjssp_model.schedule import Schedule, ScheduledOperation
+    from baseline_solver.greedy_solvers import GreedyScheduler
+    from exact_solvers.cp_solver import EnergyAwareCPScheduler, ORTOOLS_AVAILABLE
 
 def test_dynamic_fatigue_recovery():
     """Test that a worker recovers fatigue correctly when resting."""
@@ -31,8 +40,8 @@ def test_dynamic_fatigue_recovery():
     expected_fatigue_after_rest = max(0.0, expected_fatigue - (rest_duration * 0.1))
     assert pytest.approx(worker.fatigue_current) == expected_fatigue_after_rest
 
-def test_compute_resilience_metrics():
-    """Test that resilience metrics are properly calculated."""
+def test_compute_robustness_metrics():
+    """Test that robustness metrics are properly calculated."""
     # Create simple instance
     instance = SFJSSPInstance(instance_id="test_res", instance_type=InstanceType.STATIC,
                               n_jobs=2, n_machines=2, n_workers=2)
@@ -58,7 +67,7 @@ def test_compute_resilience_metrics():
     schedule.add_operation(job_id=1, op_id=0, machine_id=1, worker_id=1, # DIFFERENT WORKER
                            start_time=10.0, completion_time=25.0, processing_time=15.0, mode_id=0)
     
-    metrics = schedule.compute_resilience_metrics(instance)
+    metrics = schedule.compute_robustness_metrics(instance)
     
     assert "machine_workload_variance" in metrics
     assert "worker_workload_variance" in metrics
@@ -75,16 +84,18 @@ def test_compute_resilience_metrics():
     assert pytest.approx(metrics["average_slack_time"]) == 0.0
     
 def test_energy_objective_cp_solver():
-    """Test that EnergyAwareCPScheduler can be initialized with different objectives."""
+    """Test optional OR-Tools behavior for the exact solver entrypoint."""
     instance = SFJSSPInstance(instance_id="test_energy", instance_type=InstanceType.STATIC,
                               n_jobs=1, n_machines=1, n_workers=1)
-    # Just testing initialization and structure, not full solve here as it might be heavy.
-    solver = EnergyAwareCPScheduler(time_limit=1, peak_power_penalty=50.0)
-    
-    assert solver.peak_power_penalty == 50.0
+    if ORTOOLS_AVAILABLE:
+        solver = EnergyAwareCPScheduler(time_limit=1, peak_power_penalty=50.0)
+        assert solver.peak_power_penalty == 50.0
+    else:
+        with pytest.raises(ImportError, match="ortools is required for exact solver support"):
+            EnergyAwareCPScheduler(time_limit=1, peak_power_penalty=50.0)
 
-def test_full_evaluation_includes_resilience():
-    """Test if Schedule.evaluate() returns the new resilience metrics."""
+def test_full_evaluation_includes_robustness_metrics():
+    """Test if Schedule.evaluate() returns the robustness metrics."""
     instance = SFJSSPInstance(instance_id="test_res", instance_type=InstanceType.STATIC,
                               n_jobs=1, n_machines=1, n_workers=1)
     instance.machines.append(Machine(machine_id=0, machine_name="M0", modes=[MachineMode(0, 10, 5, 2)], current_state=MachineState.IDLE))

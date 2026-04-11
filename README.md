@@ -8,7 +8,7 @@ This codebase implements scheduling optimization for manufacturing systems consi
 - **Economic objectives**: Makespan, tardiness
 - **Environmental objectives**: Energy consumption, carbon emissions
 - **Human objectives**: Ergonomic risk, worker fatigue, labor cost
-- **Resilience**: Recovery from disruptions (dynamic events)
+- **Schedule robustness**: Load balance and slack buffer against disruptions
 
 ## Evidence Status
 
@@ -55,24 +55,28 @@ sfjssp_code/
 
 ## Installation
 
-### Basic (for model + heuristics)
+### Core Install
 
 ```bash
-cd sfjssp_code
-pip install numpy
+pip install -r requirements.txt
 ```
 
-### Full (with DRL)
+### Optional DRL Support
 
 ```bash
-cd sfjssp_code
-pip install numpy torch gymnasium
+pip install torch
+```
+
+### Exact solvers (optional)
+
+```bash
+pip install ortools>=9.8.0
 ```
 
 ### Development
 
 ```bash
-pip install numpy torch gymnasium pytest
+pytest -q
 ```
 
 ## Quick Start
@@ -80,8 +84,7 @@ pip install numpy torch gymnasium pytest
 ### 1. Generate Benchmark Instance
 
 ```bash
-cd sfjssp_code
-python experiments/generate_benchmarks.py --mode example --output benchmarks
+python -m experiments.generate_benchmarks --mode example --output benchmarks
 ```
 
 ### 2. Run Greedy Scheduler
@@ -107,13 +110,13 @@ print(f"Energy: {objectives['total_energy']}")
 ### 3. Run NSGA-III Optimization
 
 ```bash
-python experiments/test_nsga3.py
+python -m experiments.test_nsga3
 ```
 
-### 4. Train DRL Agent (requires PyTorch)
+### 4. Train DRL Agent (`torch` optional)
 
 ```bash
-python training/train_drl.py --episodes 100
+python -m training.train_drl --episodes 100
 ```
 
 ## API Reference
@@ -133,11 +136,24 @@ from sfjssp_model import (
 ### Environment
 
 ```python
+import numpy as np
+
 from environment import SFJSSPEnv
 
-env = SFJSSPEnv(instance)
+env = SFJSSPEnv(instance, use_graph_state=False)
 obs, info = env.reset(seed=42)
-action = env.action_space.sample()
+
+job_idx = int(np.argmax(env._compute_job_mask()))
+machine_idx, worker_idx, mode_idx = np.argwhere(
+    env.compute_resource_mask(job_idx) > 0
+)[0]
+action = {
+    "job_idx": job_idx,
+    "machine_idx": int(machine_idx),
+    "worker_idx": int(worker_idx),
+    "mode_idx": int(mode_idx),
+}
+
 obs, reward, terminated, truncated, info = env.step(action)
 ```
 
@@ -206,12 +222,13 @@ The SFJSSP optimizes multiple objectives:
 3. **Carbon** (f3): Minimize CO2 emissions
 4. **Ergonomic Risk** (f4): Minimize maximum OCRA index
 5. **Labor Cost** (f5): Minimize worker costs
-6. **Resilience** (f6): Minimize recovery time after disruptions
+6. **Schedule Robustness** (f6): Balance machine/worker load and preserve slack buffers
 
 ## Constraints
 
 ### Hard Constraints
 - Operation precedence
+- Job arrival times
 - Machine eligibility
 - Worker eligibility
 - Ergonomic exposure limits
@@ -229,20 +246,25 @@ The SFJSSP optimizes multiple objectives:
 3. **DRL stability**: Multi-agent training may require tuning
 4. **Ergonomic approximation**: OCRA indices are simplified
 
-## Related Documentation
-
-- `PROJECT_PLAN_SFJSSP.md` - Implementation roadmap
-- `RESEARCH_PROPOSAL_SFJSSP.md` - Research proposal
-- `MATHEMATICAL_MODEL_SFJSSP.md` - MIP formulation
-- `DATASET_INVENTORY_SFJSSP.md` - Dataset catalog
-
 ## Testing
 
 ```bash
-cd sfjssp_code
-python debug_test.py  # Quick smoke test
-python experiments/test_nsga3.py  # NSGA-III test
+pytest -q
+python -m experiments.test_nsga3
+python verify_all_solvers.py
 ```
+
+## Current Status
+
+- Root package import works from a clean repo checkout.
+- Small and medium benchmark JSON files load as full instances and are exercised in pytest.
+- Due dates are modeled as soft constraints via tardiness objectives, not feasibility rejection.
+- The Gym environment now returns a true flat `Box` observation when `use_graph_state=False`.
+- NSGA-III now encodes machine modes and the bundled demo produces non-penalty schedules.
+- `torch` and `ortools` are optional, and both optional paths have now been smoke-tested in this environment.
+- The CP exact solver is smoke-verified for the `makespan` objective on stored small benchmarks.
+- The torch-backed PPO training entrypoint runs one episode and writes checkpoints/history.
+- The MIP exact solver is currently quarantined and raises a clear `NotImplementedError` instead of returning invalid schedules.
 
 ## Citation
 
@@ -267,4 +289,4 @@ This is a research implementation. Key areas for contribution:
 1. Real industrial case studies
 2. Parameter calibration from actual factories
 3. Improved DRL architectures
-4. Resilience metric validation
+4. Schedule robustness metric validation

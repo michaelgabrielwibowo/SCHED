@@ -33,7 +33,34 @@ except ImportError:
         def softmax(x, dim=-1): return x
 
 
-class SFJSSPGraphEncoder:
+BaseTorchModule = nn.Module if TORCH_AVAILABLE else object
+
+
+if TORCH_AVAILABLE:
+    def _safe_categorical_from_logits(
+        logits: torch.Tensor,
+        action_mask: Optional[torch.Tensor] = None,
+    ) -> torch.distributions.Categorical:
+        """Build a numerically stable categorical distribution from masked logits."""
+        logits = torch.nan_to_num(logits, nan=-1e9, neginf=-1e9, posinf=1e9)
+
+        if action_mask is not None:
+            mask = (action_mask > 0).to(logits.dtype)
+            logits = logits + (1 - mask) * (-1e9)
+        else:
+            mask = torch.ones_like(logits)
+
+        probs = torch.softmax(logits, dim=-1)
+        probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0) * mask
+
+        totals = probs.sum(dim=-1, keepdim=True)
+        fallback = mask / mask.sum(dim=-1, keepdim=True).clamp_min(1.0)
+        probs = torch.where(totals > 0, probs / totals.clamp_min(1e-12), fallback)
+
+        return torch.distributions.Categorical(probs)
+
+
+class SFJSSPGraphEncoder(BaseTorchModule):
     """
     Encoder for SFJSSP state representation using connectivity-masked attention.
 
@@ -61,6 +88,7 @@ class SFJSSPGraphEncoder:
         hidden_dim: int = 128,
         output_dim: int = 64,
     ):
+        super().__init__()
         if not TORCH_AVAILABLE:
             return
 
@@ -181,17 +209,20 @@ class SFJSSPGraphEncoder:
         # Prepare attention mask from adjacency (0 means MASKED, 1 means ALLOWED)
         attn_mask = None
         if adjacency is not None:
+            eye = torch.eye(
+                adjacency.size(-1),
+                dtype=adjacency.dtype,
+                device=adjacency.device,
+            ).unsqueeze(0)
+            adjacency = torch.maximum(adjacency, eye)
+
             # MultiheadAttention attn_mask: (L, S) or (N*num_heads, L, S)
-            # We have (batch, total_nodes, total_nodes)
-            # We need to transform it to additive mask (-inf for masked spots)
-            # and then repeat it for num_heads to satisfy PyTorch's (B*H, L, S) requirement.
-            
-            # 1. Convert 0/1 mask to -inf/0 mask
-            additive_mask = (adjacency == 0).float() * -1e9
-            
-            # 2. Repeat for each attention head: (B, L, S) -> (B*H, L, S)
+            # Use a boolean mask so its dtype matches key_padding_mask.
+            base_mask = adjacency == 0
+
+            # Repeat for each attention head: (B, L, S) -> (B*H, L, S)
             num_heads = self.attention.num_heads
-            attn_mask = additive_mask.repeat_interleave(num_heads, dim=0)
+            attn_mask = base_mask.repeat_interleave(num_heads, dim=0)
         
         # Apply connectivity-masked self-attention
         attn_out, _ = self.attention(
@@ -291,8 +322,7 @@ class JobAgentNetwork(nn.Module):
             action = torch.argmax(logits, dim=-1)
             log_prob = torch.zeros_like(action, dtype=torch.float32)
         else:
-            probs = F.softmax(logits, dim=-1)
-            dist = torch.distributions.Categorical(probs)
+            dist = _safe_categorical_from_logits(logits, action_mask)
             action = dist.sample()
             log_prob = dist.log_prob(action)
 
@@ -384,11 +414,8 @@ class MachineAgentNetwork(nn.Module):
             mode_action = torch.argmax(mode_logits, dim=-1)
             log_prob = torch.zeros_like(machine_action, dtype=torch.float32)
         else:
-            machine_probs = F.softmax(machine_logits, dim=-1)
-            mode_probs = F.softmax(mode_logits, dim=-1)
-
-            machine_dist = torch.distributions.Categorical(machine_probs)
-            mode_dist = torch.distributions.Categorical(mode_probs)
+            machine_dist = _safe_categorical_from_logits(machine_logits, machine_mask)
+            mode_dist = _safe_categorical_from_logits(mode_logits)
 
             machine_action = machine_dist.sample()
             mode_action = mode_dist.sample()
@@ -462,8 +489,7 @@ class WorkerAgentNetwork(nn.Module):
             worker_action = torch.argmax(worker_logits, dim=-1)
             log_prob = torch.zeros_like(worker_action, dtype=torch.float32)
         else:
-            probs = F.softmax(worker_logits, dim=-1)
-            dist = torch.distributions.Categorical(probs)
+            dist = _safe_categorical_from_logits(worker_logits, worker_mask)
             worker_action = dist.sample()
             log_prob = dist.log_prob(worker_action)
 
@@ -522,7 +548,7 @@ class MultiAgentPPO:
 
         # Optimizers
         self.optimizer = torch.optim.Adam([
-            {'params': self.encoder.fusion.parameters()}, # Only tune fusion for now
+            {'params': self.encoder.parameters()},
             {'params': self.job_agent.parameters()},
             {'params': self.machine_agent.parameters()},
             {'params': self.worker_agent.parameters()},
@@ -543,7 +569,9 @@ class MultiAgentPPO:
         m_feat = torch.FloatTensor(obs['machine_nodes']).unsqueeze(0).to(self.device)
         w_feat = torch.FloatTensor(obs['worker_nodes']).unsqueeze(0).to(self.device)
         
-        job_mask = obs.get('job_mask') # (n_jobs,)
+        job_mask = obs.get('job_mask')
+        if job_mask is None:
+            job_mask = np.ones(j_feat.shape[1], dtype=np.float32)
         
         # 2. Global encoding
         adj_t = torch.FloatTensor(obs['adjacency']).unsqueeze(0).to(self.device)
@@ -558,7 +586,18 @@ class MultiAgentPPO:
         job_action, job_log_prob = self.job_agent.get_action(
             global_state, node_embs['jobs'], job_mask_t, deterministic
         )
-        job_idx = job_action.item()
+        valid_jobs = np.flatnonzero(job_mask > 0.0)
+        if valid_jobs.size == 0:
+            raise RuntimeError("No valid jobs available for PPO action selection.")
+
+        job_idx = int(job_action.item())
+        if (
+            job_idx >= env.instance.n_jobs
+            or job_mask[job_idx] <= 0.0
+            or env.instance.get_job(job_idx) is None
+        ):
+            job_idx = int(valid_jobs[0])
+            job_action = torch.tensor([job_idx], device=self.device)
 
         # 4. Hierarchical Resource Selection
         # Get resource mask for selected job on-demand from environment
@@ -571,15 +610,44 @@ class MultiAgentPPO:
         machine_action, mode_action, mac_log_prob = self.machine_agent.get_action(
             global_state, mac_mask_t, deterministic
         )
-        
+
         # Worker mask for selected job/machine
-        mac_idx = machine_action.item()
+        valid_machines = np.flatnonzero(mac_m > 0.0)
+        if valid_machines.size == 0:
+            raise RuntimeError(f"No valid machines for job {job_idx}.")
+
+        mac_idx = int(machine_action.item())
+        if mac_idx >= len(mac_m) or mac_m[mac_idx] <= 0.0:
+            mac_idx = int(valid_machines[0])
+            machine_action = torch.tensor([mac_idx], device=self.device)
+
         wrk_m = (res_mask[mac_idx].sum(axis=1) > 0).astype(np.float32)
         wrk_mask_t = torch.FloatTensor(wrk_m).unsqueeze(0).to(self.device)
 
         worker_action, wrk_log_prob = self.worker_agent.get_action(
             global_state, wrk_mask_t, deterministic
         )
+
+        valid_workers = np.flatnonzero(wrk_m > 0.0)
+        if valid_workers.size == 0:
+            raise RuntimeError(f"No valid workers for job {job_idx} on machine {mac_idx}.")
+
+        wrk_idx = int(worker_action.item())
+        if wrk_idx >= len(wrk_m) or wrk_m[wrk_idx] <= 0.0:
+            wrk_idx = int(valid_workers[0])
+            worker_action = torch.tensor([wrk_idx], device=self.device)
+
+        mode_m = (res_mask[mac_idx, wrk_idx] > 0).astype(np.float32)
+        valid_modes = np.flatnonzero(mode_m > 0.0)
+        if valid_modes.size == 0:
+            raise RuntimeError(
+                f"No valid modes for job {job_idx} on machine {mac_idx} with worker {wrk_idx}."
+            )
+
+        mode_idx = int(mode_action.item())
+        if mode_idx >= len(mode_m) or mode_m[mode_idx] <= 0.0:
+            mode_idx = int(valid_modes[0])
+            mode_action = torch.tensor([mode_idx], device=self.device)
 
         # Determine current op_idx for this job
         job = env.instance.get_job(job_idx)
@@ -679,7 +747,7 @@ class MultiAgentPPO:
 
             # Job Agent Update
             logits_j, val_j = self.job_agent(global_state, node_embs['jobs'])
-            dist_j = torch.distributions.Categorical(F.softmax(logits_j, dim=-1))
+            dist_j = _safe_categorical_from_logits(logits_j)
             new_log_probs_j = dist_j.log_prob(job_actions)
             ratio_j = torch.exp(new_log_probs_j - old_job_log_probs)
             surr1_j = ratio_j * job_adv
@@ -689,8 +757,8 @@ class MultiAgentPPO:
             # Machine Agent Update
             # [FIX] Joint log prob of machine AND mode selection must be used
             logits_m, logits_mode, val_m = self.machine_agent(global_state)
-            dist_m = torch.distributions.Categorical(F.softmax(logits_m, dim=-1))
-            dist_mode = torch.distributions.Categorical(F.softmax(logits_mode, dim=-1))
+            dist_m = _safe_categorical_from_logits(logits_m)
+            dist_mode = _safe_categorical_from_logits(logits_mode)
             
             new_log_probs_m = dist_m.log_prob(mac_actions) + dist_mode.log_prob(mode_actions)
             ratio_m = torch.exp(new_log_probs_m - old_mac_log_probs)
@@ -700,7 +768,7 @@ class MultiAgentPPO:
             
             # Worker Agent Update
             logits_w, val_w = self.worker_agent(global_state)
-            dist_w = torch.distributions.Categorical(F.softmax(logits_w, dim=-1))
+            dist_w = _safe_categorical_from_logits(logits_w)
             new_log_probs_w = dist_w.log_prob(wrk_actions)
             ratio_w = torch.exp(new_log_probs_w - old_wrk_log_probs)
             surr1_w = ratio_w * wrk_adv
@@ -720,6 +788,7 @@ class MultiAgentPPO:
         if not TORCH_AVAILABLE:
             return
         torch.save({
+            'encoder': self.encoder.state_dict(),
             'job_agent': self.job_agent.state_dict(),
             'machine_agent': self.machine_agent.state_dict(),
             'worker_agent': self.worker_agent.state_dict(),
@@ -730,6 +799,8 @@ class MultiAgentPPO:
         if not TORCH_AVAILABLE:
             return
         checkpoint = torch.load(path, map_location=self.device)
+        if 'encoder' in checkpoint:
+            self.encoder.load_state_dict(checkpoint['encoder'])
         self.job_agent.load_state_dict(checkpoint['job_agent'])
         self.machine_agent.load_state_dict(checkpoint['machine_agent'])
         self.worker_agent.load_state_dict(checkpoint['worker_agent'])

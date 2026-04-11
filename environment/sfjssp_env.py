@@ -15,11 +15,18 @@ from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass, field
 import copy
 
-from sfjssp_model.instance import SFJSSPInstance, InstanceType
-from sfjssp_model.schedule import Schedule
-from sfjssp_model.job import Job, Operation
-from sfjssp_model.machine import Machine, MachineState
-from sfjssp_model.worker import Worker, WorkerState
+try:
+    from ..sfjssp_model.instance import SFJSSPInstance, InstanceType
+    from ..sfjssp_model.schedule import Schedule
+    from ..sfjssp_model.job import Job, Operation
+    from ..sfjssp_model.machine import Machine, MachineState
+    from ..sfjssp_model.worker import Worker, WorkerState
+except ImportError:  # pragma: no cover - supports repo-root imports
+    from sfjssp_model.instance import SFJSSPInstance, InstanceType
+    from sfjssp_model.schedule import Schedule
+    from sfjssp_model.job import Job, Operation
+    from sfjssp_model.machine import Machine, MachineState
+    from sfjssp_model.worker import Worker, WorkerState
 
 
 @dataclass
@@ -82,7 +89,7 @@ class SFJSSPEnv(gym.Env):
     Evidence:
     - Gym interface for DRL [CONFIRMED in DRL scheduling papers]
     - Action masking for constraints [CONFIRMED]
-    - Dynamic event injection [CONFIRMED in dynamic FJSSP]
+    - Dynamic arrivals/breakdowns: PARTIAL support in this implementation
     """
 
     metadata = {'render_modes': ['text', 'gantt']}
@@ -205,7 +212,7 @@ class SFJSSPEnv(gym.Env):
         self,
         seed: Optional[int] = None,
         options: Optional[Dict[str, Any]] = None
-    ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
+    ) -> Tuple[Any, Dict[str, Any]]:
         """Reset environment"""
         super().reset(seed=seed)
         if seed is not None:
@@ -237,7 +244,7 @@ class SFJSSPEnv(gym.Env):
     def step(
         self,
         action: Dict[str, int]
-    ) -> Tuple[Dict[str, np.ndarray], float, bool, bool, Dict[str, Any]]:
+    ) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
         """Execute one scheduling step"""
         self.step_count += 1
         
@@ -306,12 +313,20 @@ class SFJSSPEnv(gym.Env):
 
         # Mode valid
         machine = self.instance.get_machine(machine_id)
-        if mode_id >= len(machine.modes) and mode_id != 0:
+        if machine is None:
+            return False, "Invalid machine"
+        if mode_id not in next_op.processing_times.get(machine_id, {}):
             return False, "Invalid machine mode"
 
-        # Resource availability (Now supporting Active Delay)
-        # If ignore_temporal=True, we allow scheduling into the future
-        # Industry 5.0 rule: We projection the start time based on availability
+        resource_mask = self.compute_resource_mask(job_idx)
+        if (
+            machine_id >= resource_mask.shape[0]
+            or worker_id >= resource_mask.shape[1]
+            or mode_id >= resource_mask.shape[2]
+            or resource_mask[machine_id, worker_id, mode_id] <= 0
+        ):
+            return False, "Resource assignment is not temporally feasible"
+
         return True, ""
 
     def _execute_action(self, action: Dict[str, int]) -> Dict[str, Any]:
@@ -328,14 +343,27 @@ class SFJSSPEnv(gym.Env):
 
         # 1. Determine actual start time (projection)
         # Precedence constraint
-        prev_comp = 0.0
+        prev_ready_time = job.arrival_time
+        transport_time = 0.0
         if op.op_id > 0:
             prev_op = self.schedule.get_operation(job_idx, op.op_id - 1)
-            prev_comp = prev_op.completion_time + getattr(op, 'transport_time', 5.0)
+            transport_time = getattr(op, 'transport_time', 0.0)
+            prev_model_op = job.operations[op.op_id - 1]
+            prev_ready_time = (
+                prev_op.completion_time
+                + transport_time
+                + getattr(prev_model_op, 'waiting_time', 0.0)
+            )
 
         # Resource availability
         # Note: We must also account for machine setup gaps
-        earliest_start = max(self.current_time, prev_comp, machine.available_time + machine.setup_time, worker.available_time)
+        earliest_start = max(
+            self.current_time,
+            prev_ready_time,
+            machine.available_time + machine.setup_time,
+            worker.available_time,
+            worker.mandatory_shift_lockout_until,
+        )
         
         # 2. Refine start time via Industry 5.0 engines (Gap & Worker validation)
         risk_rate = self.instance.get_ergonomic_risk(job_idx, op.op_id)
@@ -353,8 +381,11 @@ class SFJSSPEnv(gym.Env):
             
             # Worker Check
             # We estimate duration first
-            pt_base = op.processing_times.get(machine_id, {0: 50.0}).get(mode_id, 50.0)
-            est_pt = pt_base / max(0.1, worker.get_efficiency())
+            est_pt = op.get_processing_time(
+                machine_id,
+                mode_id,
+                worker.get_efficiency(),
+            )
             
             w_valid, w_next = worker.validate_assignment(temp_start, est_pt, risk_rate)
             if not w_valid:
@@ -385,15 +416,26 @@ class SFJSSPEnv(gym.Env):
         
         machine.available_time = completion_time
         machine.total_processing_time += processing_time
+        if machine.total_processing_time == processing_time:
+            machine.startup_count += 1
         machine.degrade_tool(processing_time, mode_id) # INDUSTRY 5.0 Tool Wear
+        if transport_time > 0:
+            machine.total_transport_time += transport_time
         
         # Worker tracking
-        worker.record_work(processing_time, risk_rate, start_time)
+        worker.available_time = completion_time
+        worker.record_work(
+            processing_time,
+            risk_rate,
+            start_time,
+            operation_type=op.op_id,
+        )
         
         # Operation state
         op.is_scheduled = True
         op.start_time = start_time
         op.completion_time = completion_time
+        op.assign_period_bounds(self.instance.period_clock)
         
         # Schedule recording
         self.schedule.add_operation(
@@ -405,7 +447,8 @@ class SFJSSPEnv(gym.Env):
             start_time=start_time,
             completion_time=completion_time,
             processing_time=processing_time,
-            setup_time=machine.setup_time if idle_gap >= machine.setup_time else 0.0
+            setup_time=actual_setup if idle_gap > 0 else 0.0,
+            transport_time=transport_time,
         )
 
         # 5. Check job completion
@@ -428,6 +471,13 @@ class SFJSSPEnv(gym.Env):
         next_event = float('inf')
         
         # Next job arrival?
+        for job in self.instance.jobs:
+            if not job.operations:
+                continue
+            first_op = job.operations[0]
+            if not first_op.is_scheduled and job.arrival_time > self.current_time:
+                next_event = min(next_event, job.arrival_time)
+
         # Next operation completion?
         for job in self.instance.jobs:
             for op in job.operations:
@@ -444,13 +494,20 @@ class SFJSSPEnv(gym.Env):
                 # This usually implies a gap/wait state. Advance by small increment.
                 self.current_time += 10.0
 
+        for machine in self.instance.machines:
+            machine.repair(self.current_time)
+        for worker in self.instance.workers:
+            worker.end_absence(self.current_time)
+
+        self._inject_dynamic_events()
+
         # Mark finished operations as completed
         for job in self.instance.jobs:
             for op in job.operations:
                 if op.is_scheduled and not op.is_completed and op.completion_time <= self.current_time:
                     op.is_completed = True
 
-    def _get_observation(self) -> Dict[str, np.ndarray]:
+    def _get_observation(self) -> Any:
         """
         Get current state observation as heterogeneous graph.
         """
@@ -551,7 +608,13 @@ class SFJSSPEnv(gym.Env):
         real_job_mask = self._compute_job_mask()
         job_mask[:len(real_job_mask)] = real_job_mask
 
-        return {
+        if self.normalize_obs and self.norm_factors:
+            job_features = job_features / self.norm_factors.get('job', 1.0)
+            op_features = op_features / self.norm_factors.get('op', 1.0)
+            machine_features = machine_features / self.norm_factors.get('machine', 1.0)
+            worker_features = worker_features / self.norm_factors.get('worker', 1.0)
+
+        graph_obs = {
             'job_nodes': job_features,
             'op_nodes': op_features,
             'machine_nodes': machine_features,
@@ -560,6 +623,21 @@ class SFJSSPEnv(gym.Env):
             'job_mask': job_mask,
             'padding_mask': padding_mask,
         }
+
+        if self.use_graph_state:
+            return graph_obs
+
+        flat_obs = np.concatenate([
+            job_features.reshape(-1),
+            op_features.reshape(-1),
+            machine_features.reshape(-1),
+            worker_features.reshape(-1),
+            np.array([
+                self.current_time / self.norm_factors.get('time', 1.0)
+                if self.normalize_obs else self.current_time
+            ], dtype=np.float32),
+        ]).astype(np.float32)
+        return flat_obs
 
 
     def _compute_job_mask(self) -> np.ndarray:
@@ -590,29 +668,67 @@ class SFJSSPEnv(gym.Env):
         if next_op.op_id > 0:
             prev_op = self.schedule.get_operation(job_idx, next_op.op_id - 1)
             if prev_op:
-                prev_comp = prev_op.completion_time
+                prev_model_op = job.operations[next_op.op_id - 1]
+                prev_comp = (
+                    prev_op.completion_time
+                    + prev_op.transport_time
+                    + getattr(prev_model_op, 'waiting_time', 0.0)
+                )
         
         for m_id in next_op.eligible_machines:
             machine = self.instance.get_machine(m_id)
+            if machine is None:
+                continue
             for w_id in next_op.eligible_workers:
                 worker = self.instance.get_worker(w_id)
-                
-                # Simple feasibility check for masking
-                # In sophisticated implementation, we would call validate_assignment here
-                # but for efficiency, we just mask eligibility.
+                if worker is None:
+                    continue
+
+                earliest_start = max(
+                    self.current_time,
+                    job.arrival_time if next_op.op_id == 0 else prev_comp,
+                    machine.available_time + machine.setup_time,
+                    worker.available_time,
+                    worker.mandatory_shift_lockout_until,
+                )
+
                 for mode_id in range(max_modes):
-                    if machine.modes and mode_id < len(machine.modes):
+                    if mode_id not in next_op.processing_times.get(m_id, {}):
+                        continue
+                    est_pt = next_op.get_processing_time(
+                        m_id,
+                        mode_id,
+                        worker.get_efficiency(),
+                    )
+                    temp_start = earliest_start
+                    risk_rate = self.instance.get_ergonomic_risk(job_idx, next_op.op_id)
+                    for _ in range(50):
+                        m_valid, m_next = machine.validate_gap(temp_start, machine.setup_time)
+                        if not m_valid:
+                            temp_start = max(temp_start, m_next)
+                            continue
+                        w_valid, w_next = worker.validate_assignment(temp_start, est_pt, risk_rate)
+                        if not w_valid:
+                            temp_start = max(temp_start, w_next)
+                            continue
                         mask[m_id, w_id, mode_id] = 1.0
-                    elif mode_id == 0:
-                        mask[m_id, w_id, mode_id] = 1.0
+                        break
         return mask
 
     def _is_operation_ready(self, op: Operation) -> bool:
         """Check if precedence constraints are met"""
         if op.op_id == 0:
-            return True
+            job = self.instance.get_job(op.job_id)
+            return job is not None and job.arrival_time <= self.current_time
         prev_op = self.instance.get_job(op.job_id).operations[op.op_id - 1]
-        return prev_op.is_completed
+        if not prev_op.is_completed:
+            return False
+        required_start = (
+            prev_op.completion_time
+            + getattr(prev_op, 'transport_time', 0.0)
+            + getattr(prev_op, 'waiting_time', 0.0)
+        )
+        return required_start <= self.current_time
 
     def _get_processing_time(self, op: Operation) -> float:
         """Estimate processing time (averaged across eligible machines)"""
@@ -660,11 +776,27 @@ class SFJSSPEnv(gym.Env):
 
     def _compute_normalization_factors(self):
         """Compute factors to normalize observation features to [0, 1] range"""
-        # (Implementation details omitted for brevity)
+        max_processing = 1.0
+        for job in self.instance.jobs:
+            for op in job.operations:
+                for mode_times in op.processing_times.values():
+                    max_processing = max(max_processing, max(mode_times.values(), default=1.0))
+
+        max_power = max(
+            [machine.power_processing for machine in self.instance.machines] or [1.0]
+        )
+        max_worker_scale = max(
+            [
+                max(worker.base_efficiency, worker.labor_cost_per_hour / 10.0)
+                for worker in self.instance.workers
+            ] or [1.0]
+        )
         self.norm_factors = {
-            'time': 1000.0,
-            'energy': 10000.0,
-            'processing': 100.0
+            'time': max(1.0, self.instance.planning_horizon / 100.0),
+            'job': max(1.0, self.instance.planning_horizon / 100.0),
+            'op': max(1.0, max_processing / 10.0),
+            'machine': max(1.0, max_power / 10.0),
+            'worker': max(1.0, max_worker_scale),
         }
 
     def render(self):
@@ -673,5 +805,20 @@ class SFJSSPEnv(gym.Env):
             print(f"Time: {self.current_time:.2f}, Completed Jobs: {len(self.completed_jobs)}/{self.instance.n_jobs}")
             print(f"Makespan: {self.schedule.makespan:.2f}, Total Energy: {self.schedule.energy_breakdown.get('total', 0):.2f}")
         elif self.render_mode == 'gantt':
-            # Gantt rendering logic
-            pass
+            return self.schedule.to_gantt_dict()
+
+    def _inject_dynamic_events(self):
+        """Inject dynamic arrivals and breakdowns for dynamic instances."""
+        if self.instance.instance_type != InstanceType.DYNAMIC or self.instance.dynamic_params is None:
+            return
+
+        new_job = self.instance.generate_dynamic_job(self.current_time, self.event_rng)
+        if new_job is not None:
+            self.instance.add_job(new_job)
+
+        breakdown = self.instance.generate_breakdown_event(self.current_time, self.event_rng)
+        if breakdown is not None:
+            machine_id, breakdown_time, repair_duration = breakdown
+            machine = self.instance.get_machine(machine_id)
+            if machine is not None:
+                machine.schedule_breakdown(breakdown_time, repair_duration)

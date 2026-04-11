@@ -5,19 +5,18 @@ Test NSGA-III on SFJSSP Example
 Evidence Status: NSGA-III algorithm CONFIRMED, application to SFJSSP PROPOSED.
 """
 
-import os
-import sys
-
-script_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(script_dir)
-sys.path.insert(0, project_root)
-
-from sfjssp_model.instance import SFJSSPInstance
-from sfjssp_model.machine import Machine
-from sfjssp_model.worker import Worker
-from sfjssp_model.job import Job, Operation
-
-from moea.nsga3 import NSGA3, create_sfjssp_genome, evaluate_sfjssp_genome
+try:
+    from ..sfjssp_model.instance import SFJSSPInstance
+    from ..sfjssp_model.machine import Machine
+    from ..sfjssp_model.worker import Worker
+    from ..sfjssp_model.job import Job, Operation
+    from ..moea.nsga3 import NSGA3, create_sfjssp_genome, evaluate_sfjssp_genome
+except ImportError:  # pragma: no cover - supports repo-root imports
+    from sfjssp_model.instance import SFJSSPInstance
+    from sfjssp_model.machine import Machine
+    from sfjssp_model.worker import Worker
+    from sfjssp_model.job import Job, Operation
+    from moea.nsga3 import NSGA3, create_sfjssp_genome, evaluate_sfjssp_genome
 
 
 def create_test_instance():
@@ -58,8 +57,9 @@ def create_test_instance():
                 2: {0: 22.0 + op_idx * 5},
             }
             ops.append(op)
-            # Set ergonomic risk for this operation
-            instance.ergonomic_risk_map[(job_id, op_idx)] = 0.3
+            # Use a calibrated per-minute ergonomic rate that does not make
+            # every candidate schedule infeasible by construction.
+            instance.ergonomic_risk_map[(job_id, op_idx)] = 0.003
 
         job = Job(
             job_id=job_id,

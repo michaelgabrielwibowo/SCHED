@@ -198,6 +198,7 @@ class NSGA3:
         mask = self.rng.random(len(g1['machines'])) < 0.5
         c1_m, c2_m = g1['machines'].copy(), g2['machines'].copy()
         c1_w, c2_w = g1['workers'].copy(), g2['workers'].copy()
+        c1_mode, c2_mode = g1['modes'].copy(), g2['modes'].copy()
         c1_o, c2_o = g1['offsets'].copy(), g2['offsets'].copy()
         
         # [FIX] Machines/Workers are mapped to the operation at that index in op_list
@@ -206,10 +207,31 @@ class NSGA3:
             if mask[i]:
                 c1_m[i], c2_m[i] = g2['machines'][i], g1['machines'][i]
                 c1_w[i], c2_w[i] = g2['workers'][i], g1['workers'][i]
+                c1_mode[i], c2_mode[i] = g2['modes'][i], g1['modes'][i]
                 c1_o[i], c2_o[i] = g2['offsets'][i], g1['offsets'][i]
 
-        return Individual(genome={'sequence': c1_seq, 'machines': c1_m, 'workers': c1_w, 'offsets': c1_o, 'op_list': g1['op_list']}), \
-               Individual(genome={'sequence': c2_seq, 'machines': c2_m, 'workers': c2_w, 'offsets': c2_o, 'op_list': g1['op_list']})
+        return (
+            Individual(
+                genome={
+                    'sequence': c1_seq,
+                    'machines': c1_m,
+                    'workers': c1_w,
+                    'modes': c1_mode,
+                    'offsets': c1_o,
+                    'op_list': g1['op_list'],
+                }
+            ),
+            Individual(
+                genome={
+                    'sequence': c2_seq,
+                    'machines': c2_m,
+                    'workers': c2_w,
+                    'modes': c2_mode,
+                    'offsets': c2_o,
+                    'op_list': g1['op_list'],
+                }
+            ),
+        )
 
     def _mutate(self, ind: Individual, instance: Any):
         g = ind.genome
@@ -223,8 +245,13 @@ class NSGA3:
                     job = instance.get_job(ops[i][0])
                     if job:
                         op = job.operations[ops[i][1]]
-                        if op.eligible_machines: g['machines'][i] = self.rng.choice(list(op.eligible_machines))
-                        if op.eligible_workers: g['workers'][i] = self.rng.choice(list(op.eligible_workers))
+                        if op.eligible_machines:
+                            g['machines'][i] = self.rng.choice(list(op.eligible_machines))
+                        if op.eligible_workers:
+                            g['workers'][i] = self.rng.choice(list(op.eligible_workers))
+                        mode_choices = list(op.processing_times.get(int(g['machines'][i]), {}).keys())
+                        if mode_choices:
+                            g['modes'][i] = self.rng.choice(mode_choices)
                 g['offsets'][i] = self.rng.integers(0, 5)
 
     def _associate_to_reference(self, population: Population, fronts: List[List[int]]) -> Dict[int, int]:
@@ -316,13 +343,25 @@ def create_sfjssp_genome(instance: Any, rng: np.random.Generator) -> Dict[str, n
     ops = []
     for j in instance.jobs:
         for i in range(len(j.operations)): ops.append((j.job_id, i))
-    mats, wrks, offs = np.zeros(n_ops, dtype=int), np.zeros(n_ops, dtype=int), np.zeros(n_ops, dtype=int)
+    mats = np.zeros(n_ops, dtype=int)
+    wrks = np.zeros(n_ops, dtype=int)
+    modes = np.zeros(n_ops, dtype=int)
+    offs = np.zeros(n_ops, dtype=int)
     for i, (jid, oidx) in enumerate(ops):
         op = instance.get_job(jid).operations[oidx]
         em, ew = list(op.eligible_machines), list(op.eligible_workers)
         mats[i] = rng.choice(em) if em else 0
         wrks[i] = rng.choice(ew) if ew else 0
-    return {'sequence': seq, 'machines': mats, 'workers': wrks, 'offsets': offs, 'op_list': ops}
+        mode_choices = list(op.processing_times.get(int(mats[i]), {}).keys())
+        modes[i] = rng.choice(mode_choices) if mode_choices else 0
+    return {
+        'sequence': seq,
+        'machines': mats,
+        'workers': wrks,
+        'modes': modes,
+        'offsets': offs,
+        'op_list': ops,
+    }
 
 
 def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List[float]:
@@ -331,13 +370,16 @@ def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List
     
     Args:
         instance: SFJSSPInstance
-        genome: Dict containing 'sequence', 'machines', 'workers', 'offsets', 'op_list'
+        genome: Dict containing 'sequence', 'machines', 'workers', 'modes', 'offsets', 'op_list'
         
     Returns:
         List of 4 objectives: [Makespan, Energy, OCRA, Labor]
         Constraints are handled via heavy penalties.
     """
-    from sfjssp_model.schedule import Schedule
+    try:
+        from ..sfjssp_model.schedule import Schedule
+    except ImportError:  # pragma: no cover - supports repo-root imports
+        from sfjssp_model.schedule import Schedule
     
     # 1. Reset all resource states
     for m in instance.machines:
@@ -349,8 +391,9 @@ def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List
     job_seq = genome['sequence']
     machine_indices = genome['machines']
     worker_indices = genome['workers']
+    op_list = genome['op_list']  # List of (job_id, op_id)
+    mode_indices = genome.get('modes', np.zeros(len(op_list), dtype=int))
     offsets = genome['offsets']
-    op_list = genome['op_list'] # List of (job_id, op_id)
     
     # 3. Create operation-to-resource mapping
     # This ensures that even if sequence order changes, the specific 
@@ -360,13 +403,12 @@ def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List
         op_resource_map[(jid, oid)] = {
             'm_id': int(machine_indices[i]),
             'w_id': int(worker_indices[i]),
+            'mode_id': int(mode_indices[i]) if i < len(mode_indices) else 0,
             'offset': int(offsets[i])
         }
         
     schedule = Schedule(instance_id=instance.instance_id)
     job_op_ptr = {j.job_id: 0 for j in instance.jobs}
-    machine_available = {m.machine_id: 0.0 for m in instance.machines}
-    worker_available = {w.worker_id: 0.0 for w in instance.workers}
     job_last_completion = {j.job_id: 0.0 for j in instance.jobs}
     clock = instance.period_clock
     
@@ -386,15 +428,33 @@ def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List
             # Fallback if op_list is inconsistent (should not happen with pox crossover)
             m_id = list(op.eligible_machines)[0]
             w_id = list(op.eligible_workers)[0]
+            mode_id = list(op.processing_times.get(m_id, {0: 0.0}).keys())[0]
             offset = 0
         else:
-            m_id, w_id, offset = res['m_id'], res['w_id'], res['offset']
+            m_id = res['m_id']
+            w_id = res['w_id']
+            mode_id = res['mode_id']
+            offset = res['offset']
+
+        if m_id not in op.eligible_machines:
+            return [1e9, 1e9, 1e9, 1e9]
+        if w_id not in op.eligible_workers:
+            return [1e9, 1e9, 1e9, 1e9]
+
+        mode_times = op.processing_times.get(m_id, {})
+        if not mode_times:
+            return [1e9, 1e9, 1e9, 1e9]
+        if mode_id not in mode_times:
+            mode_id = next(iter(mode_times))
             
         machine = instance.get_machine(m_id)
         worker = instance.get_worker(w_id)
+        if machine is None or worker is None:
+            return [1e9, 1e9, 1e9, 1e9]
         
         # Determine earliest possible start time
         est = max(
+            job.arrival_time,
             machine.available_time + machine.setup_time,
             worker.available_time,
             worker.mandatory_shift_lockout_until,
@@ -406,8 +466,7 @@ def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List
             est = clock.period_start(clock.get_period(est) + offset)
             
         # Refine start time to satisfy hard constraints
-        pt_base = op.processing_times.get(m_id, {0: 50.0}).get(0, 50.0)
-        pt = pt_base / max(0.1, worker.get_efficiency())
+        pt = op.get_processing_time(m_id, mode_id, worker.get_efficiency())
         risk_rate = instance.get_ergonomic_risk(job_id, op_idx)
         
         found = False
@@ -433,7 +492,7 @@ def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List
             
         # 5. Record operation
         schedule.add_operation(
-            job_id, op_idx, m_id, w_id, 0,
+            job_id, op_idx, m_id, w_id, mode_id,
             curr_t, curr_t + pt, pt, 
             machine.setup_time, getattr(op, 'transport_time', 0.0)
         )
@@ -442,7 +501,7 @@ def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List
         machine.available_time = curr_t + pt
         # job_last_completion still needs local tracking or updating job objects
         job_last_completion[job_id] = curr_t + pt + getattr(op, 'transport_time', 0.0) + getattr(op, 'waiting_time', 0.0)
-        worker.record_work(pt, risk_rate, curr_t)
+        worker.record_work(pt, risk_rate, curr_t, operation_type=op_idx)
         job_op_ptr[job_id] += 1
         
     # 7. Evaluate complete schedule
@@ -450,24 +509,9 @@ def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List
     is_feasible = schedule.check_feasibility(instance)
     
     # 8. Calculate penalties
-    hard_violations = 0
-    tardiness_penalty = 0.0
-    n_tardy = 0
-    
-    for v in schedule.constraint_violations:
-        if "Due date" in v:
-            n_tardy += 1
-            # Extract tardiness amount if possible
-            try:
-                # "Due date violation: Job X (C=100.00 > D=80.00)"
-                parts = v.split("C=")[1].split(" > D=")
-                c = float(parts[0])
-                d = float(parts[1].rstrip(")"))
-                tardiness_penalty += (c - d)
-            except:
-                tardiness_penalty += 1000.0
-        else:
-            hard_violations += 1
+    hard_violations = len(schedule.constraint_violations)
+    tardiness_penalty = metrics.get('weighted_tardiness', 0.0)
+    n_tardy = metrics.get('n_tardy_jobs', 0)
             
     # Ergonomic penalty if OCRA > threshold
     max_ocra = metrics.get('max_ergonomic_exposure', 0.0)
@@ -476,7 +520,12 @@ def evaluate_sfjssp_genome(instance: Any, genome: Dict[str, np.ndarray]) -> List
     ocra_penalty = max(0.0, max_ocra - ocra_threshold) * 1e4
     
     # Balanced penalty structure
-    total_penalty = (hard_violations * 1e6) + (n_tardy * 1e3) + (tardiness_penalty * 10.0) + ocra_penalty
+    total_penalty = (
+        (hard_violations * 1e6)
+        + (n_tardy * 1e3)
+        + (tardiness_penalty * 10.0)
+        + ocra_penalty
+    )
     
     return [
         metrics.get('makespan', 1e6) + total_penalty,

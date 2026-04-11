@@ -2,7 +2,7 @@
 Synthetic Benchmark Generator for SFJSSP
 
 Evidence Status:
-- Generator design: Based on DATASET_INVENTORY_SFJSSP.md [PROPOSED]
+- Generator design: Proposed synthetic benchmark pipeline
 - Calibration sources: DyDFJSP 2023, E-DFJSP 2025, NSGA-III 2021 [CONFIRMED parameters]
 - Labeling protocol: PROPOSED for transparency
 
@@ -19,15 +19,26 @@ import numpy as np
 import json
 from datetime import datetime
 
-from sfjssp_model.instance import (
-    SFJSSPInstance,
-    InstanceLabel,
-    InstanceType,
-    DynamicEventParams,
-)
-from sfjssp_model.job import Job, Operation
-from sfjssp_model.machine import Machine, MachineMode, MachineState
-from sfjssp_model.worker import Worker, WorkerSkill, WorkerState
+try:
+    from ..sfjssp_model.instance import (
+        SFJSSPInstance,
+        InstanceLabel,
+        InstanceType,
+        DynamicEventParams,
+    )
+    from ..sfjssp_model.job import Job, Operation
+    from ..sfjssp_model.machine import Machine, MachineMode, MachineState
+    from ..sfjssp_model.worker import Worker, WorkerSkill, WorkerState
+except ImportError:  # pragma: no cover - supports repo-root imports
+    from sfjssp_model.instance import (
+        SFJSSPInstance,
+        InstanceLabel,
+        InstanceType,
+        DynamicEventParams,
+    )
+    from sfjssp_model.job import Job, Operation
+    from sfjssp_model.machine import Machine, MachineMode, MachineState
+    from sfjssp_model.worker import Worker, WorkerSkill, WorkerState
 
 
 class InstanceSize(Enum):
@@ -135,7 +146,7 @@ class BenchmarkGenerator:
 
     Generates instances with explicit labeling and documented assumptions.
 
-    Evidence: Generator design from DATASET_INVENTORY_SFJSSP.md [PROPOSED]
+    Evidence: Proposed benchmark-generation design
     """
 
     def __init__(self, config: Optional[GeneratorConfig] = None):
@@ -380,14 +391,10 @@ class BenchmarkGenerator:
 
     def save_instance(self, instance: SFJSSPInstance, filepath: str):
         """
-        Save instance to JSON file
-
-        Note: This saves metadata and parameters. Full serialization
-        requires custom handlers for complex objects.
+        Save a fully reconstructible benchmark instance to JSON.
         """
         data = instance.to_dict()
 
-        # Add detailed parameter information
         data['generator_config'] = {
             'seed': self.config.seed,
             'size': self.config.size.value,
@@ -397,8 +404,7 @@ class BenchmarkGenerator:
             'is_dynamic': self.config.is_dynamic,
         }
 
-        # Add machine details
-        data['machines'] = [
+        data['machines_summary'] = [
             {
                 'machine_id': m.machine_id,
                 'machine_name': m.machine_name,
@@ -420,8 +426,7 @@ class BenchmarkGenerator:
             for m in instance.machines
         ]
 
-        # Add worker details
-        data['workers'] = [
+        data['workers_summary'] = [
             {
                 'worker_id': w.worker_id,
                 'worker_name': w.worker_name,
@@ -436,7 +441,6 @@ class BenchmarkGenerator:
             for w in instance.workers
         ]
 
-        # Add job summary (not full details for brevity)
         data['jobs_summary'] = [
             {
                 'job_id': j.job_id,
@@ -448,12 +452,11 @@ class BenchmarkGenerator:
             for j in instance.jobs
         ]
 
-        # Add ergonomic risk summary
         data['ergonomic_risks'] = {
             f"{k[0]}_{k[1]}": v for k, v in instance.ergonomic_risk_map.items()
         }
 
-        with open(filepath, 'w') as f:
+        with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
 
         print(f"Saved instance to {filepath}")

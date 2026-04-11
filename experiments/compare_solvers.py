@@ -13,43 +13,37 @@ Evidence Status:
 """
 
 import os
-import sys
 import json
 import time
 from datetime import datetime
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from sfjssp_model.instance import SFJSSPInstance
-from baseline_solver.greedy_solvers import GreedyScheduler, spt_rule, fifo_rule, edt_rule, composite_rule
-from moea.nsga3 import NSGA3, create_sfjssp_genome, evaluate_sfjssp_genome
+try:
+    from ..sfjssp_model.instance import SFJSSPInstance
+    from ..baseline_solver.greedy_solvers import (
+        GreedyScheduler,
+        spt_rule,
+        fifo_rule,
+        edt_rule,
+        composite_rule,
+    )
+    from ..moea.nsga3 import NSGA3, create_sfjssp_genome, evaluate_sfjssp_genome
+except ImportError:  # pragma: no cover - supports repo-root imports
+    from sfjssp_model.instance import SFJSSPInstance
+    from baseline_solver.greedy_solvers import (
+        GreedyScheduler,
+        spt_rule,
+        fifo_rule,
+        edt_rule,
+        composite_rule,
+    )
+    from moea.nsga3 import NSGA3, create_sfjssp_genome, evaluate_sfjssp_genome
 
 
 def load_benchmark(filepath: str) -> SFJSSPInstance:
-    """Load benchmark from JSON (metadata only, regenerate instance)"""
-    from experiments.generate_benchmarks import BenchmarkGenerator, GeneratorConfig, InstanceSize
-
-    # For now, generate fresh instance with same seed
-    # In production, would parse JSON and reconstruct
-
-    if 'small' in filepath:
-        size = InstanceSize.SMALL
-    elif 'medium' in filepath:
-        size = InstanceSize.MEDIUM
-    else:
-        size = InstanceSize.SMALL
-
-    # Extract seed from filename
-    seed = 42
-    if '_' in os.path.basename(filepath):
-        try:
-            seed = int(filepath.split('_')[-1].replace('.json', ''))
-        except:
-            pass
-
-    config = GeneratorConfig(size=size, seed=seed)
-    generator = BenchmarkGenerator(config)
-    return generator.generate()
+    """Load a benchmark instance from its stored JSON representation."""
+    with open(filepath, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return SFJSSPInstance.from_dict(data)
 
 
 def run_greedy_experiment(instance: SFJSSPInstance, rule_name: str, rule_fn) -> dict:
@@ -104,12 +98,16 @@ def run_nsga3_experiment(instance: SFJSSPInstance, n_generations: int = 50) -> d
 
     # Get best solutions for each objective
     pareto = nsga3.get_pareto_solutions()
+    feasible_pareto = [
+        sol for sol in pareto
+        if sol.objectives and all(obj < 1e8 for obj in sol.objectives)
+    ]
 
-    if pareto:
-        best_makespan = min(s.makespan for s in pareto)
-        best_energy = min(s.energy for s in pareto)
-        best_ergonomic = min(s.ergonomic_risk for s in pareto)
-        best_labor = min(s.labor_cost for s in pareto)
+    if feasible_pareto:
+        best_makespan = min(s.makespan for s in feasible_pareto)
+        best_energy = min(s.energy for s in feasible_pareto)
+        best_ergonomic = min(s.ergonomic_risk for s in feasible_pareto)
+        best_labor = min(s.labor_cost for s in feasible_pareto)
     else:
         best_makespan = best_energy = best_ergonomic = best_labor = float('inf')
 
@@ -121,25 +119,42 @@ def run_nsga3_experiment(instance: SFJSSPInstance, n_generations: int = 50) -> d
         'labor_cost': best_labor,
         'time_seconds': elapsed,
         'pareto_size': len(pareto),
-        'feasible': True,
+        'feasible_pareto_size': len(feasible_pareto),
+        'feasible': bool(feasible_pareto),
     }
 
 
 def run_cp_experiment(instance: SFJSSPInstance, time_limit: int = 30) -> dict:
     """Run CP-SAT experiment"""
     try:
-        from exact_solvers.cp_solver import CPScheduler
-    except ImportError:
+        from ..exact_solvers.cp_solver import CPScheduler
+    except ImportError:  # pragma: no cover - supports repo-root imports
+        try:
+            from exact_solvers.cp_solver import CPScheduler
+        except ImportError:
+            return {
+                'method': 'CP-SAT',
+                'error': 'OR-Tools not available',
+                'feasible': False,
+            }
+    except Exception as exc:
         return {
             'method': 'CP-SAT',
-            'error': 'OR-Tools not available',
+            'error': str(exc),
             'feasible': False,
         }
 
     start_time = time.time()
 
-    cp_solver = CPScheduler(time_limit=time_limit, num_workers=2)
-    schedule = cp_solver.solve(instance, objective='makespan', verbose=False)
+    try:
+        cp_solver = CPScheduler(time_limit=time_limit, num_workers=2)
+        schedule = cp_solver.solve(instance, objective='makespan', verbose=False)
+    except ImportError as exc:
+        return {
+            'method': 'CP-SAT',
+            'error': str(exc),
+            'feasible': False,
+        }
 
     elapsed = time.time() - start_time
 

@@ -9,11 +9,18 @@ Evidence Status:
 import pytest
 import numpy as np
 
-from sfjssp_model.job import Job, Operation
-from sfjssp_model.machine import Machine, MachineMode, MachineState
-from sfjssp_model.worker import Worker, WorkerState
-from sfjssp_model.instance import SFJSSPInstance, InstanceType, DynamicEventParams
-from sfjssp_model.schedule import Schedule, ScheduledOperation
+try:
+    from ..sfjssp_model.job import Job, Operation
+    from ..sfjssp_model.machine import Machine, MachineMode, MachineState
+    from ..sfjssp_model.worker import Worker, WorkerState
+    from ..sfjssp_model.instance import SFJSSPInstance, InstanceType, DynamicEventParams
+    from ..sfjssp_model.schedule import Schedule, ScheduledOperation
+except ImportError:  # pragma: no cover - supports repo-root imports
+    from sfjssp_model.job import Job, Operation
+    from sfjssp_model.machine import Machine, MachineMode, MachineState
+    from sfjssp_model.worker import Worker, WorkerState
+    from sfjssp_model.instance import SFJSSPInstance, InstanceType, DynamicEventParams
+    from sfjssp_model.schedule import Schedule, ScheduledOperation
 
 
 class TestOperation:
@@ -150,8 +157,8 @@ class TestMachine:
             power_idle=5.0,
         )
 
-        assert machine.get_processing_energy(10.0) == 500.0
-        assert machine.get_idle_energy(20.0) == 100.0
+        assert machine.get_processing_energy(10.0) == pytest.approx(50.0 * (10.0 / 60.0))
+        assert machine.get_idle_energy(20.0) == pytest.approx(5.0 * (20.0 / 60.0))
 
     def test_is_available(self):
         """Test machine availability check"""
@@ -262,7 +269,7 @@ class TestWorker:
         """Test labor cost calculation"""
         worker = Worker(worker_id=0, labor_cost_per_hour=20.0)
 
-        assert worker.get_labor_cost(8.0) == 160.0
+        assert worker.get_labor_cost(480.0) == pytest.approx(160.0)
 
 
 class TestSFJSSPInstance:

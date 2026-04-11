@@ -9,7 +9,7 @@ Evidence Status:
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 from enum import Enum
 
 
@@ -35,7 +35,7 @@ class MachineMode:
     mode_name: str = ""
 
     # Processing characteristics
-    speed_factor: float = 1.0  # Multiplier for processing time (<1 = faster)
+    speed_factor: float = 1.0  # Processing-speed multiplier (>1 = faster)
     power_multiplier: float = 1.0  # Multiplier for power consumption
 
     # Tool wear characteristics (PROPOSED)
@@ -154,8 +154,19 @@ class Machine:
             'power_transport': self.power_transport,
             'auxiliary_power_share': self.auxiliary_power_share,
             'current_state': self.current_state.value,
+            'current_job': self.current_job,
+            'current_operation': self.current_operation,
+            'current_mode': self.current_mode,
             'available_time': self.available_time,
+            'total_processing_time': self.total_processing_time,
+            'total_idle_time': self.total_idle_time,
+            'total_setup_time': self.total_setup_time,
+            'total_transport_time': self.total_transport_time,
+            'startup_count': self.startup_count,
             'is_broken': self.is_broken,
+            'breakdown_time': self.breakdown_time,
+            'repair_time': self.repair_time,
+            'tool_health': self.tool_health,
         }
 
     @classmethod
@@ -175,9 +186,36 @@ class Machine:
         )
         m.modes = [MachineMode.from_dict(mode_data) for mode_data in data.get('modes', [])]
         m.current_state = MachineState(data.get('current_state', 'idle'))
+        m.current_job = data.get('current_job')
+        m.current_operation = data.get('current_operation')
+        m.current_mode = data.get('current_mode')
         m.available_time = data.get('available_time', 0.0)
+        m.total_processing_time = data.get('total_processing_time', 0.0)
+        m.total_idle_time = data.get('total_idle_time', 0.0)
+        m.total_setup_time = data.get('total_setup_time', 0.0)
+        m.total_transport_time = data.get('total_transport_time', 0.0)
+        m.startup_count = data.get('startup_count', 0)
         m.is_broken = data.get('is_broken', False)
+        m.breakdown_time = data.get('breakdown_time')
+        m.repair_time = data.get('repair_time')
+        m.tool_health = data.get('tool_health', 1.0)
         return m
+
+    @staticmethod
+    def _minutes_to_hours(duration: float) -> float:
+        """Convert durations stored in minutes to hours for energy math."""
+        return duration / 60.0
+
+    def get_mode(self, mode_id: int) -> Optional[MachineMode]:
+        """Return a machine mode by identifier."""
+        return next((mode for mode in self.modes if mode.mode_id == mode_id), None)
+
+    def get_processing_duration(self, base_time: float, mode_id: Optional[int] = None) -> float:
+        """Adjust a base processing time by the selected machine mode."""
+        mode = self.get_mode(mode_id) if mode_id is not None else None
+        if mode is None:
+            return base_time
+        return base_time / mode.speed_factor
 
     def validate_gap(self, start_time: float, setup_duration: float) -> Tuple[bool, float]:
         """
@@ -217,15 +255,15 @@ class Machine:
 
     def get_processing_energy(self, duration: float, mode_id: Optional[int] = None) -> float:
         """Calculate energy for processing duration"""
-        return self.get_power(MachineState.PROCESSING, mode_id) * duration
+        return self.get_power(MachineState.PROCESSING, mode_id) * self._minutes_to_hours(duration)
 
     def get_idle_energy(self, duration: float) -> float:
         """Calculate energy for idle duration"""
-        return self.power_idle * duration
+        return self.power_idle * self._minutes_to_hours(duration)
 
     def get_setup_energy(self, duration: float) -> float:
         """Calculate energy for setup duration"""
-        return self.power_setup * duration
+        return self.power_setup * self._minutes_to_hours(duration)
 
     def calculate_energy_consumption(self) -> Dict[str, float]:
         """
@@ -234,15 +272,17 @@ class Machine:
         Returns dict with keys: processing, idle, setup, startup, auxiliary, total
         """
         energy = {
-            'processing': self.power_processing * self.total_processing_time, # EM
-            'idle': self.power_idle * self.total_idle_time,                   # EM
-            'setup': self.power_setup * self.total_setup_time,                # EM
-            'transport': self.power_transport * self.total_transport_time,    # ET (ADDED)
+            'processing': self.get_processing_energy(self.total_processing_time),  # kWh
+            'idle': self.get_idle_energy(self.total_idle_time),                   # kWh
+            'setup': self.get_setup_energy(self.total_setup_time),                # kWh
+            'transport': self.power_transport * self._minutes_to_hours(self.total_transport_time),
             'startup': self.startup_energy * self.startup_count,              # FIXED
-            'auxiliary': self.auxiliary_power_share * (                       # EC
-                self.total_processing_time + self.total_idle_time + 
-                self.total_setup_time + self.total_transport_time
-            )
+            'auxiliary': self.auxiliary_power_share * self._minutes_to_hours(
+                self.total_processing_time
+                + self.total_idle_time
+                + self.total_setup_time
+                + self.total_transport_time
+            ),
         }
         energy['total'] = sum(energy.values()) # min ET + EM + EC
         return energy
@@ -280,6 +320,7 @@ class Machine:
         self.is_broken = False
         self.breakdown_time = None
         self.repair_time = None
+        self.tool_health = 1.0
 
     def __hash__(self):
         return hash(self.machine_id)

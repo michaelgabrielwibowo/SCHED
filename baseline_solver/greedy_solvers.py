@@ -10,11 +10,18 @@ Evidence Status:
 from typing import Dict, List, Tuple, Optional, Callable
 import numpy as np
 
-from sfjssp_model.instance import SFJSSPInstance
-from sfjssp_model.schedule import Schedule
-from sfjssp_model.job import Job, Operation
-from sfjssp_model.machine import Machine
-from sfjssp_model.worker import Worker
+try:
+    from ..sfjssp_model.instance import SFJSSPInstance
+    from ..sfjssp_model.schedule import Schedule
+    from ..sfjssp_model.job import Job, Operation
+    from ..sfjssp_model.machine import Machine
+    from ..sfjssp_model.worker import Worker
+except ImportError:  # pragma: no cover - supports repo-root imports
+    from sfjssp_model.instance import SFJSSPInstance
+    from sfjssp_model.schedule import Schedule
+    from sfjssp_model.job import Job, Operation
+    from sfjssp_model.machine import Machine
+    from sfjssp_model.worker import Worker
 
 
 # Type alias for dispatching rules
@@ -128,7 +135,33 @@ def earliest_ready_rule(
     if not ready_ops:
         return -1
 
-    return 0
+    best_idx = 0
+    best_ready_time = float("inf")
+
+    for i, (job_id, op_id) in enumerate(ready_ops):
+        job = instance.get_job(job_id)
+        if job is None:
+            continue
+
+        if op_id == 0:
+            ready_time = job.arrival_time
+        else:
+            prev_sched = schedule.get_operation(job_id, op_id - 1)
+            prev_model_op = job.operations[op_id - 1]
+            if prev_sched is None:
+                ready_time = float("inf")
+            else:
+                ready_time = (
+                    prev_sched.completion_time
+                    + prev_sched.transport_time
+                    + getattr(prev_model_op, "waiting_time", 0.0)
+                )
+
+        if ready_time < best_ready_time:
+            best_ready_time = ready_time
+            best_idx = i
+
+    return best_idx
 
 
 def min_energy_rule(
@@ -316,7 +349,7 @@ def _get_due_date_score(
     job_id: int,
     op_id: int
 ) -> float:
-    """Get due date score (higher = more urgent)"""
+    """Get due date score where lower values indicate more urgent jobs."""
     job = instance.get_job(job_id)
     if job is None:
         return 0.0
@@ -408,6 +441,10 @@ class GreedyScheduler:
                     ready_ops.append((job_id, op_id))
 
             if not ready_ops:
+                schedule.is_feasible = False
+                schedule.constraint_violations.append(
+                    f"Deadlock: {len(remaining)} operations remain but none are ready"
+                )
                 if verbose:
                     print(f"Warning: No ready operations but {len(remaining)} remaining")
                 break
@@ -424,11 +461,13 @@ class GreedyScheduler:
             )
 
             if machine_id is None or worker_id is None:
-                # This should only happen if eligible resources are empty
+                schedule.is_feasible = False
+                schedule.constraint_violations.append(
+                    f"No feasible assignment for Job {job_id} Op {op_id}"
+                )
                 if verbose:
-                    print(f"Warning: No eligible resources for J{job_id}.O{op_id}")
-                remaining.remove((job_id, op_id))
-                continue
+                    print(f"Warning: No feasible resources for J{job_id}.O{op_id}")
+                break
 
             # Timing already computed in _select_resources
             job = instance.get_job(job_id)
@@ -486,6 +525,17 @@ class GreedyScheduler:
             op.completion_time = completion_time
             op.assign_period_bounds(instance.period_clock)
 
+            prev_op_sched = schedule.get_operation(job_id, op_id - 1) if op_id > 0 else None
+            transport_time = 0.0
+            if prev_op_sched and prev_op_sched.machine_id != machine_id:
+                transport_time = getattr(op, "transport_time", 0.0)
+
+            actual_setup = 0.0
+            last_machine_free = machine_available[machine_id]
+            if start_time > last_machine_free:
+                idle_gap = start_time - last_machine_free
+                actual_setup = min(idle_gap, machine.setup_time)
+
             # Add to schedule
             schedule.add_operation(
                 job_id=job_id,
@@ -495,11 +545,12 @@ class GreedyScheduler:
                 mode_id=mode_id,
                 start_time=start_time,
                 completion_time=completion_time,
-                processing_time=processing_time
+                processing_time=processing_time,
+                setup_time=actual_setup,
+                transport_time=transport_time,
             )
 
             # Update resource availability
-            last_machine_free = machine_available[machine_id]
             machine_available[machine_id] = completion_time
             worker_available[worker_id] = completion_time
 
@@ -509,20 +560,14 @@ class GreedyScheduler:
                 # In this simple model, we assume setup happens first if needed
                 idle_gap = start_time - last_machine_free
                 setup_needed = machine.setup_time
-                actual_setup = min(idle_gap, setup_needed)
                 actual_idle = idle_gap - actual_setup
                 
                 machine.total_setup_time += actual_setup
                 machine.total_idle_time += actual_idle
 
             # [FIX] Record transport time for machine (if job moved)
-            if op_id > 0:
-                prev_op_sched = schedule.get_operation(job_id, op_id - 1)
-                if prev_op_sched and prev_op_sched.machine_id != machine_id:
-                    # In SFJSSP, transport is often modeled as part of the machine's 
-                    # auxiliary energy or a separate state. We record it here.
-                    transport_time = getattr(op, "transport_time", 5.0) # Default if not specified
-                    machine.total_transport_time += transport_time
+            if transport_time > 0:
+                machine.total_transport_time += transport_time
 
             if machine.total_processing_time == 0.0:
                 machine.startup_count += 1
@@ -530,7 +575,12 @@ class GreedyScheduler:
 
             op.is_scheduled = True
             risk_rate = instance.get_ergonomic_risk(job_id, op_id)
-            worker.record_work(processing_time, risk_rate=risk_rate, current_time=start_time)
+            worker.record_work(
+                processing_time,
+                risk_rate=risk_rate,
+                current_time=start_time,
+                operation_type=op_id,
+            )
 
             scheduled.add((job_id, op_id))
             remaining.remove((job_id, op_id))
@@ -546,6 +596,9 @@ class GreedyScheduler:
         schedule: Schedule,
         instance: SFJSSPInstance
     ) -> bool:
+        job = instance.get_job(job_id)
+        if job is None:
+            return False
         if op_id == 0:
             return True
         return schedule.is_operation_scheduled(job_id, op_id - 1)
@@ -583,6 +636,7 @@ class GreedyScheduler:
 
                 # Initial earliest start
                 earliest_start = max(
+                    job.arrival_time if op_id == 0 else 0.0,
                     machine_available.get(m_id, 0.0) + machine.setup_time,
                     worker_available.get(w_id, 0.0),
                     worker.mandatory_shift_lockout_until
@@ -601,7 +655,11 @@ class GreedyScheduler:
                 # Evaluate each mode
                 if m_id in op.processing_times:
                     for mode_id, pt in op.processing_times[m_id].items():
-                        est_proc = pt / max(0.1, worker.get_efficiency())
+                        est_proc = op.get_processing_time(
+                            m_id,
+                            mode_id,
+                            worker.get_efficiency(),
+                        )
                         
                         temp_start = earliest_start
                         clock = instance.period_clock

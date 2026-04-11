@@ -1,12 +1,21 @@
 import pytest
 import numpy as np
-from sfjssp_model.job import Job, Operation
-from sfjssp_model.machine import Machine, MachineMode, MachineState
-from sfjssp_model.worker import Worker, WorkerState
-from sfjssp_model.instance import SFJSSPInstance, InstanceType
-from sfjssp_model.schedule import Schedule, ScheduledOperation
-from baseline_solver.greedy_solvers import GreedyScheduler
-from moea.nsga3 import evaluate_sfjssp_genome
+try:
+    from ..sfjssp_model.job import Job, Operation
+    from ..sfjssp_model.machine import Machine, MachineMode, MachineState
+    from ..sfjssp_model.worker import Worker, WorkerState
+    from ..sfjssp_model.instance import SFJSSPInstance, InstanceType
+    from ..sfjssp_model.schedule import Schedule, ScheduledOperation
+    from ..baseline_solver.greedy_solvers import GreedyScheduler
+    from ..moea.nsga3 import evaluate_sfjssp_genome
+except ImportError:  # pragma: no cover - supports repo-root imports
+    from sfjssp_model.job import Job, Operation
+    from sfjssp_model.machine import Machine, MachineMode, MachineState
+    from sfjssp_model.worker import Worker, WorkerState
+    from sfjssp_model.instance import SFJSSPInstance, InstanceType
+    from sfjssp_model.schedule import Schedule, ScheduledOperation
+    from baseline_solver.greedy_solvers import GreedyScheduler
+    from moea.nsga3 import evaluate_sfjssp_genome
 
 def test_ergonomic_limit_value():
     """Verify OCRA max is strictly 2.2."""
@@ -29,9 +38,9 @@ def test_transport_energy_calculation():
     schedule.scheduled_ops[(0, 0)] = op
     
     energy = schedule.compute_total_energy(instance)
-    # Transport energy should be 3.0 * 4.0 = 12.0
-    assert energy['transport'] == 12.0
-    assert energy['total'] >= 12.0
+    # Transport energy should be 3.0 kW * (4.0 min / 60) = 0.2 kWh
+    assert energy['transport'] == pytest.approx(0.2)
+    assert energy['total'] >= 0.2
 
 def test_feasibility_transport_time():
     """Verify precedence feasibility check includes transport time."""
@@ -80,6 +89,47 @@ def test_feasibility_setup_time():
     
     assert schedule.check_feasibility(instance) is False
     assert any("Machine overlap" in v for v in schedule.constraint_violations)
+
+
+def test_due_dates_are_soft_constraints():
+    """Late jobs should contribute tardiness, not infeasibility."""
+    instance = SFJSSPInstance(instance_id="test_soft_due_dates")
+    instance.add_machine(Machine(machine_id=0))
+    instance.add_worker(Worker(0, min_rest_fraction=0.0, ocra_max_per_shift=999.0))
+    instance.add_job(
+        Job(
+            job_id=0,
+            due_date=10.0,
+            weight=3.0,
+            operations=[
+                Operation(
+                    job_id=0,
+                    op_id=0,
+                    processing_times={0: {0: 20.0}},
+                    eligible_machines={0},
+                    eligible_workers={0},
+                )
+            ],
+        )
+    )
+    instance.ergonomic_risk_map[(0, 0)] = 0.0
+
+    schedule = Schedule(instance_id="test_soft_due_dates")
+    schedule.add_operation(
+        job_id=0,
+        op_id=0,
+        machine_id=0,
+        worker_id=0,
+        mode_id=0,
+        start_time=20.0,
+        completion_time=40.0,
+        processing_time=20.0,
+    )
+
+    assert schedule.check_feasibility(instance) is True
+    tardiness = schedule.compute_tardiness_metrics(instance)
+    assert tardiness["total_tardiness"] == 30.0
+    assert tardiness["weighted_tardiness"] == 90.0
 
 def test_greedy_mandatory_rest():
     """Test that GreedyScheduler enforces mandatory rest."""
