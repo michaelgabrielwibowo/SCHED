@@ -21,61 +21,6 @@ except ImportError:
     TORCH_AVAILABLE = False
 
 
-def parse_observation(obs) -> tuple:
-    """
-    Parse SFJSSPObservation into state tensors and masks for each agent.
-    """
-    if not TORCH_AVAILABLE:
-        return None, None, None, None, None, None
-
-    # Handle both SFJSSPObservation dataclass and dict formats
-    if hasattr(obs, 'job_features'):
-        job_features = obs.job_features
-        machine_features = obs.machine_features
-        worker_features = obs.worker_features
-        action_mask = obs.action_mask
-    elif isinstance(obs, dict):
-        job_features = obs.get('job_features', obs.get('job_nodes', np.zeros((1, 6))))
-        machine_features = obs.get('machine_features', obs.get('machine_nodes', np.zeros((1, 4))))
-        worker_features = obs.get('worker_features', obs.get('worker_nodes', np.zeros((1, 4))))
-        action_mask = obs.get('action_mask', np.ones((1, 1, 1, 1, 1)))
-    else:
-        return None, None, None, None, None, None
-
-    # Aggregate: mean across entity dimension (Step 6 will fix this in the network)
-    job_agg = np.mean(job_features, axis=0) if job_features.shape[0] > 0 else np.zeros(6)
-    machine_agg = np.mean(machine_features, axis=0) if machine_features.shape[0] > 0 else np.zeros(4)
-    worker_agg = np.mean(worker_features, axis=0) if worker_features.shape[0] > 0 else np.zeros(4)
-
-    # Pad to state_dim=64
-    state_dim = 64
-    def pad(arr, dim):
-        res = np.zeros(dim, dtype=np.float32)
-        res[:min(len(arr), dim)] = arr[:min(len(arr), dim)]
-        return torch.tensor(res).unsqueeze(0)
-
-    job_state = pad(job_agg, state_dim)
-    machine_state = pad(machine_agg, state_dim)
-    worker_state = pad(worker_agg, state_dim)
-
-    # Project high-dim mask to per-agent masks
-    # action_mask shape: (n_jobs, n_ops, n_machines, n_workers, n_modes)
-    
-    # 1. Job mask: job is valid if ANY action is possible for it
-    job_m = (np.sum(action_mask, axis=(1, 2, 3, 4)) > 0).astype(np.float32)
-    job_mask = torch.tensor(job_m).unsqueeze(0)
-
-    # 2. Machine mask: machine is valid if ANY job/op/worker/mode uses it
-    mach_m = (np.sum(action_mask, axis=(0, 1, 3, 4)) > 0).astype(np.float32)
-    machine_mask = torch.tensor(mach_m).unsqueeze(0)
-
-    # 3. Worker mask: worker is valid if ANY job/op/machine/mode uses it
-    work_m = (np.sum(action_mask, axis=(0, 1, 2, 4)) > 0).astype(np.float32)
-    worker_mask = torch.tensor(work_m).unsqueeze(0)
-
-    return job_state, machine_state, worker_state, job_mask, machine_mask, worker_mask
-
-
 @dataclass
 class TrainingConfig:
     """Training configuration"""

@@ -336,6 +336,38 @@ class TestSFJSSPInstance:
         assert instance.get_eligible_machines(0, 0) == [0]
         assert instance.get_eligible_workers(0, 0) == [0]
 
+    def test_get_ergonomic_risk_uses_explicit_default(self):
+        """Missing ergonomic entries should fall back to the instance default."""
+        instance = SFJSSPInstance(
+            instance_id="TEST_RISK_DEFAULT",
+            default_ergonomic_risk=0.0,
+        )
+
+        assert instance.get_ergonomic_risk(99, 99) == 0.0
+
+    def test_dynamic_job_generation_uses_actual_resource_ids(self):
+        """Dynamic job generation should respect real machine and worker IDs."""
+        instance = SFJSSPInstance(
+            instance_id="TEST_DYNAMIC_IDS",
+            instance_type=InstanceType.DYNAMIC,
+            dynamic_params=DynamicEventParams(arrival_rate=100.0),
+        )
+        instance.add_machine(Machine(machine_id=10))
+        instance.add_machine(Machine(machine_id=20))
+        instance.add_worker(Worker(worker_id=30))
+        instance.add_worker(Worker(worker_id=40))
+
+        job = instance.generate_dynamic_job(0.0, np.random.default_rng(7))
+
+        assert job is not None
+
+        valid_machine_ids = {10, 20}
+        valid_worker_ids = {30, 40}
+        for op in job.operations:
+            assert op.eligible_machines.issubset(valid_machine_ids)
+            assert op.eligible_workers.issubset(valid_worker_ids)
+            assert set(op.processing_times).issubset(valid_machine_ids)
+
     def test_dynamic_job_generation(self):
         """Test dynamic job arrival generation"""
         instance = SFJSSPInstance(

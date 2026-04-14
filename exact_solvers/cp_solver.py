@@ -10,6 +10,7 @@ Requires: ortools >= 9.8.0
 """
 
 import math
+import warnings
 from typing import Dict, List, Tuple, Optional, Any
 import numpy as np
 
@@ -41,11 +42,17 @@ class CPScheduler:
     Evidence: CP-SAT confirmed for scheduling problems [CONFIRMED]
     Application to SFJSSP with human factors: PROPOSED
 
-    Solves:
+    Verified support:
     - Minimize makespan
-    - Minimize energy consumption
-    - Minimize ergonomic risk
-    - Multi-objective (weighted composite)
+
+    Experimental objective modes:
+    - "energy"
+    - "ergonomic"
+    - "composite"
+
+    Those non-makespan modes remain available for research use, but they are not
+    currently verified against the schedule-level objective calculations used by
+    the rest of the repository.
 
     Args:
         time_limit: Time limit in seconds
@@ -84,10 +91,10 @@ class CPScheduler:
         Args:
             instance: SFJSSPInstance to solve
             objective: Objective to minimize
-                - "makespan": Minimize maximum completion time
-                - "energy": Minimize total energy consumption
-                - "ergonomic": Minimize maximum ergonomic risk
-                - "composite": Weighted multi-objective
+                - "makespan": verified objective; minimize maximum completion time
+                - "energy": experimental objective; minimize total energy consumption
+                - "ergonomic": experimental objective; minimize maximum ergonomic risk
+                - "composite": experimental weighted multi-objective
             verbose: Print solver progress
 
         Returns:
@@ -97,6 +104,17 @@ class CPScheduler:
             from ..sfjssp_model.schedule import Schedule
         except ImportError:  # pragma: no cover - supports repo-root imports
             from sfjssp_model.schedule import Schedule
+
+        if objective != "makespan":
+            warnings.warn(
+                (
+                    f"CPScheduler objective='{objective}' is experimental. "
+                    "Only objective='makespan' is currently verified against "
+                    "the repository's schedule-level evaluation path."
+                ),
+                UserWarning,
+                stacklevel=2,
+            )
 
         # Create CP model
         self.model = cp_model.CpModel()
@@ -129,12 +147,16 @@ class CPScheduler:
 
     def _build_model(self, instance: Any, objective: str):
         """
-        Build CP-SAT model with full SFJSSP objectives
+        Build CP-SAT model with the current SFJSSP objective set.
 
         Evidence: Model structure based on:
         - Standard FJSSP formulation [CONFIRMED]
         - E-DFJSP 2025 energy modeling [CONFIRMED]
         - DyDFJSP 2023 fatigue dynamics [CONFIRMED]
+
+        Verification status:
+        - makespan objective: smoke-verified on stored small benchmarks
+        - energy / ergonomic / composite objectives: experimental
         """
         model = self.model
 
@@ -167,8 +189,13 @@ class CPScheduler:
 
         # Scale factors for objective normalization
         # (CP-SAT requires integer objectives)
-        ENERGY_SCALE = 100  # Scale energy to reasonable integers
-        ERGO_SCALE = 1000   # Scale ergonomic indices
+        ENERGY_SCALE = 1000  # Scale kWh terms to milli-kWh integers
+        ERGO_SCALE = 1000    # Scale ergonomic indices
+        COST_SCALE = 100     # Scale labor costs to cents
+        OBJECTIVE_SCALE = 100000
+        self.energy_scale = ENERGY_SCALE
+        self.ergo_scale = ERGO_SCALE
+        self.cost_scale = COST_SCALE
 
         # Decision variables
         # start[(j, o)] = start time of operation o of job j
@@ -189,6 +216,9 @@ class CPScheduler:
         # Energy variables
         # energy[(j, o)] = energy consumption for operation
         self.energy = {}
+        self.machine_assignment_vars = {m.machine_id: [] for m in machines}
+        self.machine_processing_duration_terms = {m.machine_id: [] for m in machines}
+        self.machine_processing_energy_terms = {m.machine_id: [] for m in machines}
 
         # Machine/worker intervals
         self.machine_intervals = {m.machine_id: [] for m in machines}
@@ -228,8 +258,22 @@ class CPScheduler:
             )
 
             # Energy variable (scaled)
+            max_energy_per_op = 0
+            for machine in machines:
+                machine_modes = machine.modes or [None]
+                for mode in machine_modes:
+                    mode_id = mode.mode_id if mode is not None else machine.default_mode_id
+                    max_energy_per_op = max(
+                        max_energy_per_op,
+                        int(
+                            round(
+                                machine.get_processing_energy(max_pt, mode_id)
+                                * ENERGY_SCALE
+                            )
+                        ),
+                    )
             self.energy[(job_id, op_idx)] = model.NewIntVar(
-                0, int(max_pt * max(m.power_processing for m in machines) * 10),
+                0, max_energy_per_op,
                 f'energy_{job_id}_{op_idx}'
             )
 
@@ -273,6 +317,7 @@ class CPScheduler:
                         f'assign_{job_id}_{op_idx}_m{m_id}_mode{mode_id}'
                     )
                     self.assign_machine[(job_id, op_idx, m_id, mode_id)] = presence
+                    self.machine_assignment_vars[m_id].append(presence)
 
                     # Create optional interval for this machine-mode
                     interval = model.NewOptionalIntervalVar(
@@ -283,6 +328,7 @@ class CPScheduler:
                         f'interval_{job_id}_{op_idx}_m{m_id}_mode{mode_id}'
                     )
                     self.machine_intervals[m_id].append(interval)
+                    self.machine_processing_duration_terms[m_id].append(pt * presence)
                     
                     if not hasattr(self, 'all_intervals_with_demands'):
                         self.all_intervals_with_demands = []
@@ -295,10 +341,13 @@ class CPScheduler:
                     model.Add(self.duration[(job_id, op_idx)] == pt).OnlyEnforceIf(presence)
 
                     # Energy calculation for this option
-                    power = machine.power_processing if machine else 10.0
-                    if hasattr(mode, 'power_multiplier'):
-                        power *= mode.power_multiplier
-                    energy_val = int(power * pt)
+                    energy_val = int(
+                        round(
+                            (machine.get_processing_energy(pt, mode_id) if machine else 0.0)
+                            * ENERGY_SCALE
+                        )
+                    )
+                    self.machine_processing_energy_terms[m_id].append(energy_val * presence)
                     model.Add(self.energy[(job_id, op_idx)] == energy_val).OnlyEnforceIf(presence)
 
             # Worker assignment
@@ -476,9 +525,58 @@ class CPScheduler:
             last_op_idx = len(job.operations) - 1
             model.Add(self.makespan >= self.end[(job.job_id, last_op_idx)])
 
-        # Total energy
-        self.total_energy = model.NewIntVar(0, horizon * 10000, 'total_energy')
-        model.Add(self.total_energy == sum(self.energy.values()))
+        # Total energy aligned with schedule.compute_total_energy:
+        # processing + startup + idle + auxiliary for each used machine.
+        machine_total_energy_terms = []
+        for machine in machines:
+            m_id = machine.machine_id
+            assignment_vars = self.machine_assignment_vars[m_id]
+
+            machine_used = model.NewBoolVar(f"machine_used_{m_id}")
+            if assignment_vars:
+                for presence in assignment_vars:
+                    model.Add(presence <= machine_used)
+                model.Add(sum(assignment_vars) >= machine_used)
+            else:
+                model.Add(machine_used == 0)
+
+            processing_duration = model.NewIntVar(0, horizon, f"machine_proc_dur_{m_id}")
+            if self.machine_processing_duration_terms[m_id]:
+                model.Add(processing_duration == sum(self.machine_processing_duration_terms[m_id]))
+            else:
+                model.Add(processing_duration == 0)
+
+            processing_energy = model.NewIntVar(0, horizon * ENERGY_SCALE, f"machine_proc_energy_{m_id}")
+            if self.machine_processing_energy_terms[m_id]:
+                model.Add(processing_energy == sum(self.machine_processing_energy_terms[m_id]))
+            else:
+                model.Add(processing_energy == 0)
+
+            active_span = model.NewIntVar(0, horizon, f"machine_active_span_{m_id}")
+            model.Add(active_span <= self.makespan)
+            model.Add(active_span <= horizon * machine_used)
+            model.Add(active_span >= self.makespan - horizon * (1 - machine_used))
+
+            idle_time = model.NewIntVar(0, horizon, f"machine_idle_time_{m_id}")
+            model.Add(idle_time == active_span - processing_duration)
+
+            startup_energy = int(round(machine.startup_energy * ENERGY_SCALE))
+            idle_energy_rate = int(round(machine.power_idle * ENERGY_SCALE / 60.0))
+            aux_power_share = machine.auxiliary_power_share or instance.get_auxiliary_power_per_machine()
+            auxiliary_energy_rate = int(round(aux_power_share * ENERGY_SCALE / 60.0))
+
+            machine_energy = model.NewIntVar(0, horizon * ENERGY_SCALE * 10, f"machine_total_energy_{m_id}")
+            model.Add(
+                machine_energy
+                == processing_energy
+                + (startup_energy * machine_used)
+                + (idle_energy_rate * idle_time)
+                + (auxiliary_energy_rate * active_span)
+            )
+            machine_total_energy_terms.append(machine_energy)
+
+        self.total_energy = model.NewIntVar(0, horizon * ENERGY_SCALE * max(1, n_machines) * 10, 'total_energy')
+        model.Add(self.total_energy == sum(machine_total_energy_terms))
 
         # Ergonomic risk (simplified - sum of risk-weighted durations)
         # In full model, this would track per-worker ergonomic accumulation
@@ -500,15 +598,16 @@ class CPScheduler:
             model.Minimize(self.total_ergonomic)
 
         elif objective == "composite":
-            # Weighted multi-objective
-            # Use integer multipliers to normalize scales without division
-            # Linear combination: w1*Makespan + w2*Energy + w3*Ergonomic
-            
-            w_m = int(self.energy_weights.get('makespan', 0.4) * 1000)
-            w_e = int(self.energy_weights.get('energy', 0.3) * 10)
-            w_er = int(self.energy_weights.get('ergonomic', 0.2) * 100)
-
-            model.Minimize(w_m * self.makespan + w_e * self.total_energy + w_er * self.total_ergonomic)
+            # Keep composite experimental, but scale terms so the linear objective
+            # tracks the same raw-value ordering used by schedule.evaluate(...).
+            w_m = int(round(self.energy_weights.get('makespan', 0.4) * OBJECTIVE_SCALE))
+            w_e = int(round(self.energy_weights.get('energy', 0.3) * OBJECTIVE_SCALE / ENERGY_SCALE))
+            w_er = int(round(self.energy_weights.get('ergonomic', 0.2) * OBJECTIVE_SCALE / ERGO_SCALE))
+            model.Minimize(
+                (w_m * self.makespan)
+                + (w_e * self.total_energy)
+                + (w_er * self.total_ergonomic)
+            )
 
         else:
             # Default: makespan
@@ -523,15 +622,13 @@ class CPScheduler:
 
         schedule = Schedule(instance_id=instance.instance_id)
 
-        total_energy = 0
+        total_energy = self.solver.Value(self.total_energy) / self.energy_scale
         total_ergonomic = 0
 
         for (job_id, op_idx), start_var in self.start.items():
             start_time = self.solver.Value(start_var)
             end_time = self.solver.Value(self.end[(job_id, op_idx)])
             duration = self.solver.Value(self.duration[(job_id, op_idx)])
-            energy = self.solver.Value(self.energy.get((job_id, op_idx), 0))
-            total_energy += energy
 
             # Find assigned machine and mode
             machine_id = 0
@@ -982,9 +1079,10 @@ class MIPScheduler:
 
 class EnergyAwareCPScheduler(CPScheduler):
     """
-    Energy-aware CP-SAT scheduler with explicit energy modeling
+    Energy-aware CP-SAT scheduler with explicit energy modeling.
 
     Evidence: Energy-aware scheduling from E-DFJSP 2025 [CONFIRMED]
+    Verification status: experimental objective path
 
     Extends CPScheduler with:
     - Machine mode selection for energy optimization
@@ -1009,9 +1107,11 @@ class EnergyAwareCPScheduler(CPScheduler):
         verbose: bool = True,
     ) -> Optional[Any]:
         """
-        Solve with explicit energy minimization
+        Solve with explicit energy minimization.
 
-        Uses machine modes to trade off speed vs. energy
+        Experimental helper path. Uses machine modes to trade off speed vs.
+        energy and inherits the same verification warning as `solve(...,
+        objective="energy")`.
         """
         return self.solve(instance, objective="energy", verbose=verbose)
 
@@ -1070,7 +1170,9 @@ def solve_sfjssp(
     Args:
         instance: SFJSSPInstance to solve
         method: Solver method ("cp", "mip", "greedy")
-        objective: Objective ("makespan", "energy", "ergonomic", "composite")
+        objective: Objective name. For `method="cp"`, only `"makespan"` is
+            currently verified; `"energy"`, `"ergonomic"`, and `"composite"`
+            remain experimental and emit a warning.
         time_limit: Time limit in seconds
         verbose: Print progress
 

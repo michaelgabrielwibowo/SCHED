@@ -1,5 +1,7 @@
 import json
+import shutil
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -16,6 +18,20 @@ BENCHMARK_ROOT = REPO_ROOT / "benchmarks"
 def _load_benchmark(path: Path) -> SFJSSPInstance:
     with path.open("r", encoding="utf-8") as handle:
         return SFJSSPInstance.from_dict(json.load(handle))
+
+
+@pytest.fixture
+def tmp_path() -> Path:
+    """Repo-local temporary directory fixture that avoids Pytest's tmpdir plugin."""
+
+    temp_root = REPO_ROOT / ".tmp"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    path = temp_root / f"pytest-{uuid4().hex}"
+    path.mkdir(parents=True, exist_ok=False)
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
 
 
 @pytest.fixture(scope="session")

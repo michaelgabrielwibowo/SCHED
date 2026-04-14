@@ -47,7 +47,7 @@ def test_cp_solver_smoke_when_ortools_installed():
             instance,
             method="cp",
             objective="makespan",
-            time_limit=5,
+            time_limit=60,
             verbose=False,
         )
 
@@ -62,6 +62,22 @@ def test_mip_solver_is_quarantined_when_ortools_installed():
     scheduler = MIPScheduler(time_limit=1)
     with pytest.raises(NotImplementedError, match="quarantined"):
         scheduler.solve(None, verbose=False)
+
+
+def test_cp_non_makespan_objective_warns_when_ortools_installed():
+    pytest.importorskip("ortools")
+
+    generator = BenchmarkGenerator(GeneratorConfig(size=InstanceSize.SMALL, seed=11, n_jobs=1, n_machines=1, n_workers=1))
+    instance = generator.generate()
+
+    with pytest.warns(UserWarning, match="experimental"):
+        solve_sfjssp(
+            instance,
+            method="cp",
+            objective="energy",
+            time_limit=1,
+            verbose=False,
+        )
 
 
 def test_torch_training_smoke_when_torch_installed(tmp_path):

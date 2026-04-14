@@ -638,6 +638,7 @@ class MultiAgentPPO:
             worker_action = torch.tensor([wrk_idx], device=self.device)
 
         mode_m = (res_mask[mac_idx, wrk_idx] > 0).astype(np.float32)
+        mode_mask_t = torch.FloatTensor(mode_m).unsqueeze(0).to(self.device)
         valid_modes = np.flatnonzero(mode_m > 0.0)
         if valid_modes.size == 0:
             raise RuntimeError(
@@ -668,7 +669,12 @@ class MultiAgentPPO:
             'worker_log_prob': wrk_log_prob,
             'states': {
                 'j': j_feat, 'o': o_feat, 'm': m_feat, 'w': w_feat,
-                'adj': adj_t, 'pad': pad_t
+                'adj': adj_t,
+                'pad': pad_t,
+                'job_mask': job_mask_t.detach().clone(),
+                'machine_mask': mac_mask_t.detach().clone(),
+                'worker_mask': wrk_mask_t.detach().clone(),
+                'mode_mask': mode_mask_t.detach().clone(),
             }
         }
 
@@ -696,38 +702,19 @@ class MultiAgentPPO:
         if len(self.buffer) < batch_size:
             return
 
-        # 1. Convert buffer to tensors
-        j_feats = torch.cat([t['states']['j'] for t in self.buffer]).to(self.device)
-        o_feats = torch.cat([t['states']['o'] for t in self.buffer]).to(self.device)
-        m_feats = torch.cat([t['states']['m'] for t in self.buffer]).to(self.device)
-        w_feats = torch.cat([t['states']['w'] for t in self.buffer]).to(self.device)
-        adj_feats = torch.cat([t['states']['adj'] for t in self.buffer]).to(self.device)
-        pad_feats = torch.cat([t['states']['pad'] for t in self.buffer]).to(self.device)
-        
-        rewards = torch.cat([t['rewards'] for t in self.buffer]).to(self.device)
-        dones = torch.cat([t['dones'] for t in self.buffer]).to(self.device)
-        
-        job_actions = torch.stack([t['actions']['job_action'] for t in self.buffer]).to(self.device).squeeze()
-        mac_actions = torch.stack([t['actions']['machine_action'] for t in self.buffer]).to(self.device).squeeze()
-        mode_actions = torch.stack([t['actions']['mode_action'] for t in self.buffer]).to(self.device).squeeze()
-        wrk_actions = torch.stack([t['actions']['worker_action'] for t in self.buffer]).to(self.device).squeeze()
-        
-        old_job_log_probs = torch.stack([t['actions']['job_log_prob'] for t in self.buffer]).to(self.device).detach().squeeze()
-        old_mac_log_probs = torch.stack([t['actions']['machine_log_prob'] for t in self.buffer]).to(self.device).detach().squeeze()
-        old_wrk_log_probs = torch.stack([t['actions']['worker_log_prob'] for t in self.buffer]).to(self.device).detach().squeeze()
+        batch = self._prepare_buffer_tensors()
 
         # 2. Compute returns and advantages
         with torch.no_grad():
-            node_embs = self.encoder.encode(j_feats, o_feats, m_feats, w_feats)
-            global_state = self.encoder.forward(j_feats, o_feats, m_feats, w_feats, adjacency=adj_feats, padding_mask=pad_feats)
+            node_embs, global_state = self._encode_batch(batch)
             
-            _, v_job = self.job_agent(global_state, node_embs['jobs'])
-            _, _, v_mac = self.machine_agent(global_state)
-            _, v_wrk = self.worker_agent(global_state)
+            _, v_job = self.job_agent(global_state, node_embs['jobs'], batch['job_masks'])
+            _, _, v_mac = self.machine_agent(global_state, batch['machine_masks'])
+            _, v_wrk = self.worker_agent(global_state, batch['worker_masks'])
             
             returns = []
             discounted_reward = 0
-            for r, d in zip(reversed(rewards.tolist()), reversed(dones.tolist())):
+            for r, d in zip(reversed(batch['rewards'].tolist()), reversed(batch['dones'].tolist())):
                 if d: discounted_reward = 0
                 discounted_reward = r + (self.gamma * discounted_reward)
                 returns.insert(0, discounted_reward)
@@ -742,38 +729,26 @@ class MultiAgentPPO:
         # 3. PPO Update Epochs
         for _ in range(n_epochs):
             # Encode for each epoch (shared encoder)
-            node_embs = self.encoder.encode(j_feats, o_feats, m_feats, w_feats)
-            global_state = self.encoder.forward(j_feats, o_feats, m_feats, w_feats, adjacency=adj_feats, padding_mask=pad_feats)
+            node_embs, global_state = self._encode_batch(batch)
+            current = self._compute_current_policy_outputs(batch, node_embs, global_state)
 
             # Job Agent Update
-            logits_j, val_j = self.job_agent(global_state, node_embs['jobs'])
-            dist_j = _safe_categorical_from_logits(logits_j)
-            new_log_probs_j = dist_j.log_prob(job_actions)
-            ratio_j = torch.exp(new_log_probs_j - old_job_log_probs)
+            ratio_j = torch.exp(current['job_log_probs'] - batch['old_job_log_probs'])
             surr1_j = ratio_j * job_adv
             surr2_j = torch.clamp(ratio_j, 1-self.clip_epsilon, 1+self.clip_epsilon) * job_adv
-            j_loss = -torch.min(surr1_j, surr2_j).mean() + 0.5 * F.mse_loss(val_j.squeeze(), returns)
+            j_loss = -torch.min(surr1_j, surr2_j).mean() + 0.5 * F.mse_loss(current['job_values'].squeeze(), returns)
             
             # Machine Agent Update
-            # [FIX] Joint log prob of machine AND mode selection must be used
-            logits_m, logits_mode, val_m = self.machine_agent(global_state)
-            dist_m = _safe_categorical_from_logits(logits_m)
-            dist_mode = _safe_categorical_from_logits(logits_mode)
-            
-            new_log_probs_m = dist_m.log_prob(mac_actions) + dist_mode.log_prob(mode_actions)
-            ratio_m = torch.exp(new_log_probs_m - old_mac_log_probs)
+            ratio_m = torch.exp(current['machine_log_probs'] - batch['old_mac_log_probs'])
             surr1_m = ratio_m * mac_adv
             surr2_m = torch.clamp(ratio_m, 1-self.clip_epsilon, 1+self.clip_epsilon) * mac_adv
-            m_loss = -torch.min(surr1_m, surr2_m).mean() + 0.5 * F.mse_loss(val_m.squeeze(), returns)
+            m_loss = -torch.min(surr1_m, surr2_m).mean() + 0.5 * F.mse_loss(current['machine_values'].squeeze(), returns)
             
             # Worker Agent Update
-            logits_w, val_w = self.worker_agent(global_state)
-            dist_w = _safe_categorical_from_logits(logits_w)
-            new_log_probs_w = dist_w.log_prob(wrk_actions)
-            ratio_w = torch.exp(new_log_probs_w - old_wrk_log_probs)
+            ratio_w = torch.exp(current['worker_log_probs'] - batch['old_wrk_log_probs'])
             surr1_w = ratio_w * wrk_adv
             surr2_w = torch.clamp(ratio_w, 1-self.clip_epsilon, 1+self.clip_epsilon) * wrk_adv
-            w_loss = -torch.min(surr1_w, surr2_w).mean() + 0.5 * F.mse_loss(val_w.squeeze(), returns)
+            w_loss = -torch.min(surr1_w, surr2_w).mean() + 0.5 * F.mse_loss(current['worker_values'].squeeze(), returns)
             
             total_loss = j_loss + m_loss + w_loss
             
@@ -782,6 +757,90 @@ class MultiAgentPPO:
             self.optimizer.step()
 
         self.buffer = []
+
+    def _prepare_buffer_tensors(self) -> Dict[str, torch.Tensor]:
+        """Stack buffered transitions into a single PPO batch."""
+        def _mask_or_ones(key: str, fallback_width_key: str) -> torch.Tensor:
+            tensors = []
+            for transition in self.buffer:
+                states = transition['states']
+                mask = states.get(key)
+                if mask is None:
+                    width = states[fallback_width_key].shape[1]
+                    mask = torch.ones((1, width), dtype=torch.float32)
+                tensors.append(mask)
+            return torch.cat(tensors).to(self.device)
+
+        return {
+            'j_feats': torch.cat([t['states']['j'] for t in self.buffer]).to(self.device),
+            'o_feats': torch.cat([t['states']['o'] for t in self.buffer]).to(self.device),
+            'm_feats': torch.cat([t['states']['m'] for t in self.buffer]).to(self.device),
+            'w_feats': torch.cat([t['states']['w'] for t in self.buffer]).to(self.device),
+            'adj_feats': torch.cat([t['states']['adj'] for t in self.buffer]).to(self.device),
+            'pad_feats': torch.cat([t['states']['pad'] for t in self.buffer]).to(self.device),
+            'job_masks': _mask_or_ones('job_mask', 'j'),
+            'machine_masks': _mask_or_ones('machine_mask', 'm'),
+            'worker_masks': _mask_or_ones('worker_mask', 'w'),
+            'mode_masks': _mask_or_ones('mode_mask', 'm'),
+            'rewards': torch.cat([t['rewards'] for t in self.buffer]).to(self.device).view(-1),
+            'dones': torch.cat([t['dones'] for t in self.buffer]).to(self.device).view(-1),
+            'job_actions': torch.stack([t['actions']['job_action'] for t in self.buffer]).to(self.device).view(-1),
+            'mac_actions': torch.stack([t['actions']['machine_action'] for t in self.buffer]).to(self.device).view(-1),
+            'mode_actions': torch.stack([t['actions']['mode_action'] for t in self.buffer]).to(self.device).view(-1),
+            'wrk_actions': torch.stack([t['actions']['worker_action'] for t in self.buffer]).to(self.device).view(-1),
+            'old_job_log_probs': torch.stack([t['actions']['job_log_prob'] for t in self.buffer]).to(self.device).detach().view(-1),
+            'old_mac_log_probs': torch.stack([t['actions']['machine_log_prob'] for t in self.buffer]).to(self.device).detach().view(-1),
+            'old_wrk_log_probs': torch.stack([t['actions']['worker_log_prob'] for t in self.buffer]).to(self.device).detach().view(-1),
+        }
+
+    def _encode_batch(self, batch: Dict[str, torch.Tensor]) -> Tuple[Dict[str, torch.Tensor], torch.Tensor]:
+        """Encode a prepared PPO batch through the shared graph encoder."""
+        node_embs = self.encoder.encode(
+            batch['j_feats'],
+            batch['o_feats'],
+            batch['m_feats'],
+            batch['w_feats'],
+        )
+        global_state = self.encoder.forward(
+            batch['j_feats'],
+            batch['o_feats'],
+            batch['m_feats'],
+            batch['w_feats'],
+            adjacency=batch['adj_feats'],
+            padding_mask=batch['pad_feats'],
+        )
+        return node_embs, global_state
+
+    def _compute_current_policy_outputs(
+        self,
+        batch: Dict[str, torch.Tensor],
+        node_embs: Dict[str, torch.Tensor],
+        global_state: torch.Tensor,
+    ) -> Dict[str, torch.Tensor]:
+        """Rebuild current action log-probs using the same masks used at selection time."""
+        logits_j, val_j = self.job_agent(global_state, node_embs['jobs'], batch['job_masks'])
+        dist_j = _safe_categorical_from_logits(logits_j, batch['job_masks'])
+
+        logits_m, logits_mode, val_m = self.machine_agent(global_state, batch['machine_masks'])
+        dist_m = _safe_categorical_from_logits(logits_m, batch['machine_masks'])
+
+        # Mode selection is still unmasked at action-selection time; keep PPO
+        # consistent with that contract until the selection policy itself changes.
+        dist_mode = _safe_categorical_from_logits(logits_mode)
+
+        logits_w, val_w = self.worker_agent(global_state, batch['worker_masks'])
+        dist_w = _safe_categorical_from_logits(logits_w, batch['worker_masks'])
+
+        return {
+            'job_log_probs': dist_j.log_prob(batch['job_actions']),
+            'job_values': val_j,
+            'machine_log_probs': (
+                dist_m.log_prob(batch['mac_actions']) + dist_mode.log_prob(batch['mode_actions'])
+            ),
+            'machine_values': val_m,
+            'worker_log_probs': dist_w.log_prob(batch['wrk_actions']),
+            'worker_values': val_w,
+        }
 
     def save(self, path: str):
         """Save model checkpoints"""

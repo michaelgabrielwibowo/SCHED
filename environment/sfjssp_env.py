@@ -423,6 +423,9 @@ class SFJSSPEnv(gym.Env):
             machine.total_transport_time += transport_time
         
         # Worker tracking
+        worker_rest_gap = start_time - worker.available_time
+        if worker_rest_gap > 0:
+            worker.record_rest(worker_rest_gap)
         worker.available_time = completion_time
         worker.record_work(
             processing_time,

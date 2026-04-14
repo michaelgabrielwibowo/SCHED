@@ -10,13 +10,35 @@ try:
     from ..sfjssp_model.machine import Machine
     from ..sfjssp_model.worker import Worker
     from ..sfjssp_model.job import Job, Operation
-    from ..moea.nsga3 import NSGA3, create_sfjssp_genome, evaluate_sfjssp_genome
+    from ..moea.nsga3 import (
+        NSGA3,
+        NSGA3_DEFAULT_CONSTRAINT_HANDLING,
+        NSGA3_DEFAULT_CROSSOVER_POLICY,
+        NSGA3_DEFAULT_LOCAL_IMPROVEMENT,
+        NSGA3_DEFAULT_SEQUENCE_MUTATION,
+        NSGA3_DEFAULT_IMMIGRANT_POLICY,
+        create_sfjssp_genome,
+        create_sfjssp_seed_genomes,
+        evaluate_sfjssp_genome,
+        evaluate_sfjssp_genome_detailed,
+    )
 except ImportError:  # pragma: no cover - supports repo-root imports
     from sfjssp_model.instance import SFJSSPInstance
     from sfjssp_model.machine import Machine
     from sfjssp_model.worker import Worker
     from sfjssp_model.job import Job, Operation
-    from moea.nsga3 import NSGA3, create_sfjssp_genome, evaluate_sfjssp_genome
+    from moea.nsga3 import (
+        NSGA3,
+        NSGA3_DEFAULT_CONSTRAINT_HANDLING,
+        NSGA3_DEFAULT_CROSSOVER_POLICY,
+        NSGA3_DEFAULT_LOCAL_IMPROVEMENT,
+        NSGA3_DEFAULT_SEQUENCE_MUTATION,
+        NSGA3_DEFAULT_IMMIGRANT_POLICY,
+        create_sfjssp_genome,
+        create_sfjssp_seed_genomes,
+        evaluate_sfjssp_genome,
+        evaluate_sfjssp_genome_detailed,
+    )
 
 
 def create_test_instance():
@@ -90,12 +112,20 @@ def main():
         mutation_rate=0.2,
         crossover_rate=0.9,
         seed=42,
+        constraint_handling=NSGA3_DEFAULT_CONSTRAINT_HANDLING,
+        parent_selection="random_pairing",
+        crossover_policy=NSGA3_DEFAULT_CROSSOVER_POLICY,
+        local_improvement=NSGA3_DEFAULT_LOCAL_IMPROVEMENT,
+        sequence_mutation=NSGA3_DEFAULT_SEQUENCE_MUTATION,
+        immigrant_policy=NSGA3_DEFAULT_IMMIGRANT_POLICY,
     )
 
     # Set problem functions
     nsga3.set_problem(
         evaluate_fn=evaluate_sfjssp_genome,
+        evaluate_details_fn=evaluate_sfjssp_genome_detailed,
         create_individual_fn=create_sfjssp_genome,
+        seed_individuals_fn=create_sfjssp_seed_genomes,
     )
 
     # Run optimization

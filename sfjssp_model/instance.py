@@ -102,6 +102,7 @@ class SFJSSPInstance:
     # Ergonomic risk parameters (CONFIRMED from NSGA-III 2021)
     # Map: (job_id, op_id) -> ergonomic risk rate per time unit
     ergonomic_risk_map: Dict[Tuple[int, int], float] = field(default_factory=dict)
+    default_ergonomic_risk: float = 0.0
 
     # Carbon emission factor (CONFIRMED from Low-carbon DRL 2024)
     # kg CO2 per kWh (can be time-varying)
@@ -239,7 +240,7 @@ class SFJSSPInstance:
 
     def get_ergonomic_risk(self, job_id: int, op_id: int) -> float:
         """Get ergonomic risk rate for an operation"""
-        return self.ergonomic_risk_map.get((job_id, op_id), 0.5)
+        return self.ergonomic_risk_map.get((job_id, op_id), self.default_ergonomic_risk)
 
     def get_electricity_price(self, time: float) -> float:
         """Get electricity price at a given time"""
@@ -279,6 +280,8 @@ class SFJSSPInstance:
         """
         if self.dynamic_params is None:
             return None
+        if not self.machines or not self.workers:
+            return None
 
         # Poisson arrival: P(arrival) = 1 - exp(-lambda * dt)
         # Using dt=1 for simplicity
@@ -303,14 +306,16 @@ class SFJSSPInstance:
             )
 
             # Assign random eligible machines and workers
-            n_machines = rng.integers(1, min(4, self.n_machines) + 1)
-            n_workers = rng.integers(1, min(4, self.n_workers) + 1)
+            machine_ids = [machine.machine_id for machine in self.machines]
+            worker_ids = [worker.worker_id for worker in self.workers]
+            n_machines = rng.integers(1, min(4, len(machine_ids)) + 1)
+            n_workers = rng.integers(1, min(4, len(worker_ids)) + 1)
 
             eligible_machines = list(rng.choice(
-                self.n_machines, size=n_machines, replace=False
+                machine_ids, size=n_machines, replace=False
             ))
             eligible_workers = list(rng.choice(
-                self.n_workers, size=n_workers, replace=False
+                worker_ids, size=n_workers, replace=False
             ))
 
             op.eligible_machines = set(eligible_machines)
@@ -414,6 +419,7 @@ class SFJSSPInstance:
             'electricity_prices': self.electricity_prices,
             'default_electricity_price': self.default_electricity_price,
             'auxiliary_power_total': self.auxiliary_power_total,
+            'default_ergonomic_risk': self.default_ergonomic_risk,
             'ergonomic_risks': {f"{k[0]}_{k[1]}": v for k, v in self.ergonomic_risk_map.items()},
             'dynamic_params': {
                 'arrival_rate': self.dynamic_params.arrival_rate,
@@ -459,6 +465,7 @@ class SFJSSPInstance:
             electricity_prices={int(k): v for k, v in data.get('electricity_prices', {}).items()},
             default_electricity_price=data.get('default_electricity_price', 0.10),
             auxiliary_power_total=data.get('auxiliary_power_total', 50.0),
+            default_ergonomic_risk=data.get('default_ergonomic_risk', 0.0),
             dynamic_params=dynamic_params,
         )
         

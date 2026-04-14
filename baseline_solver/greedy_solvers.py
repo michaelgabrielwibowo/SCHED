@@ -164,6 +164,66 @@ def earliest_ready_rule(
     return best_idx
 
 
+def least_slack_rule(
+    instance: SFJSSPInstance,
+    schedule: Schedule,
+    ready_ops: List[Tuple[int, int]]
+) -> int:
+    """
+    Select operation with minimum slack to its due date.
+
+    Slack is estimated as `due_date - ready_time - min_processing_time`, so
+    smaller values indicate more urgent jobs.
+    """
+    if not ready_ops:
+        return -1
+
+    best_idx = 0
+    best_key = (float("inf"), float("inf"), float("inf"))
+
+    for i, (job_id, op_id) in enumerate(ready_ops):
+        ready_time = _get_ready_time(schedule, instance, job_id, op_id)
+        min_pt = _get_min_processing_time(instance, job_id, op_id)
+        due_date = _get_due_date_score(instance, job_id, op_id)
+        slack = due_date - ready_time - min_pt
+        candidate_key = (slack, due_date, min_pt)
+        if candidate_key < best_key:
+            best_key = candidate_key
+            best_idx = i
+
+    return best_idx
+
+
+def critical_ratio_rule(
+    instance: SFJSSPInstance,
+    schedule: Schedule,
+    ready_ops: List[Tuple[int, int]]
+) -> int:
+    """
+    Select operation with the smallest critical ratio.
+
+    Critical ratio is estimated as `(due_date - ready_time) / min_processing_time`;
+    lower values indicate more urgent jobs.
+    """
+    if not ready_ops:
+        return -1
+
+    best_idx = 0
+    best_key = (float("inf"), float("inf"), float("inf"))
+
+    for i, (job_id, op_id) in enumerate(ready_ops):
+        ready_time = _get_ready_time(schedule, instance, job_id, op_id)
+        min_pt = _get_min_processing_time(instance, job_id, op_id)
+        due_date = _get_due_date_score(instance, job_id, op_id)
+        ratio = (due_date - ready_time) / max(min_pt, 1e-9)
+        candidate_key = (ratio, due_date, min_pt)
+        if candidate_key < best_key:
+            best_key = candidate_key
+            best_idx = i
+
+    return best_idx
+
+
 def min_energy_rule(
     instance: SFJSSPInstance,
     schedule: Schedule,
@@ -325,6 +385,25 @@ def composite_rule(
     return int(np.argmax(scores))
 
 
+def tardiness_composite_rule(
+    instance: SFJSSPInstance,
+    schedule: Schedule,
+    ready_ops: List[Tuple[int, int]]
+) -> int:
+    """Composite rule biased toward due-date urgency and short processing time."""
+    return composite_rule(
+        instance,
+        schedule,
+        ready_ops,
+        weights={
+            'spt': 0.30,
+            'edd': 0.55,
+            'energy': 0.05,
+            'ergonomic': 0.10,
+        },
+    )
+
+
 def _get_min_processing_time(
     instance: SFJSSPInstance,
     job_id: int,
@@ -358,6 +437,32 @@ def _get_due_date_score(
         return 500.0
 
     return job.due_date
+
+
+def _get_ready_time(
+    schedule: Schedule,
+    instance: SFJSSPInstance,
+    job_id: int,
+    op_id: int,
+) -> float:
+    """Estimate the earliest schedule-ready time for an operation."""
+    job = instance.get_job(job_id)
+    if job is None:
+        return float("inf")
+
+    if op_id == 0:
+        return job.arrival_time
+
+    prev_sched = schedule.get_operation(job_id, op_id - 1)
+    prev_model_op = job.operations[op_id - 1]
+    if prev_sched is None:
+        return float("inf")
+
+    return (
+        prev_sched.completion_time
+        + prev_sched.transport_time
+        + getattr(prev_model_op, "waiting_time", 0.0)
+    )
 
 
 def _get_energy_score(

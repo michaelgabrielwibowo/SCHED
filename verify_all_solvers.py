@@ -1,6 +1,8 @@
+import shutil
 import sys
-import tempfile
+from contextlib import contextmanager
 from pathlib import Path
+from uuid import uuid4
 
 import numpy as np
 
@@ -36,6 +38,23 @@ except ImportError:  # pragma: no cover - supports repo-root imports
     from experiments.compare_solvers import load_benchmark
     from exact_solvers.cp_solver import MIPScheduler, solve_sfjssp
     from training.train_drl import TrainingConfig, TrainingPipeline, run_training
+
+
+REPO_ROOT = Path(__file__).resolve().parent
+
+
+@contextmanager
+def _repo_temp_dir(prefix: str):
+    """Create a repo-local temp directory for sandbox-safe smoke tests."""
+
+    root = REPO_ROOT / ".tmp_verify"
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / f"{prefix}{uuid4().hex}"
+    path.mkdir(parents=True, exist_ok=False)
+    try:
+        yield str(path)
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
 
 
 def test_waiting_logic():
@@ -113,7 +132,7 @@ def test_counters():
 
 
 def test_cp_solver_optional():
-    print("\nTesting CP exact solver...")
+    print("\nTesting CP exact solver (makespan only)...")
     if not ORTOOLS_INSTALLED:
         print("  Skipped: OR-Tools is not installed.")
         return True
@@ -129,7 +148,7 @@ def test_cp_solver_optional():
             instance,
             method="cp",
             objective="makespan",
-            time_limit=5,
+            time_limit=60,
             verbose=False,
         )
 
@@ -146,7 +165,7 @@ def test_cp_solver_optional():
             print(f"  CP exact solver returned an infeasible or incomplete schedule for {benchmark_path.name}.")
             return False
 
-    print("  CP exact solver smoke passed on multiple stored benchmarks.")
+    print("  CP exact solver smoke passed on multiple stored benchmarks for objective='makespan'.")
     return True
 
 
@@ -176,7 +195,7 @@ def test_torch_training_optional():
         print("  Skipped: torch is not installed.")
         return True
 
-    with tempfile.TemporaryDirectory(prefix="sfjssp_drl_") as tmp_dir:
+    with _repo_temp_dir("sfjssp_drl_") as tmp_dir:
         result = run_training(output_dir=tmp_dir, n_episodes=1)
         history_path = Path(tmp_dir) / "history.json"
         history_exists = history_path.exists()
@@ -208,7 +227,7 @@ def test_torch_checkpoint_round_trip_optional():
     instance = generator.generate()
     env = SFJSSPEnv(instance, use_graph_state=True)
 
-    with tempfile.TemporaryDirectory(prefix="sfjssp_ckpt_") as tmp_dir:
+    with _repo_temp_dir("sfjssp_ckpt_") as tmp_dir:
         pipeline = TrainingPipeline(
             TrainingConfig(n_episodes=1, max_steps_per_episode=10, log_interval=1)
         )

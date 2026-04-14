@@ -20,21 +20,32 @@ This is a research implementation based on synthesis.
 __version__ = "0.1.0"
 __author__ = "SFJSSP Research Team"
 
-from .sfjssp_model import (
-    Job,
-    Operation,
-    Machine,
-    MachineMode,
-    Worker,
-    Schedule,
-    SFJSSPInstance,
-)
-
-from .environment import SFJSSPEnv
-
-from .baseline_solver import GreedyScheduler, spt_rule, fifo_rule, edt_rule
-
-from .utils import BenchmarkGenerator, GeneratorConfig
+try:
+    from .sfjssp_model import (
+        Job,
+        Machine,
+        MachineMode,
+        Operation,
+        Schedule,
+        SFJSSPInstance,
+        Worker,
+    )
+    from .environment import SFJSSPEnv
+    from .baseline_solver import GreedyScheduler, edt_rule, fifo_rule, spt_rule
+    from .utils import BenchmarkGenerator, GeneratorConfig
+except ImportError:  # pragma: no cover - fallback for direct module import
+    from sfjssp_model import (
+        Job,
+        Machine,
+        MachineMode,
+        Operation,
+        Schedule,
+        SFJSSPInstance,
+        Worker,
+    )
+    from environment import SFJSSPEnv
+    from baseline_solver import GreedyScheduler, edt_rule, fifo_rule, spt_rule
+    from utils import BenchmarkGenerator, GeneratorConfig
 
 __all__ = [
     # Core model

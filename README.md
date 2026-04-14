@@ -73,6 +73,10 @@ pip install torch
 pip install ortools>=9.8.0
 ```
 
+Only the CP `makespan` path is currently verified in this repository. CP
+objectives `energy`, `ergonomic`, and `composite` remain experimental until
+they are revalidated against the schedule-level metrics.
+
 ### Development
 
 ```bash
@@ -165,7 +169,10 @@ from baseline_solver import (
     spt_rule,      # Shortest Processing Time
     fifo_rule,     # First In First Out
     edt_rule,      # Earliest Due Date
+    least_slack_rule,  # Least Slack Time
+    critical_ratio_rule,  # Critical Ratio
     composite_rule, # Multi-objective composite
+    tardiness_composite_rule, # Due-date biased composite
 )
 
 scheduler = GreedyScheduler(job_rule=spt_rule)
@@ -175,7 +182,12 @@ schedule = scheduler.schedule(instance)
 ### NSGA-III
 
 ```python
-from moea import NSGA3, create_sfjssp_genome, evaluate_sfjssp_genome
+from moea import (
+    NSGA3,
+    create_sfjssp_genome,
+    create_sfjssp_seed_genomes,
+    evaluate_sfjssp_genome,
+)
 
 nsga3 = NSGA3(
     n_objectives=4,
@@ -186,6 +198,7 @@ nsga3 = NSGA3(
 nsga3.set_problem(
     evaluate_fn=evaluate_sfjssp_genome,
     create_individual_fn=create_sfjssp_genome,
+    seed_individuals_fn=create_sfjssp_seed_genomes,
 )
 
 nsga3.evolve(instance)
@@ -263,8 +276,12 @@ python verify_all_solvers.py
 - NSGA-III now encodes machine modes and the bundled demo produces non-penalty schedules.
 - `torch` and `ortools` are optional, and both optional paths have now been smoke-tested in this environment.
 - The CP exact solver is smoke-verified for the `makespan` objective on stored small benchmarks.
+- CP objective variants `energy`, `ergonomic`, and `composite` remain experimental until they are revalidated against the schedule-level objective calculations.
 - The torch-backed PPO training entrypoint runs one episode and writes checkpoints/history.
 - The MIP exact solver is currently quarantined and raises a clear `NotImplementedError` instead of returning invalid schedules.
+- The tracked solver comparison artifact now embeds provenance metadata, including git commit/dirty state, and records an explicit NSGA report-member policy (`best_makespan_feasible` by default) alongside the tardiness-best feasible Pareto representative.
+- NSGA-III now supports deterministic greedy warm-start seeding via `create_sfjssp_seed_genomes`, including `least_slack_rule`, `critical_ratio_rule`, and `tardiness_composite_rule`; the current seed path accepts all 10 deterministic seed candidates on each stored small benchmark in the bundled `30`-generation comparison slice.
+- The April 13, 2026 NSGA budget sweep still recommends `30` generations with population `30`; larger budgets did not improve either the default NSGA report member or the tardiness-best feasible result under fixed seed `42`.
 
 ## Citation
 

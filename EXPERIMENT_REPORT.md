@@ -1,6 +1,6 @@
 # SFJSSP Verification Report
 
-**Date:** 2026-04-11  
+**Date:** 2026-04-13  
 **Status:** Current engineering verification summary
 
 ## Executive Summary
@@ -40,6 +40,44 @@ python -m experiments.test_nsga3
 python verify_all_solvers.py
 ```
 
+## Regenerated Comparison Artifact
+
+The tracked comparison artifact has now been regenerated from the current code path and promoted to [experiments/results/comparison.json](/C:/Users/s1233/SCHEDULE/experiments/results/comparison.json) after reviewing the staged run in `experiments/results/comparison_2026-04-13-report-policy.json`.
+
+- Command: `python -m experiments.compare_solvers --benchmark-dir benchmarks/small --output experiments/results/comparison_2026-04-13-report-policy.json --cp --generations 30 --nsga-report-member-policy best_makespan_feasible`
+- Commit: `09eb0a5626fb88fe200023f237a2c9dc7d27530d`
+- Worktree state at run time: dirty (`git_dirty: true`, with `git_status_short` embedded in the artifact provenance)
+- Scope: stored `benchmarks/small`, NSGA-III `30` generations with greedy warm-start enabled, report policy `best_makespan_feasible`, CP enabled, CP objective restricted to `makespan`
+- Artifact schema: `comparison_results_v3` with embedded provenance
+- Staging review: greedy runs have no recorded constraint violations, NSGA-III report-member makespans are raw schedule metrics rather than penalty-scale sentinel values, CP appears only as `objective="makespan"`, and the artifact now records both the published NSGA report member and the tardiness-best feasible representative.
+
+Observed outcomes from the regenerated artifact:
+- All greedy comparison runs on the stored small benchmarks are now hard-feasible and report no constraint violations.
+- CP-SAT produced a hard-feasible `makespan` solution on all ten stored small benchmarks and achieved the best makespan in this comparison slice.
+- NSGA-III now reports raw schedule metrics rather than penalized selection values.
+- The comparison artifact now makes the public NSGA contract explicit: the published report member is `best_makespan_feasible`, and the legacy `selected_*` fields are compatibility aliases to that report member.
+- Deterministic greedy warm-start seeds are now enabled in the comparison path, and the repaired seed decoder accepted all 10 deterministic greedy-rule seeds on all 10 stored small benchmarks, including `least_slack_rule`, `critical_ratio_rule`, and `tardiness_composite_rule`.
+- On this `30`-generation comparison slice, average NSGA-III makespan improved from `5393.9` in the previous tracked artifact to `754.7`, average `min_total_penalty` dropped from `487564.7` to `29226.1`, and NSGA-III now beats the best greedy makespan on `3/10` stored small benchmarks.
+- Even after that repair, NSGA-III still trails CP-SAT on all ten stored small benchmarks and still carries non-zero soft-constraint penalty mass on every stored small benchmark in this slice.
+- The report-member penalty fields show what remains under that default policy: average report-member `n_tardy_jobs=8.0`, average report-member `weighted_tardiness=2185.5`, average report-member `total_penalty=29854.9`, average report-member `max_ergonomic_exposure=1.077`, zero hard violations, and zero OCRA penalty across all 10 stored small benchmarks.
+- The representative-member fields also show where the next improvement should come from: the feasible Pareto front already contains a better tardiness member on `2/10` stored small benchmarks, with average tardiness-best `weighted_tardiness=2148.6` and average tardiness-best `n_tardy_jobs=7.8`.
+
+The comparison script now clones the benchmark instance before each solver run so solver results are no longer contaminated by mutable state left behind by previous experiments.
+
+## NSGA Budget Sweep
+
+The next-phase budget sweep is recorded in [experiments/results/nsga_budget_sweep_2026-04-13.json](/C:/Users/s1233/SCHEDULE/experiments/results/nsga_budget_sweep_2026-04-13.json).
+
+- Command: `python -m experiments.sweep_nsga_budget --benchmark-dir benchmarks/small --output experiments/results/nsga_budget_sweep_2026-04-13.json --generations 30,60,120 --population-sizes 30,60 --seed 42 --nsga-report-member-policy best_makespan_feasible`
+- Sweep scope: stored `benchmarks/small`, warm-start enabled, report policy `best_makespan_feasible`, published greedy baseline slice (`SPT`, `FIFO`, `EDD`), fixed RNG seed `42`
+- Sweep schema: `nsga_budget_sweep_v2`
+- Budget matrix: generations `{30, 60, 120}` x population sizes `{30, 60}`
+
+Observed outcome from the sweep:
+- All six configurations produced the same report-member average makespan (`754.7`), average report-member weighted tardiness (`2185.5`), average report-member tardy-job count (`8.0`), average tardiness-best weighted tardiness (`2148.6`), average tardiness-best tardy-job count (`7.8`), greedy-win count (`3/10`), and zero-tardy count (`0/10`).
+- Increasing generations or population size only increased runtime. The recommended budget remains the current baseline: `30` generations and population `30`.
+- Under the current initialization, crossover, mutation, and report-member policy, a larger NSGA budget alone is not the next useful lever.
+
 ## Important Modeling Decisions
 
 1. Due dates are soft constraints. Late jobs contribute tardiness cost and do not make a schedule infeasible.
@@ -56,9 +94,11 @@ python verify_all_solvers.py
 3. Torch-backed policy/training quality is only smoke-verified, not performance-validated.
 4. Dynamic events in the Gym environment have partial support only.
 5. Benchmark realism remains synthetic and literature-calibrated rather than factory-measured.
+6. NSGA-III comparison quality improved materially after fixing the warm-start decoder, but it still trails CP-SAT on every stored small benchmark at `30` generations and still carries tardiness-driven soft-constraint penalty mass on every stored small benchmark in this slice.
+7. The April 13, 2026 budget sweep showed no benefit from simply increasing generations or population size under the current fixed-seed setup and default report-member policy.
 
 ## Recommended Next Checks
 
-1. Re-run comparison scripts and regenerate committed result artifacts with provenance.
+1. Pursue algorithmic tardiness reduction rather than more reporting work. The report-member semantics are now explicit, and the April 13, 2026 budget sweep showed that longer runs and larger populations alone do not improve either the default report member or the tardiness-best feasible representative on the stored small benchmark slice under fixed seed `42`.
 2. Revalidate CP objective variants beyond makespan before exposing them as verified exact-solver modes.
 3. Rebuild or replace the quarantined MIP formulation before re-exposing it as a supported solver.
