@@ -271,6 +271,53 @@ class TestWorker:
 
         assert worker.get_labor_cost(480.0) == pytest.approx(160.0)
 
+    def test_worker_serialization_round_trip_preserves_runtime_state(self):
+        worker = Worker(
+            worker_id=7,
+            worker_name="A",
+            labor_cost_per_hour=30.0,
+            base_efficiency=1.2,
+            fatigue_rate=0.02,
+            recovery_rate=0.03,
+            fatigue_max=0.8,
+            fatigue_current=0.4,
+            ocra_max_per_shift=1.8,
+            ocra_current_shift=0.7,
+            ergonomic_tolerance=1.4,
+            learning_coefficient=0.05,
+            min_rest_fraction=0.2,
+            max_consecutive_work_time=300.0,
+            SHIFT_DURATION=600.0,
+        )
+        worker.current_state = WorkerState.RESTING
+        worker.current_job = 3
+        worker.current_operation = 2
+        worker.available_time = 55.0
+        worker.current_shift = 1
+        worker.shift_start_time = 40.0
+        worker.is_absent = True
+        worker.absence_end_time = 90.0
+        worker.total_work_time = 25.0
+        worker.total_rest_time = 8.0
+        worker.mandatory_shift_lockout_until = 120.0
+        worker.current_work_duration = 25.0
+        worker.worked_periods = {0, 2}
+        worker._last_worked_period = 2
+        worker.operations_completed = {1: 4}
+
+        restored = Worker.from_dict(worker.to_dict())
+
+        assert restored.current_state == WorkerState.RESTING
+        assert restored.current_job == 3
+        assert restored.current_operation == 2
+        assert restored.current_shift == 1
+        assert restored.shift_start_time == 40.0
+        assert restored.absence_end_time == 90.0
+        assert restored.max_consecutive_work_time == 300.0
+        assert restored.SHIFT_DURATION == 600.0
+        assert restored._last_worked_period == 2
+        assert restored.operations_completed == {1: 4}
+
 
 class TestSFJSSPInstance:
     """Tests for SFJSSPInstance dataclass"""
@@ -392,6 +439,22 @@ class TestSFJSSPInstance:
 
         # With high arrival rate, should generate some jobs
         assert jobs_generated > 0
+
+    def test_dynamic_absence_generation_at_shift_boundary(self):
+        instance = SFJSSPInstance(
+            instance_id="TEST_DYNAMIC_ABSENCE",
+            instance_type=InstanceType.DYNAMIC,
+            dynamic_params=DynamicEventParams(absence_probability=1.0),
+        )
+        instance.add_worker(Worker(worker_id=0))
+
+        absence = instance.generate_absence_event(0.0, np.random.default_rng(7))
+
+        assert absence is not None
+        worker_id, start_time, duration = absence
+        assert worker_id == 0
+        assert start_time == 0.0
+        assert duration > 0.0
 
     def test_to_dict(self):
         """Test instance serialization"""
@@ -543,6 +606,90 @@ class TestSchedule:
         feasible = schedule.check_feasibility(instance)
         assert not feasible
         assert any("Machine overlap" in v for v in schedule.constraint_violations)
+
+    def test_check_feasibility_rest_ratio_uses_elapsed_time_basis(self):
+        instance = SFJSSPInstance(instance_id="TEST_REST_RATIO")
+        instance.add_machine(Machine(machine_id=0))
+        instance.add_worker(
+            Worker(
+                worker_id=0,
+                min_rest_fraction=0.3,
+                ocra_max_per_shift=999.0,
+            )
+        )
+        op = Operation(
+            job_id=0,
+            op_id=0,
+            processing_times={0: {0: 30.0}},
+            eligible_machines={0},
+            eligible_workers={0},
+        )
+        instance.add_job(Job(job_id=0, operations=[op]))
+        instance.ergonomic_risk_map[(0, 0)] = 0.0
+
+        schedule = Schedule(instance_id="TEST_REST_RATIO")
+        schedule.add_operation(
+            job_id=0,
+            op_id=0,
+            machine_id=0,
+            worker_id=0,
+            mode_id=0,
+            start_time=10.0,
+            completion_time=40.0,
+            processing_time=30.0,
+        )
+
+        feasible = schedule.check_feasibility(instance)
+        assert not feasible
+        assert any("Rest fraction violation" in v for v in schedule.constraint_violations)
+
+    def test_check_feasibility_allows_consecutive_periods(self):
+        instance = SFJSSPInstance(instance_id="TEST_CONSECUTIVE_PERIODS")
+        instance.add_machine(Machine(machine_id=0))
+        instance.add_machine(Machine(machine_id=1))
+        instance.add_worker(
+            Worker(
+                worker_id=0,
+                min_rest_fraction=0.0,
+                ocra_max_per_shift=999.0,
+            )
+        )
+        instance.add_job(
+            Job(
+                job_id=0,
+                operations=[
+                    Operation(
+                        job_id=0,
+                        op_id=0,
+                        processing_times={0: {0: 10.0}},
+                        eligible_machines={0},
+                        eligible_workers={0},
+                    )
+                ],
+            )
+        )
+        instance.add_job(
+            Job(
+                job_id=1,
+                operations=[
+                    Operation(
+                        job_id=1,
+                        op_id=0,
+                        processing_times={1: {0: 10.0}},
+                        eligible_machines={1},
+                        eligible_workers={0},
+                    )
+                ],
+            )
+        )
+        instance.ergonomic_risk_map[(0, 0)] = 0.0
+        instance.ergonomic_risk_map[(1, 0)] = 0.0
+
+        schedule = Schedule(instance_id="TEST_CONSECUTIVE_PERIODS")
+        schedule.add_operation(0, 0, 0, 0, 0, 0.0, 10.0, 10.0)
+        schedule.add_operation(1, 0, 1, 0, 0, 480.0, 490.0, 10.0)
+
+        assert schedule.check_feasibility(instance) is True
 
     def test_evaluate(self):
         """Test schedule evaluation"""

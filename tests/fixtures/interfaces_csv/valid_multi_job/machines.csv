@@ -1,0 +1,3 @@
+id,name,default_mode_id,power_processing,power_idle,power_setup,power_transport,startup_energy,setup_time
+M2,Paint,eco,9.0,1.5,3.5,1.2,0.5,4.0
+M1,Cut,base,12.0,2.5,4.5,1.0,0.4,3.0

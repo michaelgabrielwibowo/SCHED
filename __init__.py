@@ -1,20 +1,8 @@
 """
-SFJSSP Code Package
+SFJSSP package entry point.
 
-Sustainable Flexible Job-Shop Scheduling Problem implementation
-for Industry 5.0 context.
-
-Evidence Status:
-- Core model: PROPOSED synthesis of literature components
-- Components confirmed from:
-  - Standard FJSSP [CONFIRMED]
-  - DRCFJSSP dual resources [CONFIRMED]
-  - E-DFJSP 2025 energy modeling [CONFIRMED]
-  - DyDFJSP 2023 fatigue dynamics [CONFIRMED]
-  - NSGA-III 2021 ergonomic indices [CONFIRMED]
-
-No claim that this exact integration exists in literature.
-This is a research implementation based on synthesis.
+This repository is a research implementation with a canonical executable
+problem definition documented in `SEMANTICS.md`.
 """
 
 __version__ = "0.1.0"
@@ -32,7 +20,7 @@ try:
     )
     from .environment import SFJSSPEnv
     from .baseline_solver import GreedyScheduler, edt_rule, fifo_rule, spt_rule
-    from .utils import BenchmarkGenerator, GeneratorConfig
+    from .utils import BenchmarkGenerator, GeneratorConfig, InstanceSize
 except ImportError:  # pragma: no cover - fallback for direct module import
     from sfjssp_model import (
         Job,
@@ -45,7 +33,7 @@ except ImportError:  # pragma: no cover - fallback for direct module import
     )
     from environment import SFJSSPEnv
     from baseline_solver import GreedyScheduler, edt_rule, fifo_rule, spt_rule
-    from utils import BenchmarkGenerator, GeneratorConfig
+    from utils import BenchmarkGenerator, GeneratorConfig, InstanceSize
 
 __all__ = [
     # Core model
@@ -66,4 +54,5 @@ __all__ = [
     # Utilities
     'BenchmarkGenerator',
     'GeneratorConfig',
+    'InstanceSize',
 ]

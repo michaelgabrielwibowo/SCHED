@@ -1,0 +1,5 @@
+job_id,operation_id,machine_id,mode_id,duration
+J2,paint,M2,eco,24.0
+J2,paint,M2,fast,20.0
+J1,cut,M1,base,18.0
+J1,finish,M2,eco,16.0

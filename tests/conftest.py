@@ -13,6 +13,11 @@ except ImportError:  # pragma: no cover - supports repo-root imports
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_ROOT = REPO_ROOT / "benchmarks"
+CANONICAL_BENCHMARK_FIXTURE_DIRS = ("small", "medium")
+CANONICAL_BENCHMARK_FIXTURE_FILES = {
+    "small": BENCHMARK_ROOT / "small" / "SFJSSP_small_000.json",
+    "medium": BENCHMARK_ROOT / "medium" / "SFJSSP_medium_000.json",
+}
 
 
 def _load_benchmark(path: Path) -> SFJSSPInstance:
@@ -36,9 +41,13 @@ def tmp_path() -> Path:
 
 @pytest.fixture(scope="session")
 def small_benchmark_instance() -> SFJSSPInstance:
-    return _load_benchmark(BENCHMARK_ROOT / "small" / "SFJSSP_small_000.json")
+    """Load the canonical small benchmark fixture committed to the repo."""
+
+    return _load_benchmark(CANONICAL_BENCHMARK_FIXTURE_FILES["small"])
 
 
 @pytest.fixture(scope="session")
 def medium_benchmark_instance() -> SFJSSPInstance:
-    return _load_benchmark(BENCHMARK_ROOT / "medium" / "SFJSSP_medium_000.json")
+    """Load the canonical medium benchmark fixture committed to the repo."""
+
+    return _load_benchmark(CANONICAL_BENCHMARK_FIXTURE_FILES["medium"])

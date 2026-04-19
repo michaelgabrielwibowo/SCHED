@@ -1,23 +1,25 @@
 """
-Constraint Programming and MIP Solvers for SFJSSP
+Exact-solver entrypoints for SFJSSP.
 
-Evidence Status:
-- CP-SAT for scheduling: CONFIRMED from OR-Tools literature
-- Energy-aware scheduling: CONFIRMED from E-DFJSP 2025
-- Application to SFJSSP: PROPOSED
+Public support boundary:
+- CP-SAT is parity-tested only on narrow canonical fixtures for
+  `objective="makespan"`.
+- CP objective variants `energy`, `ergonomic`, and `composite` remain
+  experimental surrogate objectives.
+- The MIP path is quarantined and unavailable.
 
-Requires: ortools >= 9.8.0
+Requires: ortools >= 9.8.0 for CP-SAT execution.
 """
 
 import math
 import warnings
+from fractions import Fraction
 from typing import Dict, List, Tuple, Optional, Any
 import numpy as np
 
 # Try to import ortools
 try:
     from ortools.sat.python import cp_model
-    from ortools.linear_solver import pywraplp
     ORTOOLS_AVAILABLE = True
 except ImportError:
     ORTOOLS_AVAILABLE = False
@@ -27,6 +29,14 @@ ORTOOLS_IMPORT_ERROR = (
     "ortools is required for exact solver support: "
     "pip install ortools>=9.8.0"
 )
+VERIFIED_CP_OBJECTIVE = "makespan"
+EXPERIMENTAL_CP_OBJECTIVES = ("energy", "ergonomic", "composite")
+SUPPORTED_CP_OBJECTIVES = (VERIFIED_CP_OBJECTIVE,) + EXPERIMENTAL_CP_OBJECTIVES
+QUARANTINED_MIP_MESSAGE = (
+    "MIP exact solving is currently quarantined. "
+    "The legacy formulation is not validated against the canonical "
+    "schedule feasibility semantics."
+)
 
 
 def _require_ortools() -> None:
@@ -35,29 +45,27 @@ def _require_ortools() -> None:
         raise ImportError(ORTOOLS_IMPORT_ERROR)
 
 
+def _validate_cp_objective(objective: str) -> None:
+    """Reject unsupported CP objective names early."""
+    if objective not in SUPPORTED_CP_OBJECTIVES:
+        supported = ", ".join(SUPPORTED_CP_OBJECTIVES)
+        raise ValueError(
+            f"Unsupported CP objective '{objective}'. Supported objectives: {supported}"
+        )
+
+
 class CPScheduler:
     """
-    Constraint Programming scheduler for SFJSSP using OR-Tools CP-SAT
+    CP-SAT scheduler for SFJSSP.
 
-    Evidence: CP-SAT confirmed for scheduling problems [CONFIRMED]
-    Application to SFJSSP with human factors: PROPOSED
-
-    Verified support:
-    - Minimize makespan
-
-    Experimental objective modes:
-    - "energy"
-    - "ergonomic"
-    - "composite"
-
-    Those non-makespan modes remain available for research use, but they are not
-    currently verified against the schedule-level objective calculations used by
-    the rest of the repository.
+    Publicly verified scope is intentionally narrow: parity coverage exists only
+    for the makespan objective on canonical hand-built fixtures. Non-makespan
+    objectives remain research paths and should be treated as surrogate modes.
 
     Args:
         time_limit: Time limit in seconds
         num_workers: Number of parallel workers for solver
-        energy_weights: Dict of weights for multi-objective optimization
+        energy_weights: Weights for experimental composite objective studies
     """
 
     def __init__(
@@ -91,26 +99,23 @@ class CPScheduler:
         Args:
             instance: SFJSSPInstance to solve
             objective: Objective to minimize
-                - "makespan": verified objective; minimize maximum completion time
-                - "energy": experimental objective; minimize total energy consumption
-                - "ergonomic": experimental objective; minimize maximum ergonomic risk
-                - "composite": experimental weighted multi-objective
+                - "makespan": the only parity-covered CP objective
+                - "energy": experimental surrogate energy objective
+                - "ergonomic": experimental surrogate ergonomic objective
+                - "composite": experimental weighted surrogate objective
             verbose: Print solver progress
 
         Returns:
             Schedule object or None if infeasible/timeout
         """
-        try:
-            from ..sfjssp_model.schedule import Schedule
-        except ImportError:  # pragma: no cover - supports repo-root imports
-            from sfjssp_model.schedule import Schedule
+        _validate_cp_objective(objective)
 
-        if objective != "makespan":
+        if objective != VERIFIED_CP_OBJECTIVE:
             warnings.warn(
                 (
                     f"CPScheduler objective='{objective}' is experimental. "
-                    "Only objective='makespan' is currently verified against "
-                    "the repository's schedule-level evaluation path."
+                    "Only objective='makespan' has parity coverage in the "
+                    "canonical test fixtures."
                 ),
                 UserWarning,
                 stacklevel=2,
@@ -134,6 +139,16 @@ class CPScheduler:
         if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             # Extract solution
             schedule = self._extract_solution(instance, objective)
+            if not schedule.is_feasible:
+                warnings.warn(
+                    (
+                        "CP-SAT returned a schedule that is infeasible under the "
+                        "canonical Schedule.check_feasibility() oracle. Treat this "
+                        "result as a research output, not a verified exact solution."
+                    ),
+                    UserWarning,
+                    stacklevel=2,
+                )
 
             if verbose:
                 print(f"Solution found: makespan={schedule.makespan:.1f}")
@@ -147,16 +162,12 @@ class CPScheduler:
 
     def _build_model(self, instance: Any, objective: str):
         """
-        Build CP-SAT model with the current SFJSSP objective set.
+        Build the current CP-SAT approximation of the SFJSSP.
 
-        Evidence: Model structure based on:
-        - Standard FJSSP formulation [CONFIRMED]
-        - E-DFJSP 2025 energy modeling [CONFIRMED]
-        - DyDFJSP 2023 fatigue dynamics [CONFIRMED]
-
-        Verification status:
-        - makespan objective: smoke-verified on stored small benchmarks
-        - energy / ergonomic / composite objectives: experimental
+        The formulation models precedence, dual-resource assignment, and worker
+        rest/ergonomic proxy constraints. Machine setup semantics are not fully
+        encoded in the CP intervals, so extracted schedules are checked again by
+        the canonical schedule oracle after solving.
         """
         model = self.model
 
@@ -352,14 +363,20 @@ class CPScheduler:
 
             # Worker assignment
             for w_id in op.eligible_workers:
+                worker = instance.get_worker(w_id)
                 presence = model.NewBoolVar(f'assign_w_{job_id}_{op_idx}_w{w_id}')
                 self.assign_worker[(job_id, op_idx, w_id)] = presence
 
-                # [INDUSTRY 5.0] 12.5% Mandatory Rest Rule
-                # We enforce this by extending the interval duration by 12.5%
                 rest_duration = model.NewIntVar(0, horizon, f'rest_{job_id}_{op_idx}_w{w_id}')
-                # rest >= duration * 0.125  => 8 * rest >= duration
-                model.Add(8 * rest_duration >= self.duration[(job_id, op_idx)]).OnlyEnforceIf(presence)
+                min_rest_fraction = getattr(worker, "min_rest_fraction", 0.0) if worker is not None else 0.0
+                rest_ratio = Fraction(str(min_rest_fraction)).limit_denominator(1000)
+                if rest_ratio.numerator == 0:
+                    model.Add(rest_duration == 0).OnlyEnforceIf(presence)
+                else:
+                    model.Add(
+                        rest_ratio.denominator * rest_duration
+                        >= rest_ratio.numerator * self.duration[(job_id, op_idx)]
+                    ).OnlyEnforceIf(presence)
                 
                 total_duration_with_rest = model.NewIntVar(0, horizon, f'total_dur_{job_id}_{op_idx}_w{w_id}')
                 model.Add(total_duration_with_rest == self.duration[(job_id, op_idx)] + rest_duration).OnlyEnforceIf(presence)
@@ -381,27 +398,18 @@ class CPScheduler:
 
         # Constraints
 
-        # [INDUSTRY 5.0] No consecutive periods rule
-        # period_len = 480 (8 hours)
+        # Per-period ergonomic exposure tracking.
         period_len = 480
         num_periods = (horizon // period_len) + 1
         
         for w_id in range(n_workers):
-            worker_in_period = {}
             for p in range(num_periods):
-                worker_in_period[p] = model.NewBoolVar(f'w{w_id}_p{p}')
-                
-                # Check if any operation assigned to this worker starts in this period
                 p_start = p * period_len
                 p_end = (p + 1) * period_len
-                
                 overlaps = []
                 for job_id, op_idx in all_operations:
                     if (job_id, op_idx, w_id) in self.assign_worker:
                         is_assigned = self.assign_worker[(job_id, op_idx, w_id)]
-                        
-                        # Op overlaps with period if start < p_end AND end > p_start
-                        # Simplified: start is in period
                         start_in_p = model.NewBoolVar(f'j{job_id}_o{op_idx}_w{w_id}_p{p}')
                         model.AddLinearConstraint(
                             self.start[(job_id, op_idx)],
@@ -410,33 +418,13 @@ class CPScheduler:
                         ).OnlyEnforceIf([is_assigned, start_in_p])
                         model.Add(start_in_p == 0).OnlyEnforceIf(is_assigned.Not())
                         overlaps.append(start_in_p)
-                
-                if overlaps:
-                    # worker_in_period[p] is True IF AND ONLY IF sum(overlaps) > 0
-                    model.Add(sum(overlaps) > 0).OnlyEnforceIf(worker_in_period[p])
-                    model.Add(sum(overlaps) == 0).OnlyEnforceIf(worker_in_period[p].Not())
-                    # [FIX] Force worker_in_period[p] to be true if any overlap exists
-                    for overlap_var in overlaps:
-                        model.AddImplication(overlap_var, worker_in_period[p])
-                else:
-                    model.Add(worker_in_period[p] == 0)
 
-            # Constraint: No back-to-back periods
-            for p in range(num_periods - 1):
-                model.Add(worker_in_period[p] + worker_in_period[p+1] <= 1)
-
-            # [INDUSTRY 5.0] OCRA limit per period (shift)
-            for p in range(num_periods):
-                p_start = p * period_len
-                p_end = (p + 1) * period_len
-                
                 period_exposure = []
                 for job_id, op_idx in all_operations:
                     if (job_id, op_idx, w_id) in self.assign_worker:
                         is_assigned = self.assign_worker[(job_id, op_idx, w_id)]
-                        # scaled_risk = risk * ERGO_SCALE (1000)
                         risk_rate = int(instance.get_ergonomic_risk(job_id, op_idx) * ERGO_SCALE)
-                        
+
                         start_in_p = model.NewBoolVar(f'ergo_j{job_id}_o{op_idx}_w{w_id}_p{p}')
                         model.AddLinearConstraint(
                             self.start[(job_id, op_idx)],
@@ -444,19 +432,17 @@ class CPScheduler:
                             p_end - 1,
                         ).OnlyEnforceIf([is_assigned, start_in_p])
                         model.Add(start_in_p == 0).OnlyEnforceIf(is_assigned.Not())
-                        
-                        # Boundary constraint: Tasks starting in a period must finish in the same period
                         model.Add(self.end[(job_id, op_idx)] <= p_end).OnlyEnforceIf(start_in_p)
-                        
+
                         exposure = model.NewIntVar(0, 5000, f'exp_j{job_id}_o{op_idx}_w{w_id}_p{p}')
-                        # [FIX] Ensure assignment is factored into exposure calculation
                         model.Add(exposure == self.duration[(job_id, op_idx)] * risk_rate).OnlyEnforceIf(start_in_p)
                         model.Add(exposure == 0).OnlyEnforceIf(start_in_p.Not())
                         period_exposure.append(exposure)
-                
+
                 if period_exposure:
-                    # Limit: 2.2 * 1000 = 2200
-                    model.Add(sum(period_exposure) <= 2200)
+                    worker = instance.get_worker(w_id)
+                    ocra_limit = int(round((worker.ocra_max_per_shift if worker else 2.2) * ERGO_SCALE))
+                    model.Add(sum(period_exposure) <= ocra_limit)
 
         # 1. Each operation assigned to exactly one machine-mode combination
         for job_id, op_idx in all_operations:
@@ -502,9 +488,12 @@ class CPScheduler:
                 )
             for op_idx in range(1, len(job.operations)):
                 prev_op_idx = op_idx - 1
+                prev_model_op = job.operations[prev_op_idx]
                 model.Add(
                     self.start[(job.job_id, op_idx)] >=
                     self.end[(job.job_id, prev_op_idx)]
+                    + int(math.ceil(getattr(prev_model_op, "waiting_time", 0.0)))
+                    + int(math.ceil(getattr(prev_model_op, "transport_time", 0.0)))
                 )
 
         # 4. No-overlap on machines
@@ -613,8 +602,20 @@ class CPScheduler:
             # Default: makespan
             model.Minimize(self.makespan)
 
+    def _annotate_required_machine_setup(
+        self,
+        schedule: Any,
+        instance: Any,
+    ) -> None:
+        """Attach the canonical per-machine setup requirement to extracted ops."""
+        for machine_id, machine_schedule in schedule.machine_schedules.items():
+            machine = instance.get_machine(machine_id)
+            required_setup = getattr(machine, "setup_time", 0.0) if machine is not None else 0.0
+            for scheduled_op in machine_schedule.operations:
+                scheduled_op.setup_time = required_setup
+
     def _extract_solution(self, instance: Any, objective: str) -> Any:
-        """Extract solution from solver"""
+        """Extract a schedule and annotate its solver provenance."""
         try:
             from ..sfjssp_model.schedule import Schedule
         except ImportError:  # pragma: no cover - supports repo-root imports
@@ -666,6 +667,13 @@ class CPScheduler:
             risk_rate = instance.get_ergonomic_risk(job_id, op_idx)
             total_ergonomic += duration * risk_rate
 
+            schedule.update_predecessor_transport(
+                instance,
+                job_id,
+                op_idx,
+                machine_id,
+            )
+
             schedule.add_operation(
                 job_id=job_id,
                 op_id=op_idx,
@@ -675,10 +683,34 @@ class CPScheduler:
                 start_time=start_time,
                 completion_time=end_time,
                 processing_time=duration,
+                setup_time=0.0,
+                transport_time=0.0,
             )
 
+        self._annotate_required_machine_setup(schedule, instance)
         schedule.compute_makespan()
         schedule.check_feasibility(instance)
+        has_unmodeled_machine_setup = any(
+            getattr(machine, "setup_time", 0.0) > 0.0 for machine in instance.machines
+        )
+        schedule.metadata.update(
+            {
+                "solver": "cp_sat",
+                "solver_objective": objective,
+                "verified_scope": (
+                    "fixture_parity_makespan_only"
+                    if objective == VERIFIED_CP_OBJECTIVE
+                    else "experimental_surrogate_objective"
+                ),
+                "surrogate_objective": objective != VERIFIED_CP_OBJECTIVE,
+                "surrogate_timing": has_unmodeled_machine_setup,
+                "surrogate_timing_reason": (
+                    "machine_setup_not_encoded_in_cp_intervals"
+                    if has_unmodeled_machine_setup
+                    else ""
+                ),
+            }
+        )
 
         # Store additional objectives
         schedule.objectives['total_energy_cp'] = total_energy
@@ -689,12 +721,10 @@ class CPScheduler:
 
 class MIPScheduler:
     """
-    Mixed-Integer Programming scheduler for SFJSSP
+    Quarantined placeholder for the legacy MIP formulation.
 
-    Evidence: MIP for FJSSP confirmed from literature
-    Application to full SFJSSP: PROPOSED
-
-    Requires: OR-Tools linear solver or similar
+    This class remains importable so existing callers fail explicitly instead of
+    accidentally relying on the archived formulation.
     """
 
     def __init__(
@@ -703,8 +733,7 @@ class MIPScheduler:
         solver_name: str = "SCIP",
         energy_weights: Optional[Dict[str, float]] = None,
     ):
-        _require_ortools()
-        self.available = True
+        self.available = False
         self.time_limit = time_limit
         self.solver_name = solver_name
         self.energy_weights = energy_weights or {
@@ -720,374 +749,16 @@ class MIPScheduler:
         objective: str = "makespan",
         verbose: bool = True,
     ) -> Optional[Any]:
-        """
-        Solve using full SFJSSP MIP formulation
-
-        Includes:
-        - Machine mode selection
-        - Worker shift constraints (Industry 5.0)
-        - OCRA ergonomic limits
-        - Energy optimization
-        """
-        raise NotImplementedError(
-            "MIP exact solving is currently quarantined. "
-            "The formulation is not yet validated against the current "
-            "schedule feasibility semantics; use CPScheduler instead."
-        )
-
-        from sfjssp_model.schedule import Schedule
-
-        # Create solver
-        solver = pywraplp.Solver.CreateSolver(self.solver_name)
-        if solver is None:
-            print(f"Solver {self.solver_name} not available. Try 'SCIP' or 'CBC'")
-            return None
-
-        solver.SetTimeLimit(self.time_limit * 1000)  # ms
-
-        # Data
-        jobs = instance.jobs
-        machines = instance.machines
-        workers = instance.workers
-        n_workers = len(workers)
-
-        all_operations = []
-        for job in jobs:
-            for op_idx in range(len(job.operations)):
-                all_operations.append((job.job_id, op_idx))
-
-        # Time horizon
-        max_pt = 0
-        for job in jobs:
-            for op in job.operations:
-                for modes in op.processing_times.values():
-                    if modes:
-                        max_pt = max(max_pt, max(modes.values()))
-        horizon = len(all_operations) * max_pt * 2
-        
-        # Industry 5.0 Period Constants
-        period_len = 480  # 8 hours
-        num_periods = int(horizon // period_len) + 1
-
-        # Variables
-        # x[j,o,m,mode,w] = 1 if operation (j,o) on machine m with mode and worker w
-        x = {}
-        # s[j,o] = start time
-        s = {}
-        # C[j,o] = completion time
-        C = {}
-        # shift[w,p] = 1 if worker w works in period p
-        shift = {}
-
-        for job_id, op_idx in all_operations:
-            job = instance.get_job(job_id)
-            op = job.operations[op_idx]
-
-            for m_id in op.eligible_machines:
-                machine = instance.get_machine(m_id)
-                mode_times = op.processing_times.get(m_id, {})
-                
-                # Get machine modes
-                if machine and machine.modes:
-                    modes = machine.modes
-                else:
-                    from sfjssp_model.machine import MachineMode
-                    modes = [MachineMode(mode_id=0, mode_name="default", speed_factor=1.0, power_multiplier=1.0)]
-
-                for mode in modes:
-                    if mode.mode_id not in mode_times and mode.mode_id != 0:
-                        continue
-                        
-                    for w_id in op.eligible_workers:
-                        x[(job_id, op_idx, m_id, mode.mode_id, w_id)] = solver.BoolVar(
-                            f'x_{job_id}_{op_idx}_{m_id}_{mode.mode_id}_{w_id}'
-                        )
-
-            s[(job_id, op_idx)] = solver.NumVar(0, horizon, f's_{job_id}_{op_idx}')
-            C[(job_id, op_idx)] = solver.NumVar(0, horizon, f'C_{job_id}_{op_idx}')
-
-        for w_idx in range(n_workers):
-            for p in range(num_periods):
-                shift[(w_idx, p)] = solver.BoolVar(f'shift_w{w_idx}_p{p}')
-
-        # Objective variables
-        makespan = solver.NumVar(0, horizon, 'makespan')
-        total_energy = solver.NumVar(0, horizon * 10000, 'total_energy')
-        total_ergonomic = solver.NumVar(0, horizon * 1000, 'total_ergonomic')
-
-        # Constraints
-
-        # 1. Assignment: Each operation assigned to exactly one (machine, mode, worker)
-        for job_id, op_idx in all_operations:
-            job = instance.get_job(job_id)
-            op = job.operations[op_idx]
-            
-            assignment_vars = []
-            for m_id in op.eligible_machines:
-                machine = instance.get_machine(m_id)
-                mode_times = op.processing_times.get(m_id, {})
-                
-                if machine and machine.modes:
-                    modes = machine.modes
-                else:
-                    from sfjssp_model.machine import MachineMode
-                    modes = [MachineMode(mode_id=0, mode_name="default", speed_factor=1.0, power_multiplier=1.0)]
-
-                for mode in modes:
-                    if mode.mode_id not in mode_times and mode.mode_id != 0:
-                        continue
-                    for w_id in op.eligible_workers:
-                        assignment_vars.append(x[(job_id, op_idx, m_id, mode.mode_id, w_id)])
-            
-            solver.Add(sum(assignment_vars) == 1)
-
-        # 2. Precedence (within job)
-        for job in jobs:
-            if job.operations:
-                solver.Add(s[(job.job_id, 0)] >= job.arrival_time)
-            for op_idx in range(1, len(job.operations)):
-                solver.Add(s[(job.job_id, op_idx)] >= C[(job.job_id, op_idx - 1)])
-
-        # 3. Completion time with mandatory rest (12.5% for workers)
-        for job_id, op_idx in all_operations:
-            job = instance.get_job(job_id)
-            op = job.operations[op_idx]
-            
-            durations = []
-            for m_id in op.eligible_machines:
-                machine = instance.get_machine(m_id)
-                mode_times = op.processing_times.get(m_id, {})
-                
-                if machine and machine.modes:
-                    modes = machine.modes
-                else:
-                    from sfjssp_model.machine import MachineMode
-                    modes = [MachineMode(mode_id=0, mode_name="default", speed_factor=1.0, power_multiplier=1.0)]
-
-                for mode in modes:
-                    if mode.mode_id not in mode_times and mode.mode_id != 0:
-                        continue
-                    
-                    base_pt = mode_times.get(mode.mode_id, list(mode_times.values())[0])
-                    pt = base_pt / mode.speed_factor
-                    
-                    for w_id in op.eligible_workers:
-                        # [INDUSTRY 5.0] include 12.5% rest in worker time
-                        total_pt = pt * 1.125
-                        durations.append(x[(job_id, op_idx, m_id, mode.mode_id, w_id)] * total_pt)
-            
-            solver.Add(C[(job_id, op_idx)] >= s[(job_id, op_idx)] + sum(durations))
-
-        # 4. Industry 5.0: No consecutive shifts
-        for w_idx in range(n_workers):
-            for p in range(num_periods - 1):
-                solver.Add(shift[(w_idx, p)] + shift[(w_idx, p+1)] <= 1)
-
-        # 5. Link operations to shifts and OCRA limit
-        M = horizon
-        for w_idx, worker in enumerate(workers):
-            w_id = worker.worker_id
-            for p in range(num_periods):
-                p_start = p * period_len
-                p_end = (p + 1) * period_len
-                
-                period_ops = []
-                for job_id, op_idx in all_operations:
-                    job = instance.get_job(job_id)
-                    op = job.operations[op_idx]
-                    
-                    if w_id not in op.eligible_workers:
-                        continue
-                        
-                    # Find all machine/mode combos for this worker
-                    worker_vars = []
-                    for m_id in op.eligible_machines:
-                        machine = instance.get_machine(m_id)
-                        mode_times = op.processing_times.get(m_id, {})
-                        if machine and machine.modes:
-                            modes = machine.modes
-                        else:
-                            from sfjssp_model.machine import MachineMode
-                            modes = [MachineMode(mode_id=0, mode_name="default", speed_factor=1.0, power_multiplier=1.0)]
-                        for mode in modes:
-                            if (job_id, op_idx, m_id, mode.mode_id, w_id) in x:
-                                worker_vars.append(x[(job_id, op_idx, m_id, mode.mode_id, w_id)])
-                    
-                    if not worker_vars:
-                        continue
-                        
-                    is_on_worker = solver.BoolVar(f'on_w{w_id}_j{job_id}_o{op_idx}')
-                    solver.Add(is_on_worker == sum(worker_vars))
-                    
-                    # indicator if op starts in this period
-                    start_in_p = solver.BoolVar(f'start_w{w_id}_j{job_id}_o{op_idx}_p{p}')
-                    solver.Add(s[(job_id, op_idx)] >= p_start - M * (1 - start_in_p))
-                    solver.Add(s[(job_id, op_idx)] <= p_end - 1 + M * (1 - start_in_p))
-                    
-                    # If start_in_p and is_on_worker, then shift must be active
-                    op_in_shift = solver.BoolVar(f'in_shift_w{w_id}_j{job_id}_o{op_idx}_p{p}')
-                    solver.Add(op_in_shift >= start_in_p + is_on_worker - 1)
-                    solver.Add(shift[(w_idx, p)] >= op_in_shift)
-                    
-                    # OCRA contribution
-                    risk = instance.get_ergonomic_risk(job_id, op_idx)
-                    # We need duration. For MIP simplicity we use min duration or link it.
-                    # Linking is better: sum(x * pt * risk)
-                    for m_id in op.eligible_machines:
-                        mode_times = op.processing_times.get(m_id, {})
-                        machine = instance.get_machine(m_id)
-                        if machine and machine.modes:
-                            modes = machine.modes
-                        else:
-                            from sfjssp_model.machine import MachineMode
-                            modes = [MachineMode(mode_id=0, mode_name="default", speed_factor=1.0, power_multiplier=1.0)]
-                        for mode in modes:
-                            if (job_id, op_idx, m_id, mode.mode_id, w_id) in x:
-                                var = x[(job_id, op_idx, m_id, mode.mode_id, w_id)]
-                                base_pt = mode_times.get(mode.mode_id, list(mode_times.values())[0])
-                                pt = base_pt / mode.speed_factor
-                                
-                                # Only counts if start_in_p is also true
-                                active_var = solver.BoolVar(f'act_w{w_id}_j{job_id}_o{op_idx}_m{m_id}_p{p}')
-                                solver.Add(active_var >= var + start_in_p - 1)
-                                period_ops.append(active_var * pt * risk)
-                
-                if period_ops:
-                    solver.Add(sum(period_ops) <= 2200) # OCRA Limit 2.2 * 1000 equivalent
-
-        # 6. Machine Capacity (Disjunctive)
-        for m_id in [m.machine_id for m in machines]:
-            m_ops = []
-            for job_id, op_idx in all_operations:
-                op = instance.get_job(job_id).operations[op_idx]
-                if m_id in op.eligible_machines:
-                    # check if assigned to this machine
-                    machine_vars = []
-                    for key, var in x.items():
-                        if key[0] == job_id and key[1] == op_idx and key[2] == m_id:
-                            machine_vars.append(var)
-                    if machine_vars:
-                        is_on_m = solver.BoolVar(f'on_m{m_id}_j{job_id}_o{op_idx}')
-                        solver.Add(is_on_m == sum(machine_vars))
-                        m_ops.append(((job_id, op_idx), is_on_m))
-            
-            for i, ((j1, o1), v1) in enumerate(m_ops):
-                for ((j2, o2), v2) in m_ops[i+1:]:
-                    y = solver.BoolVar(f'y_m{m_id}_j{j1}o{o1}_j{j2}o{o2}')
-                    # If both on machine, one must precede the other
-                    # s2 >= C1 - M(1-y) - M(2-v1-v2)
-                    solver.Add(s[(j2, o2)] >= C[(j1, o1)] - M * (1 - y) - M * (2 - v1 - v2))
-                    solver.Add(s[(j1, o1)] >= C[(j2, o2)] - M * y - M * (2 - v1 - v2))
-
-        # 7. Worker Capacity (Disjunctive)
-        for w_idx, worker in enumerate(workers):
-            w_id = worker.worker_id
-            w_ops = []
-            for job_id, op_idx in all_operations:
-                op = instance.get_job(job_id).operations[op_idx]
-                if w_id in op.eligible_workers:
-                    worker_vars = []
-                    for key, var in x.items():
-                        if key[0] == job_id and key[1] == op_idx and key[4] == w_id:
-                            worker_vars.append(var)
-                    if worker_vars:
-                        is_on_w = solver.BoolVar(f'on_w{w_id}_j{job_id}_o{op_idx}')
-                        solver.Add(is_on_w == sum(worker_vars))
-                        w_ops.append(((job_id, op_idx), is_on_w))
-
-            for i, ((j1, o1), v1) in enumerate(w_ops):
-                for ((j2, o2), v2) in w_ops[i+1:]:
-                    yw = solver.BoolVar(f'yw_w{w_id}_j{j1}o{o1}_j{j2}o{o2}')
-                    solver.Add(s[(j2, o2)] >= C[(j1, o1)] - M * (1 - yw) - M * (2 - v1 - v2))
-                    solver.Add(s[(j1, o1)] >= C[(j2, o2)] - M * yw - M * (2 - v1 - v2))
-
-        # 8. Objectives
-        for job in jobs:
-            last_op = len(job.operations) - 1
-            solver.Add(makespan >= C[(job.job_id, last_op)])
-
-        energy_terms = []
-        ergo_terms = []
-        for (job_id, op_idx, m_id, mode_id, w_id), var in x.items():
-            op = instance.get_job(job_id).operations[op_idx]
-            machine = instance.get_machine(m_id)
-            mode_times = op.processing_times.get(m_id, {})
-            
-            base_pt = mode_times.get(mode_id, list(mode_times.values())[0])
-            pt = base_pt
-            
-            power = machine.power_processing if machine else 10.0
-            if machine and machine.get_mode(mode_id):
-                power *= machine.get_mode(mode_id).power_multiplier
-            
-            energy_terms.append(var * pt * power)
-            ergo_terms.append(var * pt * instance.get_ergonomic_risk(job_id, op_idx))
-
-        solver.Add(total_energy == sum(energy_terms))
-        solver.Add(total_ergonomic == sum(ergo_terms))
-
-        if objective == "energy":
-            solver.Minimize(total_energy)
-        elif objective == "ergonomic":
-            solver.Minimize(total_ergonomic)
-        elif objective == "composite":
-            composite = (
-                self.energy_weights.get('makespan', 0.4) * makespan +
-                self.energy_weights.get('energy', 0.3) * (total_energy / 100) +
-                self.energy_weights.get('ergonomic', 0.2) * (total_ergonomic / 10)
-            )
-            solver.Minimize(composite)
-        else:
-            solver.Minimize(makespan)
-
-        # Solve
-        status = solver.Solve()
-
-        if status == pywraplp.Solver.OPTIMAL or status == pywraplp.Solver.FEASIBLE:
-            schedule = Schedule(instance_id=instance.instance_id)
-
-            for (job_id, op_idx, m_id, mode_id, w_id), var in x.items():
-                if var.solution_value() > 0.5:
-                    start_time = s[(job_id, op_idx)].solution_value()
-                    completion_time = C[(job_id, op_idx)].solution_value()
-
-                    schedule.add_operation(
-                        job_id=job_id,
-                        op_id=op_idx,
-                        machine_id=m_id,
-                        worker_id=w_id,
-                        mode_id=mode_id,
-                        start_time=start_time,
-                        completion_time=completion_time,
-                        processing_time=completion_time - start_time,
-                    )
-
-            schedule.compute_makespan()
-            schedule.check_feasibility(instance)
-            schedule.objectives['total_energy_mip'] = total_energy.solution_value()
-            schedule.objectives['total_ergonomic_mip'] = total_ergonomic.solution_value()
-
-            if verbose:
-                print(f"MIP solution: makespan={schedule.makespan:.1f}")
-
-            return schedule
-        else:
-            if verbose:
-                print(f"No MIP solution found. Status: {status}")
-            return None
+        """MIP remains unavailable until it is rederived from canonical semantics."""
+        raise NotImplementedError(QUARANTINED_MIP_MESSAGE)
 
 
 class EnergyAwareCPScheduler(CPScheduler):
     """
-    Energy-aware CP-SAT scheduler with explicit energy modeling.
+    Experimental CP-SAT helper for energy-oriented studies.
 
-    Evidence: Energy-aware scheduling from E-DFJSP 2025 [CONFIRMED]
-    Verification status: experimental objective path
-
-    Extends CPScheduler with:
-    - Machine mode selection for energy optimization
-    - Time-of-use electricity pricing
-    - Peak power constraints
+    This subclass does not widen the verified CP boundary. It only exposes
+    additional surrogate objective helpers on top of the same formulation.
     """
 
     def __init__(
@@ -1122,10 +793,20 @@ class EnergyAwareCPScheduler(CPScheduler):
         verbose: bool = True,
     ) -> Optional[Any]:
         """
-        Solve with peak power constraint
+        Solve with an added peak-power constraint.
 
-        Adds constraint on maximum simultaneous power consumption
+        Experimental helper path. This remains outside the parity-validated
+        exact-solver contract.
         """
+        warnings.warn(
+            (
+                "EnergyAwareCPScheduler.solve_peak_shaving is experimental. "
+                "Treat its output as a research schedule rather than a "
+                "parity-validated exact result."
+            ),
+            UserWarning,
+            stacklevel=2,
+        )
         # Build model with peak power constraint
         self.model = cp_model.CpModel()
         self._build_model_with_peak_constraint(instance, max_peak_power)
@@ -1170,9 +851,10 @@ def solve_sfjssp(
     Args:
         instance: SFJSSPInstance to solve
         method: Solver method ("cp", "mip", "greedy")
-        objective: Objective name. For `method="cp"`, only `"makespan"` is
-            currently verified; `"energy"`, `"ergonomic"`, and `"composite"`
-            remain experimental and emit a warning.
+        objective: Objective name. For `method="cp"`, only `"makespan"` has
+            parity coverage, and only on narrow canonical fixtures.
+            `"energy"`, `"ergonomic"`, and `"composite"` remain experimental
+            surrogate objectives and emit a warning.
         time_limit: Time limit in seconds
         verbose: Print progress
 
@@ -1184,8 +866,7 @@ def solve_sfjssp(
         return solver.solve(instance, objective=objective, verbose=verbose)
 
     elif method == "mip":
-        solver = MIPScheduler(time_limit=time_limit)
-        return solver.solve(instance, verbose=verbose)
+        raise NotImplementedError(QUARANTINED_MIP_MESSAGE)
 
     elif method == "greedy":
         from baseline_solver.greedy_solvers import GreedyScheduler, spt_rule

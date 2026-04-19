@@ -1,15 +1,9 @@
 #!/usr/bin/env python
 """
-Comparative Experiments for SFJSSP Solvers
+Comparative experiments for SFJSSP solvers.
 
-Compares:
-1. Greedy heuristics (FIFO, SPT, EDD)
-2. NSGA-III (multi-objective evolutionary)
-3. CP-SAT (constraint programming, if OR-Tools available)
-
-Evidence Status:
-- Experimental comparison: PROPOSED
-- Metrics: Standard scheduling metrics [CONFIRMED]
+This script serializes solver outputs using the canonical schedule metric names
+and an explicit report-member contract for NSGA artifacts.
 """
 
 import json
@@ -19,6 +13,21 @@ import sys
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence
+
+try:
+    from ..experiments.artifact_schemas import (
+        COMPARISON_ARTIFACT_SCHEMA,
+        CANONICAL_SCHEDULE_METRIC_FIELDS,
+        CANONICAL_SCHEDULE_PENALTY_FIELDS,
+        derive_canonical_feasibility,
+    )
+except ImportError:  # pragma: no cover - supports repo-root imports
+    from experiments.artifact_schemas import (
+        COMPARISON_ARTIFACT_SCHEMA,
+        CANONICAL_SCHEDULE_METRIC_FIELDS,
+        CANONICAL_SCHEDULE_PENALTY_FIELDS,
+        derive_canonical_feasibility,
+    )
 
 try:
     from ..sfjssp_model.instance import SFJSSPInstance
@@ -79,6 +88,19 @@ NSGA3_REPORT_MEMBER_POLICIES: Sequence[str] = (
     "min_n_tardy_feasible",
     "min_weighted_tardiness_feasible",
 )
+
+# This is the only public projection from canonical Schedule.evaluate() metrics
+# into persisted experiment artifacts. Public artifact names must stay identical
+# to the canonical schedule oracle names listed here.
+ARTIFACT_CANONICAL_METRIC_MAP: Dict[str, str] = {
+    metric_name: metric_name
+    for metric_name in CANONICAL_SCHEDULE_METRIC_FIELDS
+}
+
+ARTIFACT_CANONICAL_PENALTY_MAP: Dict[str, str] = {
+    penalty_name: penalty_name
+    for penalty_name in CANONICAL_SCHEDULE_PENALTY_FIELDS
+}
 
 
 def load_benchmark(filepath: str) -> SFJSSPInstance:
@@ -144,7 +166,7 @@ def _build_provenance(
     """Build provenance metadata for a comparison artifact."""
     git_status_short = _get_git_status_short()
     return {
-        "artifact_schema": "comparison_results_v4",
+        "artifact_schema": COMPARISON_ARTIFACT_SCHEMA,
         "git_commit": _get_git_commit(),
         "git_dirty": bool(git_status_short),
         "git_status_short": git_status_short,
@@ -202,30 +224,47 @@ def _details_like_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _details_are_canonically_feasible(details: Dict[str, Any]) -> bool:
+    """Return full feasibility using explicit penalties and violation evidence."""
+    return derive_canonical_feasibility(
+        details.get("is_feasible", True),
+        details.get("penalties") or {},
+        details.get("constraint_violations") or [],
+    )
+
+
+def _project_canonical_metric_payload(metrics: Dict[str, Any]) -> Dict[str, Any]:
+    """Project canonical schedule metrics into the persisted artifact surface."""
+    return {
+        artifact_field: metrics.get(schedule_field)
+        for schedule_field, artifact_field in ARTIFACT_CANONICAL_METRIC_MAP.items()
+    }
+
+
+def _project_canonical_penalty_payload(penalties: Dict[str, Any]) -> Dict[str, Any]:
+    """Project canonical penalties into the persisted artifact surface."""
+    return {
+        artifact_field: penalties.get(schedule_field)
+        for schedule_field, artifact_field in ARTIFACT_CANONICAL_PENALTY_MAP.items()
+    }
+
+
 def _build_representative_member(details: Dict[str, Any], policy: str) -> Dict[str, Any]:
     """Project one detailed-evaluation payload into artifact-ready representative fields."""
     metrics = details.get('metrics', {})
     penalties = details.get('penalties', {})
+    constraint_violations = list(details.get('constraint_violations', []))
+    is_feasible = derive_canonical_feasibility(
+        details.get('is_feasible', True),
+        penalties,
+        constraint_violations,
+    )
     return {
         'policy': policy,
-        'is_feasible': True,
-        'metrics': {
-            'makespan': metrics.get('makespan'),
-            'total_energy': metrics.get('total_energy'),
-            'max_ergonomic_exposure': metrics.get('max_ergonomic_exposure'),
-            'total_labor_cost': metrics.get('total_labor_cost'),
-            'total_tardiness': metrics.get('total_tardiness'),
-            'weighted_tardiness': metrics.get('weighted_tardiness'),
-            'n_tardy_jobs': metrics.get('n_tardy_jobs'),
-        },
-        'penalties': {
-            'hard_violations': penalties.get('hard_violations'),
-            'n_tardy_jobs': penalties.get('n_tardy_jobs'),
-            'weighted_tardiness': penalties.get('weighted_tardiness'),
-            'ocra_penalty': penalties.get('ocra_penalty'),
-            'total_penalty': penalties.get('total_penalty'),
-        },
-        'constraint_violations': list(details.get('constraint_violations', [])),
+        'is_feasible': is_feasible,
+        'metrics': _project_canonical_metric_payload(metrics),
+        'penalties': _project_canonical_penalty_payload(penalties),
+        'constraint_violations': constraint_violations,
     }
 
 
@@ -283,7 +322,7 @@ def _summarize_feasible_member_pool(
     """Summarize one evaluated feasible-member pool using the artifact report policy."""
     feasible_members = [
         details for details in detailed_members
-        if details.get('is_feasible')
+        if _details_are_canonically_feasible(details)
     ]
     representative_members = _build_representative_members(feasible_members)
     summary: Dict[str, Any] = {
@@ -313,13 +352,13 @@ def _summarize_feasible_member_pool(
         'makespan': representative_members['best_makespan_feasible']['metrics']['makespan']
         if representative_members['best_makespan_feasible'] is not None
         else None,
-        'energy': representative_members['best_makespan_feasible']['metrics']['total_energy']
+        'total_energy': representative_members['best_makespan_feasible']['metrics']['total_energy']
         if representative_members['best_makespan_feasible'] is not None
         else None,
-        'ergonomic_risk': representative_members['best_makespan_feasible']['metrics']['max_ergonomic_exposure']
+        'max_ergonomic_exposure': representative_members['best_makespan_feasible']['metrics']['max_ergonomic_exposure']
         if representative_members['best_makespan_feasible'] is not None
         else None,
-        'labor_cost': representative_members['best_makespan_feasible']['metrics']['total_labor_cost']
+        'total_labor_cost': representative_members['best_makespan_feasible']['metrics']['total_labor_cost']
         if representative_members['best_makespan_feasible'] is not None
         else None,
     }
@@ -446,7 +485,7 @@ def _apply_report_member_policy(
     representative_members: Dict[str, Optional[Dict[str, Any]]],
     report_member_policy: str,
 ) -> Dict[str, Any]:
-    """Attach explicit report-member fields and compatibility aliases."""
+    """Attach the explicit public report-member contract."""
     report_member_key = _validate_report_member_policy(report_member_policy)
     report_member = _resolve_report_member(representative_members, report_member_key)
     tardiness_member = representative_members.get("min_weighted_tardiness_feasible")
@@ -463,21 +502,21 @@ def _apply_report_member_policy(
                 "report_member_penalties": report_penalties,
                 "report_member_constraint_violations": report_member["constraint_violations"],
                 "report_makespan": report_metrics.get("makespan"),
-                "report_energy": report_metrics.get("total_energy"),
+                "report_total_energy": report_metrics.get("total_energy"),
+                "report_max_ergonomic_exposure": report_metrics.get("max_ergonomic_exposure"),
+                "report_total_labor_cost": report_metrics.get("total_labor_cost"),
+                "report_total_tardiness": report_metrics.get("total_tardiness"),
                 "report_n_tardy_jobs": report_metrics.get("n_tardy_jobs"),
                 "report_weighted_tardiness": report_metrics.get("weighted_tardiness"),
                 "report_total_penalty": report_penalties.get("total_penalty"),
-                "report_max_ocra": report_metrics.get("max_ergonomic_exposure"),
-                "selected_member_policy": report_member["policy"],
-                "selected_member_is_feasible": report_member["is_feasible"],
-                "selected_member_metrics": report_metrics,
-                "selected_member_penalties": report_penalties,
-                "selected_member_constraint_violations": report_member["constraint_violations"],
-                "selected_n_tardy_jobs": report_metrics.get("n_tardy_jobs"),
-                "selected_weighted_tardiness": report_metrics.get("weighted_tardiness"),
-                "selected_ocra_penalty": report_penalties.get("ocra_penalty"),
-                "selected_total_penalty": report_penalties.get("total_penalty"),
-                "selected_max_ocra": report_metrics.get("max_ergonomic_exposure"),
+                "report_member_zero_tardy": report_metrics.get("n_tardy_jobs") == 0,
+                "makespan": report_metrics.get("makespan"),
+                "total_energy": report_metrics.get("total_energy"),
+                "max_ergonomic_exposure": report_metrics.get("max_ergonomic_exposure"),
+                "total_labor_cost": report_metrics.get("total_labor_cost"),
+                "total_tardiness": report_metrics.get("total_tardiness"),
+                "weighted_tardiness": report_metrics.get("weighted_tardiness"),
+                "n_tardy_jobs": report_metrics.get("n_tardy_jobs"),
             }
         )
     else:
@@ -490,21 +529,21 @@ def _apply_report_member_policy(
                 "report_member_penalties": None,
                 "report_member_constraint_violations": [],
                 "report_makespan": None,
-                "report_energy": None,
+                "report_total_energy": None,
+                "report_max_ergonomic_exposure": None,
+                "report_total_labor_cost": None,
+                "report_total_tardiness": None,
                 "report_n_tardy_jobs": None,
                 "report_weighted_tardiness": None,
                 "report_total_penalty": None,
-                "report_max_ocra": None,
-                "selected_member_policy": default_policy_name,
-                "selected_member_is_feasible": False,
-                "selected_member_metrics": None,
-                "selected_member_penalties": None,
-                "selected_member_constraint_violations": [],
-                "selected_n_tardy_jobs": None,
-                "selected_weighted_tardiness": None,
-                "selected_ocra_penalty": None,
-                "selected_total_penalty": None,
-                "selected_max_ocra": None,
+                "report_member_zero_tardy": False,
+                "makespan": None,
+                "total_energy": None,
+                "max_ergonomic_exposure": None,
+                "total_labor_cost": None,
+                "total_tardiness": None,
+                "weighted_tardiness": None,
+                "n_tardy_jobs": None,
             }
         )
 
@@ -520,7 +559,8 @@ def _apply_report_member_policy(
                 "tardiness_best_n_tardy_jobs": tardiness_metrics.get("n_tardy_jobs"),
                 "tardiness_best_weighted_tardiness": tardiness_metrics.get("weighted_tardiness"),
                 "tardiness_best_makespan": tardiness_metrics.get("makespan"),
-                "tardiness_best_is_same_as_selected": _is_same_member(tardiness_member, report_member),
+                "tardiness_best_zero_tardy": tardiness_metrics.get("n_tardy_jobs") == 0,
+                "tardiness_best_is_same_as_report_member": _is_same_member(tardiness_member, report_member),
             }
         )
     else:
@@ -533,7 +573,8 @@ def _apply_report_member_policy(
                 "tardiness_best_n_tardy_jobs": None,
                 "tardiness_best_weighted_tardiness": None,
                 "tardiness_best_makespan": None,
-                "tardiness_best_is_same_as_selected": False,
+                "tardiness_best_zero_tardy": False,
+                "tardiness_best_is_same_as_report_member": False,
             }
         )
 
@@ -561,9 +602,12 @@ def run_greedy_experiment(instance: SFJSSPInstance, rule_name: str, rule_fn) -> 
     return {
         'method': f'Greedy ({rule_name})',
         'makespan': schedule.makespan,
-        'energy': objectives.get('total_energy', 0),
-        'ergonomic_risk': objectives.get('max_ergonomic_exposure', 0),
-        'labor_cost': objectives.get('total_labor_cost', 0),
+        'total_energy': objectives.get('total_energy', 0),
+        'max_ergonomic_exposure': objectives.get('max_ergonomic_exposure', 0),
+        'total_labor_cost': objectives.get('total_labor_cost', 0),
+        'total_tardiness': objectives.get('total_tardiness', 0),
+        'weighted_tardiness': objectives.get('weighted_tardiness', 0),
+        'n_tardy_jobs': objectives.get('n_tardy_jobs', 0),
         'time_seconds': elapsed,
         'feasible': schedule.is_feasible,
         'constraint_violations': list(schedule.constraint_violations),
@@ -637,7 +681,7 @@ def run_nsga3_experiment(
     ]
     feasible_pareto = [
         details for details in detailed_pareto
-        if details['is_feasible']
+        if _details_are_canonically_feasible(details)
     ]
 
     feasible_summary = _summarize_feasible_member_pool(
@@ -646,9 +690,9 @@ def run_nsga3_experiment(
     )
     representative_members = feasible_summary['representative_members']
     best_makespan = feasible_summary['makespan']
-    best_energy = feasible_summary['energy']
-    best_ergonomic = feasible_summary['ergonomic_risk']
-    best_labor = feasible_summary['labor_cost']
+    best_total_energy = feasible_summary['total_energy']
+    best_max_ergonomic_exposure = feasible_summary['max_ergonomic_exposure']
+    best_total_labor_cost = feasible_summary['total_labor_cost']
     min_n_tardy_jobs = feasible_summary['min_n_tardy_jobs']
     min_weighted_tardiness = feasible_summary['min_weighted_tardiness']
     zero_tardy_feasible_pareto_size = feasible_summary['zero_tardy_feasible_pareto_size']
@@ -665,9 +709,12 @@ def run_nsga3_experiment(
     result = {
         'method': f'NSGA-III ({n_generations} gen)',
         'makespan': best_makespan,
-        'energy': best_energy,
-        'ergonomic_risk': best_ergonomic,
-        'labor_cost': best_labor,
+        'total_energy': best_total_energy,
+        'max_ergonomic_exposure': best_max_ergonomic_exposure,
+        'total_labor_cost': best_total_labor_cost,
+        'total_tardiness': feasible_summary.get('report_total_tardiness'),
+        'weighted_tardiness': feasible_summary.get('report_weighted_tardiness'),
+        'n_tardy_jobs': feasible_summary.get('report_n_tardy_jobs'),
         'time_seconds': elapsed,
         'population_size': population_size,
         'seed': seed,
@@ -722,6 +769,14 @@ def run_cp_experiment(instance: SFJSSPInstance, time_limit: int = 30) -> dict:
             return {
                 'method': 'CP-SAT',
                 'error': 'OR-Tools not available',
+                'makespan': None,
+                'total_energy': None,
+                'max_ergonomic_exposure': None,
+                'total_labor_cost': None,
+                'total_tardiness': None,
+                'weighted_tardiness': None,
+                'n_tardy_jobs': None,
+                'time_seconds': None,
                 'feasible': False,
                 'objective': 'makespan',
                 'support_status': 'verified for makespan only',
@@ -730,6 +785,14 @@ def run_cp_experiment(instance: SFJSSPInstance, time_limit: int = 30) -> dict:
         return {
             'method': 'CP-SAT',
             'error': str(exc),
+            'makespan': None,
+            'total_energy': None,
+            'max_ergonomic_exposure': None,
+            'total_labor_cost': None,
+            'total_tardiness': None,
+            'weighted_tardiness': None,
+            'n_tardy_jobs': None,
+            'time_seconds': None,
             'feasible': False,
             'objective': 'makespan',
             'support_status': 'verified for makespan only',
@@ -744,9 +807,17 @@ def run_cp_experiment(instance: SFJSSPInstance, time_limit: int = 30) -> dict:
         return {
             'method': 'CP-SAT',
             'error': str(exc),
+            'makespan': None,
+            'total_energy': None,
+            'max_ergonomic_exposure': None,
+            'total_labor_cost': None,
+            'total_tardiness': None,
+            'weighted_tardiness': None,
+            'n_tardy_jobs': None,
             'feasible': False,
             'objective': 'makespan',
             'support_status': 'verified for makespan only',
+            'time_seconds': None,
         }
 
     elapsed = time.time() - start_time
@@ -755,6 +826,13 @@ def run_cp_experiment(instance: SFJSSPInstance, time_limit: int = 30) -> dict:
         return {
             'method': 'CP-SAT',
             'error': 'No solution found',
+            'makespan': None,
+            'total_energy': None,
+            'max_ergonomic_exposure': None,
+            'total_labor_cost': None,
+            'total_tardiness': None,
+            'weighted_tardiness': None,
+            'n_tardy_jobs': None,
             'time_seconds': elapsed,
             'feasible': False,
             'objective': 'makespan',
@@ -768,9 +846,12 @@ def run_cp_experiment(instance: SFJSSPInstance, time_limit: int = 30) -> dict:
         'objective': 'makespan',
         'support_status': 'verified for makespan only',
         'makespan': schedule.makespan,
-        'energy': objectives.get('total_energy', 0),
-        'ergonomic_risk': objectives.get('max_ergonomic_exposure', 0),
-        'labor_cost': objectives.get('total_labor_cost', 0),
+        'total_energy': objectives.get('total_energy', 0),
+        'max_ergonomic_exposure': objectives.get('max_ergonomic_exposure', 0),
+        'total_labor_cost': objectives.get('total_labor_cost', 0),
+        'total_tardiness': objectives.get('total_tardiness', 0),
+        'weighted_tardiness': objectives.get('weighted_tardiness', 0),
+        'n_tardy_jobs': objectives.get('n_tardy_jobs', 0),
         'time_seconds': elapsed,
         'feasible': schedule.is_feasible,
     }
@@ -859,7 +940,7 @@ def run_comparison(
         print(
             f"  report={result['report_member_key']}, "
             f"makespan={result['report_makespan']:.1f}, "
-            f"energy={result['report_energy']:.1f}, "
+            f"energy={result['report_total_energy']:.1f}, "
             f"tardy_jobs={result['report_n_tardy_jobs']}{tardiness_note}, "
             f"seeds={result['warm_start_seed_count']}, "
             f"crossover={result['crossover_policy']}, "
@@ -1005,11 +1086,11 @@ def print_summary(results: list):
         for exp in r['experiments']:
             method = exp['method']
             makespan_value = exp.get('makespan')
-            energy_value = exp.get('energy')
+            energy_value = exp.get('total_energy')
             if method.startswith('NSGA-III') and exp.get('report_member_metrics'):
                 method = f"{method} [{exp.get('report_member_key')}]"
                 makespan_value = exp.get('report_makespan')
-                energy_value = exp.get('report_energy')
+                energy_value = exp.get('report_total_energy')
             makespan = (
                 f"{makespan_value:.1f}"
                 if makespan_value is not None

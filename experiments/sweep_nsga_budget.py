@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 try:
+    from ..experiments.artifact_schemas import BUDGET_SWEEP_ARTIFACT_SCHEMA
     from ..baseline_solver.greedy_solvers import edt_rule, fifo_rule, spt_rule
     from ..experiments.compare_solvers import (
         _get_git_commit,
@@ -26,6 +27,7 @@ try:
     from ..moea.nsga3 import NSGA3_DEFAULT_SEQUENCE_MUTATION
     from ..moea.nsga3 import NSGA3_DEFAULT_IMMIGRANT_POLICY
 except ImportError:  # pragma: no cover - supports repo-root imports
+    from experiments.artifact_schemas import BUDGET_SWEEP_ARTIFACT_SCHEMA
     from baseline_solver.greedy_solvers import edt_rule, fifo_rule, spt_rule
     from experiments.compare_solvers import (
         _get_git_commit,
@@ -59,7 +61,7 @@ def _build_sweep_provenance(
     """Build provenance metadata for the NSGA budget sweep artifact."""
     git_status_short = _get_git_status_short()
     return {
-        "artifact_schema": "nsga_budget_sweep_v3",
+        "artifact_schema": BUDGET_SWEEP_ARTIFACT_SCHEMA,
         "git_commit": _get_git_commit(),
         "git_dirty": bool(git_status_short),
         "git_status_short": git_status_short,
@@ -135,10 +137,8 @@ def _normalize_budget_run(
     best_greedy_makespan: float,
 ) -> Dict[str, Any]:
     """Normalize one NSGA budget run into the sweep artifact schema."""
-    selected_metrics = result.get("selected_member_metrics") or {}
-    selected_penalties = result.get("selected_member_penalties") or {}
-    report_metrics = result.get("report_member_metrics") or selected_metrics
-    report_penalties = result.get("report_member_penalties") or selected_penalties
+    report_metrics = result.get("report_member_metrics") or {}
+    report_penalties = result.get("report_member_penalties") or {}
     representative_members = result.get("representative_members") or {}
     tardiness_best = representative_members.get("min_weighted_tardiness_feasible") or {}
     tardiness_best_metrics = tardiness_best.get("metrics") or {}
@@ -146,8 +146,6 @@ def _normalize_budget_run(
     report_makespan = result.get("report_makespan")
     if report_makespan is None:
         report_makespan = report_metrics.get("makespan")
-    selected_makespan = selected_metrics.get("makespan")
-    selected_n_tardy_jobs = result.get("selected_n_tardy_jobs")
     tardiness_best_n_tardy_jobs = result.get("tardiness_best_n_tardy_jobs")
     return {
         "generations": generations,
@@ -159,21 +157,21 @@ def _normalize_budget_run(
         "constraint_handling": result.get("constraint_handling"),
         "report_member_key": result.get("report_member_key"),
         "report_member_selection_policy": result.get("report_member_selection_policy"),
+        "report_member_is_feasible": result.get("report_member_is_feasible"),
         "report_member_metrics": report_metrics or None,
         "report_member_penalties": report_penalties or None,
+        "report_member_constraint_violations": result.get("report_member_constraint_violations") or [],
         "report_makespan": report_makespan,
+        "report_total_energy": result.get("report_total_energy"),
+        "report_max_ergonomic_exposure": result.get("report_max_ergonomic_exposure"),
+        "report_total_labor_cost": result.get("report_total_labor_cost"),
+        "report_total_tardiness": result.get("report_total_tardiness"),
         "report_n_tardy_jobs": result.get("report_n_tardy_jobs"),
         "report_weighted_tardiness": result.get("report_weighted_tardiness"),
         "report_total_penalty": result.get("report_total_penalty"),
-        "report_max_ocra": result.get("report_max_ocra"),
-        "selected_member_metrics": selected_metrics or None,
-        "selected_member_penalties": selected_penalties or None,
         "tardiness_best_member_metrics": tardiness_best_metrics or None,
         "tardiness_best_member_penalties": tardiness_best_penalties or None,
-        "selected_n_tardy_jobs": selected_n_tardy_jobs,
-        "selected_weighted_tardiness": result.get("selected_weighted_tardiness"),
-        "selected_total_penalty": result.get("selected_total_penalty"),
-        "selected_max_ocra": result.get("selected_max_ocra"),
+        "tardiness_best_member_constraint_violations": result.get("tardiness_best_member_constraint_violations") or [],
         "tardiness_best_n_tardy_jobs": tardiness_best_n_tardy_jobs,
         "tardiness_best_weighted_tardiness": result.get("tardiness_best_weighted_tardiness"),
         "tardiness_best_makespan": result.get("tardiness_best_makespan"),
@@ -190,9 +188,8 @@ def _normalize_budget_run(
             else False
         ),
         "report_member_zero_tardy": bool(result.get("report_n_tardy_jobs") == 0) if result.get("report_n_tardy_jobs") is not None else False,
-        "selected_member_zero_tardy": bool(selected_n_tardy_jobs == 0) if selected_n_tardy_jobs is not None else False,
         "tardiness_best_zero_tardy": bool(tardiness_best_n_tardy_jobs == 0) if tardiness_best_n_tardy_jobs is not None else False,
-        "tardiness_best_improves_selected": (
+        "tardiness_best_improves_report": (
             bool(
                 result.get("tardiness_best_weighted_tardiness") is not None
                 and result.get("report_weighted_tardiness") is not None
@@ -225,10 +222,20 @@ def _summarize_budget_sweep(results: Sequence[Dict[str, Any]]) -> List[Dict[str,
                     for run in runs
                     if run.get("report_member_metrics")
                 ),
-                "avg_selected_makespan": _average(
-                    run["selected_member_metrics"]["makespan"]
+                "avg_report_total_energy": _average(
+                    run["report_total_energy"]
                     for run in runs
-                    if run.get("selected_member_metrics")
+                    if run.get("report_total_energy") is not None
+                ),
+                "avg_report_max_ergonomic_exposure": _average(
+                    run["report_max_ergonomic_exposure"]
+                    for run in runs
+                    if run.get("report_max_ergonomic_exposure") is not None
+                ),
+                "avg_report_total_labor_cost": _average(
+                    run["report_total_labor_cost"]
+                    for run in runs
+                    if run.get("report_total_labor_cost") is not None
                 ),
                 "avg_report_weighted_tardiness": _average(
                     run["report_weighted_tardiness"]
@@ -240,11 +247,6 @@ def _summarize_budget_sweep(results: Sequence[Dict[str, Any]]) -> List[Dict[str,
                     for run in runs
                     if run.get("tardiness_best_member_metrics")
                 ),
-                "avg_selected_weighted_tardiness": _average(
-                    run["selected_weighted_tardiness"]
-                    for run in runs
-                    if run.get("selected_weighted_tardiness") is not None
-                ),
                 "avg_tardiness_best_weighted_tardiness": _average(
                     run["tardiness_best_weighted_tardiness"]
                     for run in runs
@@ -255,20 +257,10 @@ def _summarize_budget_sweep(results: Sequence[Dict[str, Any]]) -> List[Dict[str,
                     for run in runs
                     if run.get("report_n_tardy_jobs") is not None
                 ),
-                "avg_selected_n_tardy_jobs": _average(
-                    run["selected_n_tardy_jobs"]
-                    for run in runs
-                    if run.get("selected_n_tardy_jobs") is not None
-                ),
                 "avg_tardiness_best_n_tardy_jobs": _average(
                     run["tardiness_best_n_tardy_jobs"]
                     for run in runs
                     if run.get("tardiness_best_n_tardy_jobs") is not None
-                ),
-                "avg_selected_total_penalty": _average(
-                    run["selected_total_penalty"]
-                    for run in runs
-                    if run.get("selected_total_penalty") is not None
                 ),
                 "avg_report_total_penalty": _average(
                     run["report_total_penalty"]
@@ -289,14 +281,11 @@ def _summarize_budget_sweep(results: Sequence[Dict[str, Any]]) -> List[Dict[str,
                 "instances_with_report_zero_tardy_member": sum(
                     1 for run in runs if run["report_member_zero_tardy"]
                 ),
-                "instances_with_selected_zero_tardy_member": sum(
-                    1 for run in runs if run["selected_member_zero_tardy"]
-                ),
                 "instances_with_tardiness_best_zero_tardy_member": sum(
                     1 for run in runs if run["tardiness_best_zero_tardy"]
                 ),
-                "instances_where_tardiness_best_improves_selected": sum(
-                    1 for run in runs if run["tardiness_best_improves_selected"]
+                "instances_where_tardiness_best_improves_report": sum(
+                    1 for run in runs if run["tardiness_best_improves_report"]
                 ),
                 "avg_time_seconds": _average(
                     run["time_seconds"] for run in runs if run.get("time_seconds") is not None
@@ -369,7 +358,7 @@ def print_summary(summary: Sequence[Dict[str, Any]], recommended: Optional[Dict[
             f"{row['generations']:>6} {row['population_size']:>6} "
             f"{avg_makespan:>10} {avg_report_weighted_tardiness:>12} {avg_tardiness_best_weighted_tardiness:>12} "
             f"{avg_report_n_tardy_jobs:>10} {avg_tardiness_best_n_tardy_jobs:>11} "
-            f"{row['instances_where_tardiness_best_improves_selected']:>9} "
+            f"{row['instances_where_tardiness_best_improves_report']:>9} "
             f"{avg_time_seconds:>10}"
         )
 

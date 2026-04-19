@@ -92,6 +92,31 @@ class WorkerSchedule:
         self.operations.sort(key=lambda x: x.start_time)
 
 
+@dataclass(frozen=True)
+class ConstraintViolation:
+    """Canonical structured hard-feasibility violation."""
+
+    code: str
+    message: str
+    job_id: Optional[int] = None
+    op_id: Optional[int] = None
+    machine_id: Optional[int] = None
+    worker_id: Optional[int] = None
+    details: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize one violation record."""
+        return {
+            "code": self.code,
+            "message": self.message,
+            "job_id": self.job_id,
+            "op_id": self.op_id,
+            "machine_id": self.machine_id,
+            "worker_id": self.worker_id,
+            "details": dict(self.details),
+        }
+
+
 @dataclass
 class Schedule:
     """
@@ -126,9 +151,13 @@ class Schedule:
     makespan: float = 0.0
     is_feasible: bool = True
     constraint_violations: List[str] = field(default_factory=list)
+    constraint_violation_details: List[ConstraintViolation] = field(default_factory=list)
 
     # Objective values (computed)
     objectives: Dict[str, float] = field(default_factory=dict)
+
+    # Solver/export metadata
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     # Energy consumption breakdown
     energy_breakdown: Dict[str, float] = field(default_factory=dict)
@@ -228,17 +257,141 @@ class Schedule:
         )
         return self.makespan
 
+    def get_ready_time_for_assignment(
+        self,
+        instance: SFJSSPInstance,
+        job_id: int,
+        op_id: int,
+        next_machine_id: Optional[int] = None,
+    ) -> float:
+        """Return the precedence-ready time for one operation assignment."""
+        job = instance.get_job(job_id)
+        if job is None:
+            return float("inf")
+        if op_id == 0:
+            return job.arrival_time
+
+        prev_sched = self.get_operation(job_id, op_id - 1)
+        if prev_sched is None:
+            return float("inf")
+
+        prev_model_op = job.operations[op_id - 1]
+        waiting_time = getattr(prev_model_op, "waiting_time", 0.0)
+        transport_time = 0.0
+        if next_machine_id is None:
+            transport_time = prev_sched.transport_time
+        elif prev_sched.machine_id != next_machine_id:
+            transport_time = prev_sched.transport_time or getattr(
+                prev_model_op,
+                "transport_time",
+                0.0,
+            )
+
+        return prev_sched.completion_time + waiting_time + transport_time
+
+    def update_predecessor_transport(
+        self,
+        instance: SFJSSPInstance,
+        job_id: int,
+        op_id: int,
+        next_machine_id: int,
+    ) -> float:
+        """
+        Store the predecessor-to-successor transport delay on the predecessor op.
+
+        Transport time is modeled as a post-operation transfer delay that blocks
+        the successor. When the successor stays on the same machine, that delay
+        is zero.
+        """
+        if op_id <= 0:
+            return 0.0
+
+        prev_sched = self.get_operation(job_id, op_id - 1)
+        if prev_sched is None:
+            return 0.0
+
+        prev_model_op = instance.get_job(job_id).operations[op_id - 1]
+        transport_time = 0.0
+        if prev_sched.machine_id != next_machine_id:
+            transport_time = getattr(prev_model_op, "transport_time", 0.0)
+        prev_sched.transport_time = transport_time
+        return transport_time
+
+    def _compute_worker_timeline_metrics(
+        self,
+        instance: SFJSSPInstance,
+    ) -> Dict[int, Dict[str, Any]]:
+        """Rebuild worker-level rest, OCRA, and fatigue metrics from the schedule."""
+        metrics: Dict[int, Dict[str, Any]] = {}
+
+        for worker in instance.workers:
+            ops = sorted(
+                self.worker_schedules.get(worker.worker_id, WorkerSchedule(worker.worker_id)).operations,
+                key=lambda op: op.start_time,
+            )
+            shift_exposures: Dict[int, float] = {}
+            total_work = 0.0
+            total_rest = 0.0
+            last_end = 0.0
+            fatigue = 0.0
+            max_fatigue = 0.0
+
+            for sched_op in ops:
+                rest_gap = max(0.0, sched_op.start_time - last_end)
+                total_rest += rest_gap
+                fatigue = float(
+                    np.clip(
+                        fatigue - worker.recovery_rate * rest_gap,
+                        0.0,
+                        worker.fatigue_max,
+                    )
+                )
+
+                total_work += sched_op.processing_time
+                fatigue = float(
+                    np.clip(
+                        fatigue + worker.fatigue_rate * sched_op.processing_time,
+                        0.0,
+                        worker.fatigue_max,
+                    )
+                )
+                max_fatigue = max(max_fatigue, fatigue)
+
+                shift_idx = int(sched_op.start_time // worker.SHIFT_DURATION)
+                shift_exposures.setdefault(shift_idx, 0.0)
+                shift_exposures[shift_idx] += (
+                    instance.get_ergonomic_risk(sched_op.job_id, sched_op.op_id)
+                    * sched_op.processing_time
+                )
+                last_end = sched_op.completion_time
+
+            elapsed = last_end
+            rest_fraction = (total_rest / elapsed) if elapsed > 0.0 else 0.0
+            max_shift_exposure = max(shift_exposures.values()) if shift_exposures else 0.0
+
+            metrics[worker.worker_id] = {
+                "worker": worker,
+                "total_work": total_work,
+                "total_rest": total_rest,
+                "elapsed": elapsed,
+                "rest_fraction": rest_fraction,
+                "shift_exposures": shift_exposures,
+                "max_shift_exposure": max_shift_exposure,
+                "fatigue_end": fatigue,
+                "max_fatigue": max_fatigue,
+            }
+
+        return metrics
+
     def compute_total_energy(
         self,
         instance: SFJSSPInstance
     ) -> Dict[str, float]:
         """
-        Compute total energy consumption
+        Compute total energy consumption from the canonical schedule timeline.
 
-        Evidence: Energy components from E-DFJSP 2025 [CONFIRMED]
-
-        Returns:
-            Dict with keys: processing, idle, setup, startup, auxiliary, total
+        Setup is modeled as occupying the tail of the pre-operation gap, so idle
+        energy is charged only on gap time not already consumed by setup.
         """
         energy = {
             'processing': 0.0,
@@ -246,62 +399,49 @@ class Schedule:
             'setup': 0.0,
             'startup': 0.0,
             'auxiliary': 0.0,
-            'transport': 0.0,  # [CHANGED] Added transport energy
+            'transport': 0.0,
             'total': 0.0
         }
 
-        # Processing and setup energy
         for sched_op in self.scheduled_ops.values():
             machine = instance.get_machine(sched_op.machine_id)
             if machine is None:
                 continue
 
-            # Get mode
-            mode = None
-            if machine.modes:
-                mode = next(
-                    (m for m in machine.modes if m.mode_id == sched_op.mode_id),
-                    None
-                )
-
-            # Processing energy (kWh)
             energy['processing'] += machine.get_processing_energy(
                 sched_op.processing_time,
                 sched_op.mode_id,
             )
 
-            # Setup energy (kWh)
             if sched_op.setup_time > 0:
                 energy['setup'] += machine.get_setup_energy(sched_op.setup_time)
 
-            # Transport energy (kWh)
             if sched_op.transport_time > 0:
                 energy['transport'] += (
                     machine.power_transport * self._minutes_to_hours(sched_op.transport_time)
                 )
 
-        # Idle energy
         for machine_id, machine_sched in self.machine_schedules.items():
             machine = instance.get_machine(machine_id)
             if machine is None:
                 continue
 
-            idle_periods = machine_sched.get_idle_periods(self.makespan)
-            for start, end in idle_periods:
-                energy['idle'] += machine.get_idle_energy(end - start)
+            ops = sorted(machine_sched.operations, key=lambda op: op.start_time)
+            if not ops:
+                continue
 
-        # Auxiliary energy
-        aux_power = instance.get_auxiliary_power_per_machine()
-        for machine_id in self.machine_schedules:
-            machine = instance.get_machine(machine_id)
-            if machine:
-                energy['auxiliary'] += aux_power * self._minutes_to_hours(self.makespan)
+            prev_completion = 0.0
+            for sched_op in ops:
+                raw_gap = max(0.0, sched_op.start_time - prev_completion)
+                idle_gap = max(0.0, raw_gap - sched_op.setup_time)
+                if idle_gap > 0.0:
+                    energy['idle'] += machine.get_idle_energy(idle_gap)
+                prev_completion = sched_op.completion_time
 
-        # Startup energy: sum of startup energy for all machines used
-        for machine_id in self.machine_schedules:
-            machine = instance.get_machine(machine_id)
-            if machine:
-                energy['startup'] += machine.startup_energy
+            local_horizon = ops[-1].completion_time
+            aux_power = machine.auxiliary_power_share or instance.get_auxiliary_power_per_machine()
+            energy['auxiliary'] += aux_power * self._minutes_to_hours(local_horizon)
+            energy['startup'] += machine.startup_energy
 
         energy['total'] = sum(value for key, value in energy.items() if key != 'total')
 
@@ -327,43 +467,24 @@ class Schedule:
         instance: SFJSSPInstance
     ) -> Dict[str, float]:
         """
-        Compute ergonomic risk metrics per shift.
+        Compute ergonomic exposure metrics from the worker timelines.
         """
-        # Track exposure per worker per 8-hour shift
-        # Map: worker_id -> List of exposures (one per shift)
-        worker_shift_exposures = {w.worker_id: [0.0] for w in instance.workers}
-        SHIFT_LEN = 480.0
-
-        for sched_op in sorted(self.scheduled_ops.values(), key=lambda x: x.start_time):
-            risk_rate = instance.get_ergonomic_risk(
-                sched_op.job_id, sched_op.op_id
-            )
-            exposure = risk_rate * sched_op.processing_time
-            
-            w_id = sched_op.worker_id
-            # Determine which shift this operation falls into (roughly)
-            # A more precise way would be to track shift resets in Worker,
-            # but here we can approximate by time.
-            shift_idx = int(sched_op.start_time // SHIFT_LEN)
-            
-            # Ensure we have enough shifts in the list
-            while len(worker_shift_exposures[w_id]) <= shift_idx:
-                worker_shift_exposures[w_id].append(0.0)
-                
-            worker_shift_exposures[w_id][shift_idx] += exposure
-
-        # Find max OCRA encountered in any single shift across all workers
-        all_shift_exposures = []
-        for exposures in worker_shift_exposures.values():
+        worker_metrics = self._compute_worker_timeline_metrics(instance)
+        all_shift_exposures: List[float] = []
+        worker_max_exposure: Dict[int, float] = {}
+        for worker_id, metrics in worker_metrics.items():
+            exposures = list(metrics["shift_exposures"].values())
+            worker_max_exposure[worker_id] = metrics["max_shift_exposure"]
             all_shift_exposures.extend(exposures)
-            
+
         max_ocra = max(all_shift_exposures) if all_shift_exposures else 0.0
-        mean_ocra = np.mean(all_shift_exposures) if all_shift_exposures else 0.0
+        mean_ocra = float(np.mean(all_shift_exposures)) if all_shift_exposures else 0.0
 
         self.ergonomic_metrics = {
             'max_exposure': max_ocra,
             'mean_exposure': mean_ocra,
-            'total_exposure': sum(all_shift_exposures)
+            'total_exposure': sum(all_shift_exposures),
+            'worker_max_exposure': worker_max_exposure,
         }
 
         return self.ergonomic_metrics
@@ -393,35 +514,16 @@ class Schedule:
         instance: SFJSSPInstance
     ) -> Dict[str, float]:
         """
-        Compute worker fatigue metrics
-
-        Evidence: Fatigue dynamics from DyDFJSP 2023 [CONFIRMED]
-
-        Returns:
-            Dict with: max_fatigue, mean_fatigue, fatigue_variance
+        Compute fatigue metrics from the reconstructed worker timelines.
         """
-        worker_fatigue = {}
-
-        for worker in instance.workers:
-            # Get worker's total work time
-            if worker.worker_id in self.worker_schedules:
-                total_work = sum(
-                    op.processing_time
-                    for op in self.worker_schedules[worker.worker_id].operations
-                )
-            else:
-                total_work = 0.0
-
-            # Simplified fatigue model: F = alpha * work_time
-            fatigue = min(1.0, worker.fatigue_rate * total_work)
-            worker_fatigue[worker.worker_id] = fatigue
-
-        fatigue_values = list(worker_fatigue.values())
+        worker_metrics = self._compute_worker_timeline_metrics(instance)
+        fatigue_values = [metrics["fatigue_end"] for metrics in worker_metrics.values()]
+        peak_values = [metrics["max_fatigue"] for metrics in worker_metrics.values()]
 
         self.fatigue_metrics = {
-            'max_fatigue': max(fatigue_values) if fatigue_values else 0.0,
-            'mean_fatigue': np.mean(fatigue_values) if fatigue_values else 0.0,
-            'fatigue_variance': np.var(fatigue_values) if fatigue_values else 0.0
+            'max_fatigue': max(peak_values) if peak_values else 0.0,
+            'mean_fatigue': float(np.mean(fatigue_values)) if fatigue_values else 0.0,
+            'fatigue_variance': float(np.var(fatigue_values)) if fatigue_values else 0.0,
         }
 
         return self.fatigue_metrics
@@ -540,7 +642,7 @@ class Schedule:
             
             total_tool_wear += sched_op.processing_time * wear_rate
 
-        tool_replacement_cost = total_tool_wear * 0.5  # Arbitrary unit cost for tool replacement
+        tool_replacement_cost = total_tool_wear * 0.5
 
         self.objectives = {
             'makespan': self.makespan,
@@ -552,8 +654,9 @@ class Schedule:
             'mean_ergonomic_exposure': self.ergonomic_metrics.get('mean_exposure', 0.0),
             'max_fatigue': self.fatigue_metrics.get('max_fatigue', 0.0),
             'fatigue_variance': self.fatigue_metrics.get('fatigue_variance', 0.0),
-            'total_labor_cost': labor_cost + tool_replacement_cost,
+            'total_labor_cost': labor_cost,
             'tool_replacement_cost': tool_replacement_cost,
+            'total_cost_including_tool_replacement': labor_cost + tool_replacement_cost,
             'total_tool_wear': total_tool_wear,
             'total_tardiness': tardiness['total_tardiness'],
             'weighted_tardiness': tardiness['weighted_tardiness'],
@@ -573,96 +676,220 @@ class Schedule:
 
         return self.objectives
 
-    def check_feasibility(self, instance: SFJSSPInstance) -> bool:
+    def _build_violation(
+        self,
+        code: str,
+        message: str,
+        *,
+        job_id: Optional[int] = None,
+        op_id: Optional[int] = None,
+        machine_id: Optional[int] = None,
+        worker_id: Optional[int] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> ConstraintViolation:
+        """Create one canonical hard-violation record."""
+        return ConstraintViolation(
+            code=code,
+            message=message,
+            job_id=job_id,
+            op_id=op_id,
+            machine_id=machine_id,
+            worker_id=worker_id,
+            details=details or {},
+        )
+
+    def collect_constraint_violations(
+        self,
+        instance: SFJSSPInstance
+    ) -> List[ConstraintViolation]:
         """
-        Check schedule feasibility
+        Return canonical hard-feasibility violations with stable codes.
         """
-        self.is_feasible = True
-        self.constraint_violations = []
+        violations: List[ConstraintViolation] = []
 
         # Check that the schedule covers the full instance.
         for job in instance.jobs:
             for op in job.operations:
                 if not self.is_operation_scheduled(job.job_id, op.op_id):
-                    self.is_feasible = False
-                    self.constraint_violations.append(
-                        f"Unscheduled operation: Job {job.job_id} Op {op.op_id}"
+                    violations.append(
+                        self._build_violation(
+                            "unscheduled_operation",
+                            f"Unscheduled operation: Job {job.job_id} Op {op.op_id}",
+                            job_id=job.job_id,
+                            op_id=op.op_id,
+                        )
                     )
 
-        # Check precedence constraints
+        # Check precedence constraints.
         for job in instance.jobs:
             first_op = self.get_operation(job.job_id, 0)
             if first_op and first_op.start_time < job.arrival_time:
-                self.is_feasible = False
-                self.constraint_violations.append(
-                    f"Arrival violation: Job {job.job_id} starts before {job.arrival_time}"
+                violations.append(
+                    self._build_violation(
+                        "arrival_violation",
+                        f"Arrival violation: Job {job.job_id} starts before {job.arrival_time}",
+                        job_id=job.job_id,
+                        op_id=0,
+                        machine_id=first_op.machine_id,
+                        worker_id=first_op.worker_id,
+                        details={
+                            "job_arrival_time": job.arrival_time,
+                            "scheduled_start_time": first_op.start_time,
+                        },
+                    )
                 )
 
-            for i, op in enumerate(job.operations):
-                if i == 0:
-                    continue
-
+            for i in range(1, len(job.operations)):
+                prev_model_op = job.operations[i - 1]
                 prev_sched = self.get_operation(job.job_id, i - 1)
                 curr_sched = self.get_operation(job.job_id, i)
 
-                if prev_sched and curr_sched:
-                    # Include transport_time and modeled waiting_time of previous operation
-                    base_gap = prev_sched.completion_time + prev_sched.transport_time
-                    prev_model_op = job.operations[i - 1]
-                    waiting_time = getattr(prev_model_op, "waiting_time", 0.0)
-                    base_gap += waiting_time
+                if prev_sched is None or curr_sched is None:
+                    continue
 
-                    if curr_sched.start_time < base_gap:
-                        self.is_feasible = False
-                        self.constraint_violations.append(
-                            f"Precedence violation: Job {job.job_id} Op {i}"
+                base_gap = self.get_ready_time_for_assignment(
+                    instance,
+                    job.job_id,
+                    i,
+                    next_machine_id=curr_sched.machine_id,
+                )
+                waiting_time = prev_model_op.waiting_time
+                transport_time = prev_sched.transport_time
+                same_machine = curr_sched.machine_id == prev_sched.machine_id
+
+                if curr_sched.start_time < base_gap:
+                    code = "precedence_violation"
+                    gap_source = "completion"
+                    if not same_machine and transport_time > 0.0:
+                        code = "transport_gap"
+                        gap_source = "transport"
+                    elif waiting_time > 0.0:
+                        gap_source = "waiting"
+
+                    violations.append(
+                        self._build_violation(
+                            code,
+                            f"Precedence violation: Job {job.job_id} Op {i}",
+                            job_id=job.job_id,
+                            op_id=i,
+                            machine_id=curr_sched.machine_id,
+                            worker_id=curr_sched.worker_id,
+                            details={
+                                "required_ready_time": base_gap,
+                                "scheduled_start_time": curr_sched.start_time,
+                                "predecessor_completion_time": prev_sched.completion_time,
+                                "waiting_time": waiting_time,
+                                "transport_time": transport_time,
+                                "gap_source": gap_source,
+                                "predecessor_machine_id": prev_sched.machine_id,
+                            },
                         )
-
-        # Check machine capacity (no overlap)
-        for machine_sched in self.machine_schedules.values():
-            ops = sorted(machine_sched.operations, key=lambda x: x.start_time)
-            for i in range(len(ops) - 1):
-                # [FIX] Gap must accommodate the NEXT operation's setup time
-                if (ops[i].completion_time + ops[i+1].setup_time) > ops[i + 1].start_time:
-                    self.is_feasible = False
-                    self.constraint_violations.append(
-                        f"Machine overlap: M{machine_sched.machine_id} "
-                        f"({ops[i].job_id},{ops[i].op_id}) vs ({ops[i+1].job_id},{ops[i+1].op_id})"
                     )
 
-        # Check worker capacity (no overlap)
+        # Check machine capacity (no overlap) and setup gap coverage.
+        for machine_sched in self.machine_schedules.values():
+            ops = sorted(machine_sched.operations, key=lambda x: x.start_time)
+            if ops and ops[0].setup_time > ops[0].start_time:
+                violations.append(
+                    self._build_violation(
+                        "setup_gap",
+                        f"Machine setup violation: M{machine_sched.machine_id} "
+                        f"({ops[0].job_id},{ops[0].op_id})",
+                        job_id=ops[0].job_id,
+                        op_id=ops[0].op_id,
+                        machine_id=machine_sched.machine_id,
+                        worker_id=ops[0].worker_id,
+                        details={
+                            "required_setup_time": ops[0].setup_time,
+                            "scheduled_start_time": ops[0].start_time,
+                        },
+                    )
+                )
+
+            for i in range(len(ops) - 1):
+                current_op = ops[i]
+                next_op = ops[i + 1]
+                required_start = current_op.completion_time + next_op.setup_time
+                if required_start > next_op.start_time:
+                    code = (
+                        "machine_overlap"
+                        if current_op.completion_time > next_op.start_time
+                        else "setup_gap"
+                    )
+                    violations.append(
+                        self._build_violation(
+                            code,
+                            f"Machine overlap: M{machine_sched.machine_id} "
+                            f"({current_op.job_id},{current_op.op_id}) vs ({next_op.job_id},{next_op.op_id})",
+                            job_id=next_op.job_id,
+                            op_id=next_op.op_id,
+                            machine_id=machine_sched.machine_id,
+                            worker_id=next_op.worker_id,
+                            details={
+                                "current_operation": (current_op.job_id, current_op.op_id),
+                                "next_operation": (next_op.job_id, next_op.op_id),
+                                "current_completion_time": current_op.completion_time,
+                                "required_start_time": required_start,
+                                "scheduled_start_time": next_op.start_time,
+                                "required_setup_time": next_op.setup_time,
+                            },
+                        )
+                    )
+
+        # Check worker capacity (no overlap).
         for worker_sched in self.worker_schedules.values():
             ops = sorted(worker_sched.operations, key=lambda x: x.start_time)
             for i in range(len(ops) - 1):
                 if ops[i].completion_time > ops[i + 1].start_time:
-                    self.is_feasible = False
-                    self.constraint_violations.append(
-                        f"Worker overlap: W{worker_sched.worker_id}"
+                    violations.append(
+                        self._build_violation(
+                            "worker_overlap",
+                            f"Worker overlap: W{worker_sched.worker_id}",
+                            job_id=ops[i + 1].job_id,
+                            op_id=ops[i + 1].op_id,
+                            machine_id=ops[i + 1].machine_id,
+                            worker_id=worker_sched.worker_id,
+                            details={
+                                "current_operation": (ops[i].job_id, ops[i].op_id),
+                                "next_operation": (ops[i + 1].job_id, ops[i + 1].op_id),
+                                "current_completion_time": ops[i].completion_time,
+                                "next_start_time": ops[i + 1].start_time,
+                            },
+                        )
                     )
 
-        # Check eligibility constraints
+        # Check eligibility constraints.
         for (job_id, op_id), sched_op in self.scheduled_ops.items():
             job = instance.get_job(job_id)
-            if job is None:
+            if job is None or op_id >= len(job.operations):
                 continue
-
-            op = job.operations[op_id] if op_id < len(job.operations) else None
-            if op is None:
-                continue
+            op = job.operations[op_id]
 
             if sched_op.machine_id not in op.eligible_machines:
-                self.is_feasible = False
-                self.constraint_violations.append(
-                    f"Ineligible machine: Op({job_id},{op_id}) on M{sched_op.machine_id}"
+                violations.append(
+                    self._build_violation(
+                        "ineligible_machine_assignment",
+                        f"Ineligible machine: Op({job_id},{op_id}) on M{sched_op.machine_id}",
+                        job_id=job_id,
+                        op_id=op_id,
+                        machine_id=sched_op.machine_id,
+                        worker_id=sched_op.worker_id,
+                    )
                 )
 
             if sched_op.worker_id not in op.eligible_workers:
-                self.is_feasible = False
-                self.constraint_violations.append(
-                    f"Ineligible worker: Op({job_id},{op_id}) by W{sched_op.worker_id}"
+                violations.append(
+                    self._build_violation(
+                        "ineligible_worker_assignment",
+                        f"Ineligible worker: Op({job_id},{op_id}) by W{sched_op.worker_id}",
+                        job_id=job_id,
+                        op_id=op_id,
+                        machine_id=sched_op.machine_id,
+                        worker_id=sched_op.worker_id,
+                    )
                 )
 
-        # Check period bounds (operation must lie within its assigned period)
+        # Check period bounds.
         for job in instance.jobs:
             for op in job.operations:
                 sched_op = self.get_operation(job.job_id, op.op_id)
@@ -674,77 +901,69 @@ class Schedule:
                         sched_op.start_time < op.period_start
                         or sched_op.completion_time > op.period_end
                     ):
-                        self.is_feasible = False
-                        self.constraint_violations.append(
-                            f"Period violation: Job {job.job_id} Op {op.op_id}"
+                        violations.append(
+                            self._build_violation(
+                                "period_violation",
+                                f"Period violation: Job {job.job_id} Op {op.op_id}",
+                                job_id=job.job_id,
+                                op_id=op.op_id,
+                                machine_id=sched_op.machine_id,
+                                worker_id=sched_op.worker_id,
+                                details={
+                                    "period_start": op.period_start,
+                                    "period_end": op.period_end,
+                                    "scheduled_start_time": sched_op.start_time,
+                                    "scheduled_completion_time": sched_op.completion_time,
+                                },
+                            )
                         )
 
-        # --- Human-related feasibility checks ---
-
-        # 1) Rest fraction >= 12.5% of work time for each worker
-        for worker_id, worker_sched in self.worker_schedules.items():
-            ops = sorted(worker_sched.operations, key=lambda x: x.start_time)
-            if not ops:
-                continue
-            worker = instance.get_worker(worker_id)
-            min_rest_fraction = worker.min_rest_fraction if worker else 0.125
-
-            # [FIX] Count rest from t=0 to include initial idle time
-            last_end = ops[-1].completion_time
-            total_work = sum(op.processing_time for op in ops)
-            total_rest = last_end - total_work
-
-            if total_work > 0.0:
-                rest_fraction = total_rest / total_work
-                if rest_fraction < min_rest_fraction:
-                    self.is_feasible = False
-                    self.constraint_violations.append(
+        # Human-factor feasibility checks reconstructed from the worker timelines.
+        worker_metrics = self._compute_worker_timeline_metrics(instance)
+        for worker_id, metrics in worker_metrics.items():
+            worker = metrics["worker"]
+            if metrics["elapsed"] > 0.0 and metrics["rest_fraction"] < worker.min_rest_fraction:
+                violations.append(
+                    self._build_violation(
+                        "rest_violation",
                         f"Rest fraction violation: W{worker_id} "
-                        f"(rest/work = {rest_fraction:.3f} < {min_rest_fraction:.3f})"
+                        f"(rest/elapsed = {metrics['rest_fraction']:.3f} < {worker.min_rest_fraction:.3f})",
+                        worker_id=worker_id,
+                        details={
+                            "rest_fraction": metrics["rest_fraction"],
+                            "required_rest_fraction": worker.min_rest_fraction,
+                            "elapsed": metrics["elapsed"],
+                            "total_rest": metrics["total_rest"],
+                            "total_work": metrics["total_work"],
+                        },
                     )
+                )
 
-        # 2) OCRA / ergonomic exposure <= 2.2 per shift (approximate)
-
-        # Reuse existing metric computation
-        erg_metrics = self.compute_ergonomic_metrics(instance)
-        max_exposure = erg_metrics.get("max_exposure", 0.0)
-
-        # Threshold from instance if available, else default 2.2
-        ocra_threshold = getattr(instance, "ocra_max_per_shift", 2.2)
-
-        if max_exposure > ocra_threshold:
-            self.is_feasible = False
-            self.constraint_violations.append(
-                f"Ergonomic exposure violation: "
-                f"max_exposure = {max_exposure:.3f} > {ocra_threshold:.3f}"
-            )
-
-        # --- Period-based feasibility: no two consecutive periods per worker ---
-
-        # Get canonical SHIFT_DURATION from instance workers (fallback 480.0)
-        if instance.workers:
-            shift_duration = instance.workers[0].SHIFT_DURATION
-        else:
-            shift_duration = 480.0  # default 8h
-
-        for worker_id, w_sched in self.worker_schedules.items():
-            ops = sorted(w_sched.operations, key=lambda x: x.start_time)
-            if not ops:
-                continue
-
-            # Map operations to period indices
-            periods = [int(op.start_time // shift_duration) for op in ops]
-
-            # Check for consecutive periods
-            for p_prev, p_curr in zip(periods[:-1], periods[1:]):
-                if p_curr - p_prev == 1:
-                    self.is_feasible = False
-                    self.constraint_violations.append(
-                        f"Period constraint violation: W{worker_id} "
-                        f"worked in consecutive periods {p_prev} and {p_curr}"
+            if metrics["max_shift_exposure"] > worker.ocra_max_per_shift:
+                violations.append(
+                    self._build_violation(
+                        "ocra_violation",
+                        f"Ergonomic exposure violation: W{worker_id} "
+                        f"({metrics['max_shift_exposure']:.3f} > {worker.ocra_max_per_shift:.3f})",
+                        worker_id=worker_id,
+                        details={
+                            "max_shift_exposure": metrics["max_shift_exposure"],
+                            "allowed_max_exposure": worker.ocra_max_per_shift,
+                        },
                     )
-                    break
+                )
 
+        return violations
+
+    def check_feasibility(self, instance: SFJSSPInstance) -> bool:
+        """
+        Check schedule feasibility
+        """
+        self.constraint_violation_details = self.collect_constraint_violations(instance)
+        self.constraint_violations = [
+            violation.message for violation in self.constraint_violation_details
+        ]
+        self.is_feasible = not self.constraint_violation_details
         return self.is_feasible
 
     def to_gantt_dict(self) -> dict:

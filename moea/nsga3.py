@@ -2265,13 +2265,17 @@ def evaluate_sfjssp_genome_detailed(instance: Any, genome: Dict[str, np.ndarray]
         if machine is None or worker is None:
             return _failed_genome_details(f"Missing machine/worker resource for ({job_id}, {op_idx})")
         
-        # Determine earliest possible start time
         est = max(
-            job.arrival_time,
             machine.available_time + machine.setup_time,
             worker.available_time,
             worker.mandatory_shift_lockout_until,
-            job_last_completion[job_id]
+            schedule.get_ready_time_for_assignment(
+                instance,
+                job_id,
+                op_idx,
+                next_machine_id=m_id,
+            ),
+            job_last_completion[job_id],
         )
         
         # Apply shift-skipping offset
@@ -2279,7 +2283,6 @@ def evaluate_sfjssp_genome_detailed(instance: Any, genome: Dict[str, np.ndarray]
             est = clock.period_start(clock.get_period(est) + offset)
             
         # Refine start time to satisfy hard constraints
-        pt = op.get_processing_time(m_id, mode_id, worker.get_efficiency())
         risk_rate = instance.get_ergonomic_risk(job_id, op_idx)
         
         found = False
@@ -2290,6 +2293,12 @@ def evaluate_sfjssp_genome_detailed(instance: Any, genome: Dict[str, np.ndarray]
             if not m_valid:
                 curr_t = max(curr_t, m_next)
                 continue
+
+            projected_worker = worker.__class__.from_dict(worker.to_dict())
+            projected_rest_gap = max(0.0, curr_t - worker.available_time)
+            if projected_rest_gap > 0:
+                projected_worker.record_rest(projected_rest_gap)
+            pt = op.get_processing_time(m_id, mode_id, projected_worker.get_efficiency())
 
             # 2. Worker assignment check (centralized Industry 5.0 engine)
             w_valid, w_next = worker.validate_assignment(curr_t, pt, risk_rate)
@@ -2305,19 +2314,38 @@ def evaluate_sfjssp_genome_detailed(instance: Any, genome: Dict[str, np.ndarray]
 
         if curr_t > worker.available_time:
             worker.record_rest(curr_t - worker.available_time)
+        pt = op.get_processing_time(m_id, mode_id, worker.get_efficiency())
 
-        # 5. Record operation
+        schedule.update_predecessor_transport(
+            instance,
+            job_id,
+            op_idx,
+            m_id,
+        )
+
+        actual_setup = 0.0
+        if curr_t > machine.available_time:
+            actual_setup = min(curr_t - machine.available_time, machine.setup_time)
+
         schedule.add_operation(
             job_id, op_idx, m_id, w_id, mode_id,
             curr_t, curr_t + pt, pt, 
-            machine.setup_time, getattr(op, 'transport_time', 0.0)
+            actual_setup, 0.0
         )
-        
-        # 6. Update states
+
+        prev_sched = schedule.get_operation(job_id, op_idx - 1) if op_idx > 0 else None
+        if prev_sched and prev_sched.transport_time > 0:
+            prev_machine = instance.get_machine(prev_sched.machine_id)
+            if prev_machine is not None:
+                prev_machine.total_transport_time += prev_sched.transport_time
+
         machine.available_time = curr_t + pt
         worker.available_time = curr_t + pt
-        # job_last_completion still needs local tracking or updating job objects
-        job_last_completion[job_id] = curr_t + pt + getattr(op, 'transport_time', 0.0) + getattr(op, 'waiting_time', 0.0)
+        job_last_completion[job_id] = schedule.get_ready_time_for_assignment(
+            instance,
+            job_id,
+            op_idx + 1,
+        ) if (op_idx + 1) < len(job.operations) else (curr_t + pt)
         worker.record_work(pt, risk_rate, curr_t, operation_type=op_idx)
         job_op_ptr[job_id] += 1
         

@@ -14,7 +14,9 @@ from datetime import datetime
 from typing import Any, Dict, List, Sequence
 
 try:
+    from ..experiments.artifact_schemas import POLICY_ANALYSIS_ARTIFACT_SCHEMA
     from ..experiments.compare_solvers import (
+        _get_git_status_short,
         _details_like_payload,
         _summarize_feasible_member_pool,
         load_benchmark,
@@ -34,7 +36,9 @@ try:
         evaluate_sfjssp_genome_detailed,
     )
 except ImportError:  # pragma: no cover - supports repo-root imports
+    from experiments.artifact_schemas import POLICY_ANALYSIS_ARTIFACT_SCHEMA
     from experiments.compare_solvers import (
+        _get_git_status_short,
         _details_like_payload,
         _summarize_feasible_member_pool,
         load_benchmark,
@@ -77,6 +81,7 @@ def _get_git_commit() -> str | None:
 
 
 def _record_to_individual(record: Dict[str, Any], policy: str) -> Individual:
+    metrics = dict(record.get("metrics") or {})
     raw_objectives = list(record.get("raw_objectives") or [])
     penalized_objectives = list(record.get("penalized_objectives") or raw_objectives)
     objectives = (
@@ -90,15 +95,49 @@ def _record_to_individual(record: Dict[str, Any], policy: str) -> Individual:
         raw_objectives=raw_objectives,
         penalized_objectives=penalized_objectives,
         penalties=dict(record.get("penalties") or {}),
-        metrics=dict(record.get("metrics") or {}),
+        metrics=metrics,
         constraint_violations=list(record.get("constraint_violations") or []),
         constraint_key=tuple(record.get("constraint_key") or (0.0, 0.0, 0.0, 0.0)),
         is_feasible=bool(record.get("is_feasible", True)),
         makespan=float(record.get("makespan", 0.0) or 0.0),
-        energy=float(record.get("energy", 0.0) or 0.0),
-        ergonomic_risk=float(record.get("ergonomic_risk", 0.0) or 0.0),
-        labor_cost=float(record.get("labor_cost", 0.0) or 0.0),
+        energy=float(metrics.get("total_energy", record.get("energy", 0.0)) or 0.0),
+        ergonomic_risk=float(
+            metrics.get("max_ergonomic_exposure", record.get("ergonomic_risk", 0.0)) or 0.0
+        ),
+        labor_cost=float(metrics.get("total_labor_cost", record.get("labor_cost", 0.0)) or 0.0),
     )
+
+
+def _build_policy_analysis_provenance(
+    benchmark_dir: str,
+    output_path: str,
+    generations: int,
+    population_size: int,
+    seed: int,
+    warm_start: bool,
+    report_member_policy: str,
+    command: str = "",
+) -> Dict[str, Any]:
+    """Build artifact provenance for the policy analysis output."""
+    git_status_short = _get_git_status_short()
+    return {
+        "artifact_schema": POLICY_ANALYSIS_ARTIFACT_SCHEMA,
+        "timestamp": datetime.now().isoformat(),
+        "git_commit": _get_git_commit(),
+        "git_dirty": bool(git_status_short),
+        "git_status_short": git_status_short,
+        "command": command or "python -m experiments.analyze_nsga_policies",
+        "benchmark_dir": benchmark_dir,
+        "output_path": output_path,
+        "nsga3_generations": generations,
+        "nsga3_population_size": population_size,
+        "nsga3_seed": seed,
+        "nsga3_warm_start": warm_start,
+        "baseline_constraint_handling": NSGA3_DEFAULT_CONSTRAINT_HANDLING,
+        "analysis_policies": list(ANALYSIS_POLICIES),
+        "nsga3_report_member_policy": report_member_policy,
+        "python_version": sys.version.split()[0],
+    }
 
 
 def _replay_snapshot(
@@ -160,11 +199,13 @@ def _average(values: Sequence[float | None]) -> float | None:
 
 def run_policy_analysis(
     benchmark_dir: str,
+    output_path: str,
     generations: int,
     population_size: int,
     seed: int,
     warm_start: bool,
     report_member_policy: str,
+    command: str = "",
 ) -> Dict[str, Any]:
     files = sorted(
         os.path.join(benchmark_dir, name)
@@ -261,20 +302,16 @@ def run_policy_analysis(
         )
 
     return {
-        "provenance": {
-            "artifact_schema": "nsga_policy_analysis_v1",
-            "timestamp": datetime.now().isoformat(),
-            "git_commit": _get_git_commit(),
-            "benchmark_dir": benchmark_dir,
-            "nsga3_generations": generations,
-            "nsga3_population_size": population_size,
-            "nsga3_seed": seed,
-            "nsga3_warm_start": warm_start,
-            "baseline_constraint_handling": NSGA3_DEFAULT_CONSTRAINT_HANDLING,
-            "analysis_policies": list(ANALYSIS_POLICIES),
-            "nsga3_report_member_policy": report_member_policy,
-            "python_version": sys.version.split()[0],
-        },
+        "provenance": _build_policy_analysis_provenance(
+            benchmark_dir=benchmark_dir,
+            output_path=output_path,
+            generations=generations,
+            population_size=population_size,
+            seed=seed,
+            warm_start=warm_start,
+            report_member_policy=report_member_policy,
+            command=command,
+        ),
         "results": results,
         "summary": summary,
     }
@@ -299,11 +336,13 @@ def main() -> None:
 
     payload = run_policy_analysis(
         benchmark_dir=args.benchmark_dir,
+        output_path=args.output,
         generations=args.generations,
         population_size=args.population_size,
         seed=args.seed,
         warm_start=not args.no_nsga_warm_start,
         report_member_policy=args.nsga_report_member_policy,
+        command=" ".join(sys.argv),
     )
 
     os.makedirs(os.path.dirname(args.output), exist_ok=True)

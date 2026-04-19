@@ -5,6 +5,10 @@ import pytest
 try:
     from ..experiments.compare_solvers import load_benchmark
     from ..exact_solvers.cp_solver import MIPScheduler, solve_sfjssp
+    from ..sfjssp_model.instance import SFJSSPInstance
+    from ..sfjssp_model.job import Job, Operation
+    from ..sfjssp_model.machine import Machine, MachineMode
+    from ..sfjssp_model.worker import Worker
     from ..training.train_drl import (
         TrainingConfig,
         TrainingPipeline,
@@ -19,6 +23,10 @@ try:
 except ImportError:  # pragma: no cover - supports repo-root imports
     from experiments.compare_solvers import load_benchmark
     from exact_solvers.cp_solver import MIPScheduler, solve_sfjssp
+    from sfjssp_model.instance import SFJSSPInstance
+    from sfjssp_model.job import Job, Operation
+    from sfjssp_model.machine import Machine, MachineMode
+    from sfjssp_model.worker import Worker
     from training.train_drl import (
         TrainingConfig,
         TrainingPipeline,
@@ -32,33 +40,66 @@ except ImportError:  # pragma: no cover - supports repo-root imports
     )
 
 
+def _build_cp_fixture(setup_time: float = 0.0) -> SFJSSPInstance:
+    instance = SFJSSPInstance(instance_id=f"cp_fixture_setup_{setup_time}")
+    instance.add_machine(
+        Machine(
+            machine_id=0,
+            setup_time=setup_time,
+            modes=[MachineMode(mode_id=0)],
+        )
+    )
+    instance.add_worker(
+        Worker(
+            worker_id=0,
+            min_rest_fraction=0.0,
+            ocra_max_per_shift=999.0,
+            fatigue_rate=0.0,
+            recovery_rate=0.0,
+        )
+    )
+    instance.add_job(
+        Job(
+            job_id=0,
+            arrival_time=0.0,
+            due_date=100.0,
+            operations=[
+                Operation(
+                    job_id=0,
+                    op_id=0,
+                    processing_times={0: {0: 10.0}},
+                    eligible_machines={0},
+                    eligible_workers={0},
+                )
+            ],
+        )
+    )
+    instance.ergonomic_risk_map[(0, 0)] = 0.0
+    return instance
+
+
 def test_cp_solver_smoke_when_ortools_installed():
     pytest.importorskip("ortools")
 
-    benchmark_dir = Path(__file__).resolve().parents[1] / "benchmarks" / "small"
-    benchmark_paths = [
-        benchmark_dir / "SFJSSP_small_000.json",
-        benchmark_dir / "SFJSSP_small_001.json",
-    ]
+    instance = _build_cp_fixture(setup_time=0.0)
+    schedule = solve_sfjssp(
+        instance,
+        method="cp",
+        objective="makespan",
+        time_limit=5,
+        verbose=False,
+    )
 
-    for benchmark in benchmark_paths:
-        instance = load_benchmark(str(benchmark))
-        schedule = solve_sfjssp(
-            instance,
-            method="cp",
-            objective="makespan",
-            time_limit=60,
-            verbose=False,
-        )
-
-        assert schedule is not None
-        assert schedule.is_feasible
-        assert len(schedule.scheduled_ops) == sum(len(job.operations) for job in instance.jobs)
+    assert schedule is not None
+    assert schedule.is_feasible
+    assert len(schedule.scheduled_ops) == 1
+    assert schedule.metadata["solver"] == "cp_sat"
+    assert schedule.metadata["solver_objective"] == "makespan"
+    assert schedule.metadata["surrogate_objective"] is False
+    assert schedule.metadata["surrogate_timing"] is False
 
 
-def test_mip_solver_is_quarantined_when_ortools_installed():
-    pytest.importorskip("ortools")
-
+def test_mip_solver_is_quarantined():
     scheduler = MIPScheduler(time_limit=1)
     with pytest.raises(NotImplementedError, match="quarantined"):
         scheduler.solve(None, verbose=False)
@@ -67,17 +108,44 @@ def test_mip_solver_is_quarantined_when_ortools_installed():
 def test_cp_non_makespan_objective_warns_when_ortools_installed():
     pytest.importorskip("ortools")
 
-    generator = BenchmarkGenerator(GeneratorConfig(size=InstanceSize.SMALL, seed=11, n_jobs=1, n_machines=1, n_workers=1))
-    instance = generator.generate()
+    instance = _build_cp_fixture(setup_time=0.0)
 
     with pytest.warns(UserWarning, match="experimental"):
-        solve_sfjssp(
+        schedule = solve_sfjssp(
             instance,
             method="cp",
             objective="energy",
             time_limit=1,
             verbose=False,
         )
+
+    assert schedule is not None
+    assert schedule.metadata["surrogate_objective"] is True
+    assert schedule.metadata["solver_objective"] == "energy"
+
+
+def test_cp_setup_gap_truth_metadata_when_ortools_installed():
+    pytest.importorskip("ortools")
+
+    instance = _build_cp_fixture(setup_time=5.0)
+    with pytest.warns(UserWarning, match="infeasible under the canonical"):
+        schedule = solve_sfjssp(
+            instance,
+            method="cp",
+            objective="makespan",
+            time_limit=5,
+            verbose=False,
+        )
+
+    assert schedule is not None
+    assert schedule.is_feasible is False
+    assert schedule.metadata["surrogate_timing"] is True
+    assert schedule.metadata["surrogate_timing_reason"] == "machine_setup_not_encoded_in_cp_intervals"
+
+
+def test_solve_sfjssp_mip_method_is_quarantined():
+    with pytest.raises(NotImplementedError, match="quarantined"):
+        solve_sfjssp(_build_cp_fixture(), method="mip", verbose=False)
 
 
 def test_torch_training_smoke_when_torch_installed(tmp_path):

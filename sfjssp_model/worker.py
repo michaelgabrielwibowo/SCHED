@@ -1,13 +1,11 @@
 """
-Worker data structure for SFJSSP
+Worker data structure for SFJSSP.
 
-Evidence Status:
-- Worker skills and eligibility: CONFIRMED from DRCFJSSP literature
-- Labor cost: CONFIRMED from DRCFJSSP literature
-- Fatigue dynamics: CONFIRMED from DyDFJSP 2023
-- Ergonomic risk (OCRA): CONFIRMED from NSGA-III 2021 study
-- Learning effects: CONFIRMED from learning curve literature
-- Rest constraints: CONFIRMED from target survey (12.5% minimum)
+Executable status:
+- Skills, labor cost, rest limits, and OCRA limits are enforced.
+- Fatigue is tracked as a lightweight runtime state and affects efficiency.
+- Learning metadata is stored, but it is not yet part of the canonical
+  schedule semantics.
 """
 
 from dataclasses import dataclass, field
@@ -118,13 +116,13 @@ class Worker:
     max_consecutive_work_time: float = 480.0  # Maximum 8 hours continuous work
     current_work_duration: float = 0.0  # Time worked since last rest
     
-    # [CHANGED] Added tracking for mandatory rest and shift lockout
+    # Track cumulative work/rest and shift lockout derived from OCRA or max work
     total_work_time: float = 0.0
     total_rest_time: float = 0.0
     SHIFT_DURATION: float = 480.0 # 8 hour period length
     mandatory_shift_lockout_until: float = 0.0
 
-    # NEW: remember period index for this work
+    # Historical period tracking for audit/serialization only
     worked_periods: Set[int] = field(default_factory=set)
 
     # [FIX 6] shared period clock
@@ -162,8 +160,11 @@ class Worker:
             recovery_rate=data.get('recovery_rate', 0.05),
             fatigue_max=data.get('fatigue_max', 1.0),
             ocra_max_per_shift=data.get('ocra_max_per_shift', 2.2),
+            ergonomic_tolerance=data.get('ergonomic_tolerance', 1.0),
             learning_coefficient=data.get('learning_coefficient', 0.1),
             min_rest_fraction=data.get('min_rest_fraction', 0.125),
+            max_consecutive_work_time=data.get('max_consecutive_work_time', 480.0),
+            SHIFT_DURATION=data.get('SHIFT_DURATION', 480.0),
         )
         # Skills
         raw_skills = data.get('skills', {})
@@ -175,13 +176,20 @@ class Worker:
         w.fatigue_current = data.get('fatigue_current', 0.0)
         w.ocra_current_shift = data.get('ocra_current_shift', 0.0)
         w.current_state = WorkerState(data.get('current_state', 'idle'))
+        w.current_job = data.get('current_job')
+        w.current_operation = data.get('current_operation')
         w.available_time = data.get('available_time', 0.0)
+        w.current_shift = data.get('current_shift', 0)
+        w.shift_start_time = data.get('shift_start_time', 0.0)
         w.is_absent = data.get('is_absent', False)
+        w.absence_end_time = data.get('absence_end_time')
         w.total_work_time = data.get('total_work_time', 0.0)
         w.total_rest_time = data.get('total_rest_time', 0.0)
         w.mandatory_shift_lockout_until = data.get('mandatory_shift_lockout_until', 0.0)
         w.current_work_duration = data.get('current_work_duration', 0.0)
         w.worked_periods = set(data.get('worked_periods', []))
+        w._last_worked_period = data.get('_last_worked_period', -1)
+        w.ocra_risk_rate_unit = data.get('ocra_risk_rate_unit', "OCRA-index per minute")
         raw_completed = data.get('operations_completed', {})
         w.operations_completed = {int(k): int(v) for k, v in raw_completed.items()}
         return w
@@ -195,20 +203,13 @@ class Worker:
 
     def can_work_in_period(self, start_time: float, end_time: float) -> bool:
         """
-        Strict period rule:
-        - Let p be the period index of this operation (by start_time).
-        - Forbid assignment if |p - q| == 1 for any q in worked_periods
-          (no back-to-back consecutive periods).
+        Canonical worker semantics only require a task to stay within one period.
         """
-        p = self.period_clock.get_period(start_time)
-        for q in self.worked_periods:
-            if abs(p - q) == 1:
-                return False
-        return True
+        return not self.period_clock.crosses_boundary(start_time, end_time)
 
     def validate_assignment(self, start_time: float, duration: float, risk_rate: float) -> Tuple[bool, float]:
         """
-        Industry 5.0 validation engine. Checks all worker constraints.
+        Validate one proposed worker assignment against canonical worker rules.
         Returns Tuple[bool, float] as (is_valid, suggested_start_time).
         
         Logic mapping to JMSY-9 §5.2.3:
@@ -223,23 +224,18 @@ class Worker:
         if not self.is_available(start_time):
             return False, max(self.available_time, self.mandatory_shift_lockout_until)
 
-        # 2. Period rule (no back-to-back periods)
-        p = self.period_clock.get_period(start_time)
-        for q in self.worked_periods:
-            if abs(p - q) == 1:
-                return False, self.period_clock.period_start(p + 1)
-
-        # 3. Mandatory rest rule (12.5%)
+        # 2. Mandatory rest rule
         m_rest = self.requires_mandatory_rest(duration, start_time)
         if m_rest > 0:
             return False, start_time + m_rest
 
-        # 4. Period boundary rule (Task cannot span two periods)
-        if self.period_clock.crosses_boundary(start_time, start_time + duration):
-            return False, self.period_clock.period_start(p + 1)
-
-        # 5. Ergonomic / OCRA limit check
         current_period = self.period_clock.get_period(start_time)
+
+        # 3. Period boundary rule (task cannot span two periods)
+        if self.period_clock.crosses_boundary(start_time, start_time + duration):
+            return False, self.period_clock.period_start(current_period + 1)
+
+        # 4. Ergonomic / OCRA limit check
         temp_ocra = self.ocra_current_shift
         
         # If starting in a new period, OCRA resets
@@ -249,7 +245,7 @@ class Worker:
         if temp_ocra + (risk_rate * duration) > self.ocra_max_per_shift:
             return False, self.period_clock.period_start(current_period + 1)
 
-        # 6. Consecutive work limit
+        # 5. Continuous-work limit
         temp_work_dur = self.current_work_duration
         if current_period != self._last_worked_period and self._last_worked_period >= 0:
             temp_work_dur = 0.0
@@ -261,11 +257,7 @@ class Worker:
 
     def get_efficiency(self) -> float:
         """
-        Get current efficiency considering fatigue and learning
-
-        Evidence:
-        - Fatigue reduces efficiency [CONFIRMED DyDFJSP 2023]
-        - Learning improves efficiency [CONFIRMED learning curve literature]
+        Get current runtime efficiency.
 
         Returns:
             float: Current efficiency (0.0-2.0 typical range)
@@ -286,9 +278,10 @@ class Worker:
         operation_type: int
     ) -> float:
         """
-        Adjust processing time based on learning curve
+        Auxiliary learning-curve helper.
 
-        Evidence: Learning curve t_n = t_1 * n^(-gamma) [CONFIRMED]
+        This method is not part of the canonical schedule semantics yet. It is
+        retained as metadata/scaffolding until learning is enforced end to end.
 
         Args:
             base_time: Standard processing time for operation
@@ -368,15 +361,14 @@ class Worker:
         current_time: float = 0.0,
         operation_type: Optional[int] = None,
     ) -> float:
-        """Record work period; resets OCRA/fatigue at period boundaries. Returns start_time used."""
-        # --- FIX 6: Period-boundary OCRA reset ---
+        """Record work period and update OCRA/fatigue state."""
         current_period = self.period_clock.get_period(current_time)
         actual_start_t = current_time
         
         if current_period != self._last_worked_period and self._last_worked_period >= 0:
             # Worker crossed into a new period — reset per-period OCRA accumulator
-            self.ocra_current_shift = risk_rate * duration  # only this operation's exposure
-            self.current_work_duration = duration           # reset consecutive-work counter
+            self.ocra_current_shift = risk_rate * duration
+            self.current_work_duration = duration
         else:
             self.current_work_duration += duration
             self.ocra_current_shift += risk_rate * duration
@@ -399,8 +391,8 @@ class Worker:
             # Lock the worker out for the next 8-hour period
             next_period_start = self.period_clock.period_start(current_period + 1)
             self.mandatory_shift_lockout_until = next_period_start
-            self.current_work_duration = 0.0 # Reset for their next shift
-            self.ocra_current_shift = 0.0    # Reset daily ergonomic risk
+            self.current_work_duration = 0.0
+            self.ocra_current_shift = 0.0
             
         return actual_start_t
 
@@ -412,22 +404,17 @@ class Worker:
 
     def requires_mandatory_rest(self, proposed_task_duration: float, current_time: float) -> float:
         """
-        Calculates if adding a new task violates the 12.5% rest rule.
-        Returns the amount of mandatory rest time needed before starting the task.
+        Return the rest time needed so rest/(work+rest) stays above the minimum.
         """
-        # If this is the first task, no rest required yet
         if current_time == 0:
             return 0.0
             
         projected_worked_time = self.total_work_time + proposed_task_duration
         projected_total_time = current_time + proposed_task_duration
         
-        # Calculate maximum allowed work time for this time span (87.5%)
         max_allowed_work = projected_total_time * (1.0 - self.min_rest_fraction)
         
         if projected_worked_time > max_allowed_work:
-            # Calculate exactly how much rest is needed to balance the ratio
-            # Formula: Rest Needed = (Projected Work / 0.875) - Projected Total Time
             required_total_time = projected_worked_time / (1.0 - self.min_rest_fraction)
             mandatory_rest_deficit = required_total_time - projected_total_time
             return mandatory_rest_deficit
@@ -454,7 +441,7 @@ class Worker:
         return False
 
     def get_rest_fraction(self) -> float:
-        """Get current rest fraction"""
+        """Get current elapsed-time rest fraction."""
         total_time = self.total_work_time + self.total_rest_time
         if total_time == 0:
             return 0.0
@@ -549,16 +536,26 @@ class Worker:
             'fatigue_current': self.fatigue_current,
             'ocra_max_per_shift': self.ocra_max_per_shift,
             'ocra_current_shift': self.ocra_current_shift,
+            'ergonomic_tolerance': self.ergonomic_tolerance,
             'learning_coefficient': self.learning_coefficient,
             'min_rest_fraction': self.min_rest_fraction,
+            'max_consecutive_work_time': self.max_consecutive_work_time,
+            'SHIFT_DURATION': self.SHIFT_DURATION,
+            'ocra_risk_rate_unit': self.ocra_risk_rate_unit,
             'current_state': self.current_state.value,
+            'current_job': self.current_job,
+            'current_operation': self.current_operation,
             'available_time': self.available_time,
+            'current_shift': self.current_shift,
+            'shift_start_time': self.shift_start_time,
             'is_absent': self.is_absent,
+            'absence_end_time': self.absence_end_time,
             'total_work_time': self.total_work_time,
             'total_rest_time': self.total_rest_time,
             'mandatory_shift_lockout_until': self.mandatory_shift_lockout_until,
             'current_work_duration': self.current_work_duration,
             'worked_periods': sorted(self.worked_periods),
+            '_last_worked_period': self._last_worked_period,
             'operations_completed': {
                 str(k): v for k, v in self.operations_completed.items()
             },

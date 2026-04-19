@@ -1,71 +1,105 @@
 #!/usr/bin/env python
 """
-Benchmark generation CLI and compatibility surface.
+Canonical benchmark generation CLI.
 
-The canonical generator implementation lives in `utils.benchmark_generator`.
-This module keeps the existing experiment-facing import path and CLI stable.
+This is the single public entrypoint for generating benchmark instances and
+suite metadata. The generation semantics live in `utils.benchmark_generator`.
 """
 
 from pathlib import Path
+from typing import Iterable, List, Optional
 
 try:
     from ..utils.benchmark_generator import (
+        BENCHMARK_DOCUMENT_SCHEMA,
+        BENCHMARK_DOCUMENT_VERSION,
+        DEFAULT_SUITE_SIZES,
+        SUPPORTED_INSTANCE_SIZES,
         BenchmarkGenerator,
         GeneratorConfig,
         InstanceSize,
+        coerce_instance_size,
+        get_size_preset_table,
     )
 except ImportError:  # pragma: no cover - supports repo-root imports
     from utils.benchmark_generator import (
+        BENCHMARK_DOCUMENT_SCHEMA,
+        BENCHMARK_DOCUMENT_VERSION,
+        DEFAULT_SUITE_SIZES,
+        SUPPORTED_INSTANCE_SIZES,
         BenchmarkGenerator,
         GeneratorConfig,
         InstanceSize,
+        coerce_instance_size,
+        get_size_preset_table,
     )
 
 
-def generate_suite(output_dir: str = "benchmarks", n_per_size: int = 5):
-    """Generate the published benchmark suite layout."""
+def _normalize_sizes(sizes: Optional[Iterable[object]]) -> List[InstanceSize]:
+    """Return validated size presets in user-specified order."""
+    requested = list(sizes) if sizes is not None else list(DEFAULT_SUITE_SIZES)
+    normalized: List[InstanceSize] = []
+    for value in requested:
+        size = coerce_instance_size(value)
+        if size not in normalized:
+            normalized.append(size)
+    return normalized
+
+
+def parse_size_csv(size_csv: str) -> List[InstanceSize]:
+    """Parse a comma-separated size list from the CLI."""
+    values = [chunk.strip() for chunk in size_csv.split(",") if chunk.strip()]
+    if not values:
+        raise ValueError("At least one size must be provided")
+    return _normalize_sizes(values)
+
+
+def generate_suite(
+    output_dir: str = "benchmarks",
+    n_per_size: int = 5,
+    sizes: Optional[Iterable[object]] = None,
+    base_seed: int = 42,
+    is_dynamic: bool = False,
+):
+    """Generate the published benchmark suite layout from the canonical generator."""
+    selected_sizes = _normalize_sizes(sizes)
+    generator = BenchmarkGenerator(
+        GeneratorConfig(
+            size=selected_sizes[0],
+            seed=base_seed,
+            is_dynamic=is_dynamic,
+        )
+    )
+    instances = generator.generate_suite(
+        sizes=selected_sizes,
+        instances_per_size=n_per_size,
+        base_seed=base_seed,
+    )
+    generator.save_suite(instances, output_dir)
+
     print("=" * 60)
     print("SFJSSP Benchmark Suite Generator")
     print("=" * 60)
-
-    root = Path(output_dir)
-    sizes = [InstanceSize.SMALL, InstanceSize.MEDIUM]
-
-    for size in sizes:
-        print(f"\n--- {size.value.upper()} Instances ---")
-        size_dir = root / size.value
-        size_dir.mkdir(parents=True, exist_ok=True)
-
-        for idx in range(n_per_size):
-            config = GeneratorConfig(
-                size=size,
-                seed=42 + idx,
-                instance_id=f"SFJSSP_{size.value}_{idx:03d}",
-            )
-            generator = BenchmarkGenerator(config)
-            instance = generator.generate()
-            generator.save_instance(instance, str(size_dir / f"{instance.instance_id}.json"))
-            print(
-                f"  {instance.instance_id}: "
-                f"J={instance.n_jobs}, M={instance.n_machines}, W={instance.n_workers}"
-            )
-
-    print(f"\nGenerated {n_per_size * len(sizes)} instances to {root}")
+    print(f"Schema: {BENCHMARK_DOCUMENT_SCHEMA} v{BENCHMARK_DOCUMENT_VERSION}")
+    print(f"Supported sizes: {[size.value for size in SUPPORTED_INSTANCE_SIZES]}")
+    print(f"Generated {len(instances)} instances into {Path(output_dir)}")
+    return instances
 
 
-def generate_example(output_dir: str = "benchmarks/examples"):
+def generate_example(
+    output_dir: str = "benchmarks",
+    seed: int = 42,
+    is_dynamic: bool = False,
+):
     """Generate a single example benchmark instance."""
-    print("=" * 60)
-    print("Generating Example Instance")
-    print("=" * 60)
-
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
     config = GeneratorConfig(
         size=InstanceSize.SMALL,
-        seed=42,
-        instance_id="SFJSSP_EXAMPLE_001",
+        seed=seed,
+        is_dynamic=is_dynamic,
+        instance_id="SFJSSP_example_001",
     )
     generator = BenchmarkGenerator(config)
     instance = generator.generate()
@@ -73,42 +107,46 @@ def generate_example(output_dir: str = "benchmarks/examples"):
     filepath = output_path / "example_001.json"
     generator.save_instance(instance, str(filepath))
 
-    print(f"\nGenerated: {instance}")
-    print(f"  Jobs: {instance.n_jobs}")
-    print(f"  Machines: {instance.n_machines}")
-    print(f"  Workers: {instance.n_workers}")
-    print(f"  Operations: {instance.n_operations}")
+    print("=" * 60)
+    print("Generated Example Benchmark")
+    print("=" * 60)
+    print(f"Schema: {BENCHMARK_DOCUMENT_SCHEMA} v{BENCHMARK_DOCUMENT_VERSION}")
+    print(f"Size presets: {get_size_preset_table()}")
+    print(f"Saved to: {filepath}")
+    return instance
 
-    print("\nSample machines:")
-    for machine in instance.machines[:2]:
-        print(
-            f"  M{machine.machine_id}: "
-            f"P={machine.power_processing:.1f}kW, idle={machine.power_idle:.1f}kW"
+
+def main(argv: Optional[List[str]] = None) -> int:
+    """Run the canonical benchmark generator CLI."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Generate canonical SFJSSP benchmarks")
+    parser.add_argument("--mode", choices=["example", "suite"], default="example")
+    parser.add_argument("--output", type=str, default="benchmarks")
+    parser.add_argument("--n", type=int, default=5, help="Instances per size when --mode suite")
+    parser.add_argument(
+        "--sizes",
+        type=str,
+        default="small,medium",
+        help="Comma-separated size presets for --mode suite",
+    )
+    parser.add_argument("--base-seed", type=int, default=42)
+    parser.add_argument("--dynamic", action="store_true", help="Emit dynamic benchmark instances")
+
+    args = parser.parse_args(argv)
+
+    if args.mode == "example":
+        generate_example(args.output, seed=args.base_seed, is_dynamic=args.dynamic)
+    else:
+        generate_suite(
+            output_dir=args.output,
+            n_per_size=args.n,
+            sizes=parse_size_csv(args.sizes),
+            base_seed=args.base_seed,
+            is_dynamic=args.dynamic,
         )
-
-    print("\nSample workers:")
-    for worker in instance.workers[:2]:
-        print(
-            f"  W{worker.worker_id}: "
-            f"${worker.labor_cost_per_hour:.1f}/hr, fatigue={worker.fatigue_rate:.3f}"
-        )
-
-    print(f"\nSaved to: {filepath}")
+    return 0
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Generate SFJSSP benchmarks")
-    parser.add_argument("--mode", choices=["example", "suite"], default="example")
-    parser.add_argument("--output", type=str, default="benchmarks")
-    parser.add_argument("--n", type=int, default=5, help="Instances per size (for suite)")
-
-    args = parser.parse_args()
-
-    if args.mode == "example":
-        generate_example(args.output)
-    else:
-        generate_suite(args.output, args.n)
-
-    print("\nDone!")
+    raise SystemExit(main())

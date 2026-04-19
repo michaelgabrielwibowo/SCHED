@@ -10,20 +10,70 @@ This codebase implements scheduling optimization for manufacturing systems consi
 - **Human objectives**: Ergonomic risk, worker fatigue, labor cost
 - **Schedule robustness**: Load balance and slack buffer against disruptions
 
-## Evidence Status
+## Canonical Semantics
 
-**IMPORTANT**: This is a **research implementation** based on synthesis of literature components:
+The current source-of-truth scheduling semantics are documented in
+[SEMANTICS.md](/C:/Users/s1233/SCHEDULE/SEMANTICS.md).
 
-| Component | Source | Status |
-|-----------|--------|--------|
-| Basic FJSSP structure | Standard scheduling literature | CONFIRMED |
-| Dual-resource (DRCFJSSP) | Gong et al. 2018, others | CONFIRMED |
-| Energy modeling | E-DFJSP 2025 | CONFIRMED |
-| Fatigue dynamics | DyDFJSP 2023 | CONFIRMED |
-| Ergonomic indices (OCRA) | NSGA-III 2021 study | CONFIRMED |
-| **Full SFJSSP integration** | **This work** | **PROPOSED** |
+This repository is a research implementation. Literature informed many
+components, but the integrated executable problem here is defined by the code
+and `SEMANTICS.md`, not by any single paper or survey.
 
-**No existing paper validates this exact combination.** This is a novel research implementation.
+## External Input Contract
+
+The first external workflow slice is available under `interfaces/` through the
+versioned schema `sfjssp_external_v1`, exposed as either a JSON document or a
+fixed CSV bundle that normalizes into the same canonical payload.
+
+Current supported top-level sections:
+- `schema`
+- `metadata`
+- `defaults`
+- `machines`
+- `workers`
+- `jobs`
+
+Current v1 behavior:
+- durations are in minutes
+- machine power is in kW
+- energy inputs are in kWh
+- labor cost is in currency per hour
+- ergonomic risk rates are in OCRA-index per minute
+- operation precedence is the list order within each job
+- operation transport and waiting delays are provided per operation
+- unknown fields are rejected in strict mode
+- reserved top-level sections `transport`, `calendar`, and `events` are rejected in v1 instead of being silently ignored
+
+The importer is intentionally narrower than `SFJSSPInstance.to_dict()`. It is a
+thin validation layer over the canonical model, not a second semantics engine.
+
+```python
+from interfaces import load_instance_from_csv_bundle, load_instance_from_json
+
+imported = load_instance_from_json("tests/fixtures/interfaces/valid_minimal.json")
+instance = imported.instance
+
+csv_imported = load_instance_from_csv_bundle(
+    "tests/fixtures/interfaces_csv/valid_minimal"
+)
+```
+
+The matching audit surface is `build_schedule_audit(...)`, which emits the
+versioned payload `schedule_audit_v1` from the canonical schedule oracle rather
+than from solver-specific diagnostics.
+
+Stable file exports are written by `export_schedule_artifacts(...)`, which
+produces `run_manifest.json`, `schedule.json`, `operations.csv`,
+`machine_timeline.csv`, `worker_timeline.csv`, `violations.json`, and
+`violations.csv`.
+
+CLI happy path:
+
+```bash
+python -m interfaces.cli validate-input --input tests/fixtures/interfaces/valid_minimal.json
+python -m interfaces.cli run --input tests/fixtures/interfaces/valid_minimal.json --solver greedy:spt --output-dir out
+python -m interfaces.cli validate-input --input tests/fixtures/interfaces_csv/valid_minimal
+```
 
 ## Project Structure
 
@@ -73,9 +123,9 @@ pip install torch
 pip install ortools>=9.8.0
 ```
 
-Only the CP `makespan` path is currently verified in this repository. CP
-objectives `energy`, `ergonomic`, and `composite` remain experimental until
-they are revalidated against the schedule-level metrics.
+`Schedule.check_feasibility()` and `Schedule.evaluate()` are the canonical
+oracle. Solver paths that cannot yet match that oracle exactly should be
+treated as research paths rather than normative references.
 
 ### Development
 
@@ -89,6 +139,7 @@ pytest -q
 
 ```bash
 python -m experiments.generate_benchmarks --mode example --output benchmarks
+python -m experiments.generate_benchmarks --mode suite --sizes small,medium --output benchmarks
 ```
 
 ### 2. Run Greedy Scheduler
@@ -153,6 +204,7 @@ machine_idx, worker_idx, mode_idx = np.argwhere(
 )[0]
 action = {
     "job_idx": job_idx,
+    "op_idx": 0,
     "machine_idx": int(machine_idx),
     "worker_idx": int(worker_idx),
     "mode_idx": int(mode_idx),
@@ -211,12 +263,21 @@ pareto = nsga3.get_pareto_solutions()
 
 The benchmark generator creates instances with explicit labeling:
 - **FULLY_SYNTHETIC**: All parameters computer-generated
-- **CALIBRATED_SYNTHETIC**: Calibrated against literature values
+- **CALIBRATED_SYNTHETIC**: Synthetic instances whose parameter ranges were
+  chosen with literature-informed defaults, not factory calibration
 
-Calibration sources:
-- Fatigue parameters: DyDFJSP 2023
-- Energy parameters: E-DFJSP 2025
-- Ergonomic parameters: NSGA-III 2021
+Saved benchmark documents are emitted under the canonical schema documented in
+`utils/benchmark_document.schema.json`. New generated artifacts include
+document type/version fields and generator provenance so benchmark inputs can be
+reconstructed from one public contract.
+
+Committed benchmark policy:
+- `benchmarks/small/*.json` and `benchmarks/medium/*.json` are the canonical
+  regression fixtures loaded by `pytest`.
+- `benchmarks/large/`, `benchmarks/example_001.json`, and
+  `experiments/results/` are disposable generated outputs. They should be
+  regenerated locally when needed rather than treated as committed regression
+  artifacts.
 
 ### Instance Sizes
 
@@ -225,6 +286,11 @@ Calibration sources:
 | Small | 10 | 5 | 5 |
 | Medium | 50 | 10 | 10 |
 | Large | 200 | 20 | 20 |
+
+The public generator does not expose an `industrial` preset. The environment
+currently enforces the same upper bound as the `large` preset (`200/20/20`), so
+larger synthetic scales should not be published as supported benchmarks until
+runtime parity exists.
 
 ## Objectives
 
@@ -271,17 +337,27 @@ python verify_all_solvers.py
 
 - Root package import works from a clean repo checkout.
 - Small and medium benchmark JSON files load as full instances and are exercised in pytest.
+- `benchmarks/small` and `benchmarks/medium` are the only committed benchmark
+  fixtures; generated large/example slices and `experiments/results/` are
+  intentionally disposable outputs.
 - Due dates are modeled as soft constraints via tardiness objectives, not feasibility rejection.
 - The Gym environment now returns a true flat `Box` observation when `use_graph_state=False`.
 - NSGA-III now encodes machine modes and the bundled demo produces non-penalty schedules.
 - `torch` and `ortools` are optional, and both optional paths have now been smoke-tested in this environment.
-- The CP exact solver is smoke-verified for the `makespan` objective on stored small benchmarks.
-- CP objective variants `energy`, `ergonomic`, and `composite` remain experimental until they are revalidated against the schedule-level objective calculations.
+- The CP-SAT path is parity-tested only on narrow canonical fixtures for the
+  `makespan` objective; non-makespan objectives remain experimental surrogate
+  modes, and stored small benchmarks are not yet parity-validated under machine
+  setup semantics.
 - The torch-backed PPO training entrypoint runs one episode and writes checkpoints/history.
 - The MIP exact solver is currently quarantined and raises a clear `NotImplementedError` instead of returning invalid schedules.
-- The tracked solver comparison artifact now embeds provenance metadata, including git commit/dirty state, and records an explicit NSGA report-member policy (`best_makespan_feasible` by default) alongside the tardiness-best feasible Pareto representative.
+- Generated solver comparison artifacts embed provenance metadata, including git
+  commit/dirty state, and record an explicit NSGA report-member policy
+  (`best_makespan_feasible` by default) alongside the tardiness-best feasible
+  Pareto representative.
 - NSGA-III now supports deterministic greedy warm-start seeding via `create_sfjssp_seed_genomes`, including `least_slack_rule`, `critical_ratio_rule`, and `tardiness_composite_rule`; the current seed path accepts all 10 deterministic seed candidates on each stored small benchmark in the bundled `30`-generation comparison slice.
-- The April 13, 2026 NSGA budget sweep still recommends `30` generations with population `30`; larger budgets did not improve either the default NSGA report member or the tardiness-best feasible result under fixed seed `42`.
+- The latest local NSGA budget sweep still recommends `30` generations with
+  population `30`; larger budgets did not improve either the default NSGA
+  report member or the tardiness-best feasible result under fixed seed `42`.
 
 ## Citation
 

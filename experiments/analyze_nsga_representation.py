@@ -24,7 +24,11 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 import numpy as np
 
 try:
-    from ..experiments.compare_solvers import load_benchmark
+    from ..experiments.artifact_schemas import (
+        REPRESENTATION_AUDIT_ARTIFACT_SCHEMA,
+        derive_canonical_feasibility,
+    )
+    from ..experiments.compare_solvers import _get_git_status_short, load_benchmark
     from ..moea.nsga3 import (
         _clone_seed_genome,
         _collect_seed_genome_candidates,
@@ -35,7 +39,11 @@ try:
         evaluate_sfjssp_genome_detailed,
     )
 except ImportError:  # pragma: no cover - supports repo-root imports
-    from experiments.compare_solvers import load_benchmark
+    from experiments.artifact_schemas import (
+        REPRESENTATION_AUDIT_ARTIFACT_SCHEMA,
+        derive_canonical_feasibility,
+    )
+    from experiments.compare_solvers import _get_git_status_short, load_benchmark
     from moea.nsga3 import (
         _clone_seed_genome,
         _collect_seed_genome_candidates,
@@ -96,9 +104,12 @@ def _build_provenance(
     command: str,
 ) -> Dict[str, Any]:
     """Build artifact provenance for the representation audit."""
+    git_status_short = _get_git_status_short()
     return {
-        "artifact_schema": "nsga_representation_audit_v1",
+        "artifact_schema": REPRESENTATION_AUDIT_ARTIFACT_SCHEMA,
         "git_commit": _get_git_commit(),
+        "git_dirty": bool(git_status_short),
+        "git_status_short": git_status_short,
         "command": command,
         "benchmark_dir": benchmark_dir,
         "output_path": output_path,
@@ -113,9 +124,15 @@ def _build_provenance(
 def _details_are_hard_feasible(details: Dict[str, Any]) -> bool:
     """Return whether a detailed payload is hard-feasible."""
     penalties = details.get("penalties") or {}
-    return (
-        bool(details.get("is_feasible", True))
-        and float(penalties.get("hard_violations", 0.0)) <= 0.0
+    return float(penalties.get("hard_violations", 0.0) or 0.0) <= 0.0
+
+
+def _details_are_canonically_feasible(details: Dict[str, Any]) -> bool:
+    """Return whether a detailed payload is fully feasible under the canonical oracle."""
+    return derive_canonical_feasibility(
+        details.get("is_feasible", True),
+        details.get("penalties") or {},
+        details.get("constraint_violations") or [],
     )
 
 
@@ -124,7 +141,7 @@ def _candidate_score(details: Dict[str, Any]) -> Tuple[float, float, float, floa
     metrics = details.get("metrics") or {}
     penalties = details.get("penalties") or {}
     hard_violations = float(penalties.get("hard_violations", 0.0))
-    if hard_violations > 0.0 or not bool(details.get("is_feasible", True)):
+    if hard_violations > 0.0 or not _details_are_canonically_feasible(details):
         return (
             hard_violations if hard_violations > 0.0 else 1.0,
             float("inf"),
@@ -145,16 +162,21 @@ def _compact_details(details: Dict[str, Any]) -> Dict[str, Any]:
     """Convert detailed-evaluation payload into compact JSON-safe metrics."""
     metrics = dict(details.get("metrics") or {})
     penalties = dict(details.get("penalties") or {})
+    constraint_violations = list(details.get("constraint_violations") or [])
     return {
         "hard_feasible": _details_are_hard_feasible(details),
-        "is_feasible": bool(details.get("is_feasible", True)),
+        "is_feasible": derive_canonical_feasibility(
+            details.get("is_feasible", True),
+            penalties,
+            constraint_violations,
+        ),
         "n_tardy_jobs": metrics.get("n_tardy_jobs", penalties.get("n_tardy_jobs")),
         "weighted_tardiness": metrics.get("weighted_tardiness", penalties.get("weighted_tardiness")),
         "makespan": metrics.get("makespan"),
         "total_energy": metrics.get("total_energy"),
         "max_ergonomic_exposure": metrics.get("max_ergonomic_exposure"),
         "total_labor_cost": metrics.get("total_labor_cost"),
-        "constraint_violations": list(details.get("constraint_violations") or []),
+        "constraint_violations": constraint_violations,
         "hard_violations": penalties.get("hard_violations"),
     }
 

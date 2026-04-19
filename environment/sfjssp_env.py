@@ -165,6 +165,13 @@ class SFJSSPEnv(gym.Env):
         self.max_steps = 10000  # Safety limit
 
         # Define action and observation spaces
+        self.max_modes = max(
+            1,
+            max(
+                (len(machine.modes) if machine.modes else 1)
+                for machine in self.instance.machines
+            ) if self.instance.machines else 1,
+        )
         self._define_spaces()
 
     def _define_spaces(self):
@@ -173,14 +180,13 @@ class SFJSSPEnv(gym.Env):
         n_ops_max = self.MAX_OPS
         n_machines_max = self.MAX_MACHINES
         n_workers_max = self.MAX_WORKERS
-        max_modes = 4  # Max modes per machine
-
-        # Multi-discrete action space: [job_idx, machine_idx, worker_idx, mode_idx]
+        # Multi-discrete action space: [job_idx, op_idx, machine_idx, worker_idx, mode_idx]
         self.action_space = spaces.Dict({
             'job_idx': spaces.Discrete(n_jobs_max),
+            'op_idx': spaces.Discrete(n_ops_max),
             'machine_idx': spaces.Discrete(n_machines_max),
             'worker_idx': spaces.Discrete(n_workers_max),
-            'mode_idx': spaces.Discrete(max_modes)
+            'mode_idx': spaces.Discrete(self.max_modes)
         })
 
         if not self.use_graph_state:
@@ -279,28 +285,48 @@ class SFJSSPEnv(gym.Env):
 
         return obs, reward, done, truncated, info
 
+    def _get_target_operation(
+        self,
+        job_idx: int,
+        op_idx: Optional[int] = None,
+    ) -> Tuple[Optional[Job], Optional[Operation], str]:
+        """Resolve the operation referenced by an action."""
+        job = self.instance.get_job(job_idx)
+        if job is None:
+            return None, None, "Invalid job index"
+
+        next_op = next((op for op in job.operations if not op.is_scheduled), None)
+        if next_op is None:
+            return job, None, "No unscheduled operations for job"
+
+        if op_idx is None:
+            return job, next_op, ""
+
+        if op_idx != next_op.op_id:
+            return job, None, f"Operation {op_idx} is not the next schedulable operation"
+        return job, next_op, ""
+
     def _validate_action(self, action: Dict[str, int]) -> Tuple[bool, str]:
         """
         Validate the chosen scheduling action.
         """
         job_idx = action['job_idx']
+        op_idx = action.get('op_idx')
         machine_id = action['machine_idx']
         worker_id = action['worker_idx']
         mode_id = action['mode_idx']
 
-        # Job valid
         if job_idx >= self.instance.n_jobs:
             return False, "Invalid job index"
-        
-        job = self.instance.get_job(job_idx)
+
+        job, next_op, op_error = self._get_target_operation(job_idx, op_idx)
+        if job is None:
+            return False, op_error
         if job.is_completed:
             return False, "Job already completed"
+        if next_op is None:
+            return False, op_error
 
-        # Operation ready
-        next_op = next((op for op in job.operations if not op.is_scheduled), None)
-        if not next_op:
-            return False, "No unscheduled operations for job"
-        
         if not self._is_operation_ready(next_op):
             return False, "Operation precedence not satisfied"
 
@@ -318,7 +344,7 @@ class SFJSSPEnv(gym.Env):
         if mode_id not in next_op.processing_times.get(machine_id, {}):
             return False, "Invalid machine mode"
 
-        resource_mask = self.compute_resource_mask(job_idx)
+        resource_mask = self.compute_resource_mask(job_idx, op_idx=next_op.op_id)
         if (
             machine_id >= resource_mask.shape[0]
             or worker_id >= resource_mask.shape[1]
@@ -329,85 +355,95 @@ class SFJSSPEnv(gym.Env):
 
         return True, ""
 
-    def _execute_action(self, action: Dict[str, int]) -> Dict[str, Any]:
-        """Execute valid action and update environment state"""
-        job_idx = action['job_idx']
-        machine_id = action['machine_idx']
-        worker_id = action['worker_idx']
-        mode_id = action['mode_idx']
-
-        job = self.instance.get_job(job_idx)
-        op = next(op for op in job.operations if not op.is_scheduled)
-        machine = self.instance.get_machine(machine_id)
-        worker = self.instance.get_worker(worker_id)
-
-        # 1. Determine actual start time (projection)
-        # Precedence constraint
-        prev_ready_time = job.arrival_time
-        transport_time = 0.0
-        if op.op_id > 0:
-            prev_op = self.schedule.get_operation(job_idx, op.op_id - 1)
-            transport_time = getattr(op, 'transport_time', 0.0)
-            prev_model_op = job.operations[op.op_id - 1]
-            prev_ready_time = (
-                prev_op.completion_time
-                + transport_time
-                + getattr(prev_model_op, 'waiting_time', 0.0)
-            )
-
-        # Resource availability
-        # Note: We must also account for machine setup gaps
+    def _find_temporally_feasible_start(
+        self,
+        job_id: int,
+        op: Operation,
+        machine: Machine,
+        worker: Worker,
+        mode_id: int,
+        lower_bound: Optional[float] = None,
+    ) -> Optional[float]:
+        """Return the earliest feasible start for one concrete assignment."""
         earliest_start = max(
-            self.current_time,
-            prev_ready_time,
+            self.current_time if lower_bound is None else lower_bound,
+            self.schedule.get_ready_time_for_assignment(
+                self.instance,
+                job_id,
+                op.op_id,
+                next_machine_id=machine.machine_id,
+            ),
             machine.available_time + machine.setup_time,
             worker.available_time,
             worker.mandatory_shift_lockout_until,
         )
-        
-        # 2. Refine start time via Industry 5.0 engines (Gap & Worker validation)
-        risk_rate = self.instance.get_ergonomic_risk(job_idx, op.op_id)
-        
-        # We find the earliest feasible slot using the Worker's validation engine
-        # which accounts for shifts, OCRA, and rest rules.
+
+        risk_rate = self.instance.get_ergonomic_risk(job_id, op.op_id)
         temp_start = earliest_start
-        found = False
         for _ in range(50):
-            # Machine Check
             m_valid, m_next = machine.validate_gap(temp_start, machine.setup_time)
             if not m_valid:
                 temp_start = max(temp_start, m_next)
                 continue
-            
-            # Worker Check
-            # We estimate duration first
+
+            projected_worker = Worker.from_dict(worker.to_dict())
+            projected_rest_gap = max(0.0, temp_start - worker.available_time)
+            if projected_rest_gap > 0:
+                projected_worker.record_rest(projected_rest_gap)
+
             est_pt = op.get_processing_time(
-                machine_id,
+                machine.machine_id,
                 mode_id,
-                worker.get_efficiency(),
+                projected_worker.get_efficiency(),
             )
-            
             w_valid, w_next = worker.validate_assignment(temp_start, est_pt, risk_rate)
             if not w_valid:
                 temp_start = max(temp_start, w_next)
                 continue
-            
-            found = True
-            break
-        
-        if not found:
-            # Fallback to next shift if no slot found in current horizon
-            temp_start = self.instance.period_clock.period_start(self.instance.period_clock.get_period(temp_start) + 1)
 
-        start_time = temp_start
-        
-        # 3. Calculate final processing time
+            return temp_start
+
+        return None
+
+    def _execute_action(self, action: Dict[str, int]) -> Dict[str, Any]:
+        """Execute valid action and update environment state"""
+        job_idx = action['job_idx']
+        op_idx = action.get('op_idx')
+        machine_id = action['machine_idx']
+        worker_id = action['worker_idx']
+        mode_id = action['mode_idx']
+
+        job, op, op_error = self._get_target_operation(job_idx, op_idx)
+        if job is None or op is None:
+            raise ValueError(op_error)
+        machine = self.instance.get_machine(machine_id)
+        worker = self.instance.get_worker(worker_id)
+        risk_rate = self.instance.get_ergonomic_risk(job_idx, op.op_id)
+        start_time = self._find_temporally_feasible_start(
+            job_idx,
+            op,
+            machine,
+            worker,
+            mode_id,
+        )
+        if start_time is None:
+            raise RuntimeError("Resource assignment lost temporal feasibility")
+
+        worker_rest_gap = start_time - worker.available_time
+        if worker_rest_gap > 0:
+            worker.record_rest(worker_rest_gap)
+
         efficiency = worker.get_efficiency()
         processing_time = op.get_processing_time(machine_id, mode_id, efficiency)
         completion_time = start_time + processing_time
 
-        # 4. Update model state
-        # Machine tracking
+        self.schedule.update_predecessor_transport(
+            self.instance,
+            job_idx,
+            op.op_id,
+            machine_id,
+        )
+
         idle_gap = start_time - machine.available_time
         if idle_gap > 0:
             actual_setup = min(idle_gap, machine.setup_time)
@@ -418,14 +454,14 @@ class SFJSSPEnv(gym.Env):
         machine.total_processing_time += processing_time
         if machine.total_processing_time == processing_time:
             machine.startup_count += 1
-        machine.degrade_tool(processing_time, mode_id) # INDUSTRY 5.0 Tool Wear
-        if transport_time > 0:
-            machine.total_transport_time += transport_time
-        
-        # Worker tracking
-        worker_rest_gap = start_time - worker.available_time
-        if worker_rest_gap > 0:
-            worker.record_rest(worker_rest_gap)
+        machine.degrade_tool(processing_time, mode_id)
+
+        prev_sched = self.schedule.get_operation(job_idx, op.op_id - 1) if op.op_id > 0 else None
+        if prev_sched and prev_sched.transport_time > 0:
+            prev_machine = self.instance.get_machine(prev_sched.machine_id)
+            if prev_machine is not None:
+                prev_machine.total_transport_time += prev_sched.transport_time
+
         worker.available_time = completion_time
         worker.record_work(
             processing_time,
@@ -439,8 +475,7 @@ class SFJSSPEnv(gym.Env):
         op.start_time = start_time
         op.completion_time = completion_time
         op.assign_period_bounds(self.instance.period_clock)
-        
-        # Schedule recording
+
         self.schedule.add_operation(
             job_id=job_idx,
             op_id=op.op_id,
@@ -451,10 +486,9 @@ class SFJSSPEnv(gym.Env):
             completion_time=completion_time,
             processing_time=processing_time,
             setup_time=actual_setup if idle_gap > 0 else 0.0,
-            transport_time=transport_time,
+            transport_time=0.0,
         )
 
-        # 5. Check job completion
         if op.op_id == len(job.operations) - 1:
             job.is_completed = True
             job.completion_time = completion_time
@@ -490,12 +524,36 @@ class SFJSSPEnv(gym.Env):
         
         # Only advance if no jobs are currently "ready" at current_time
         if not any(self._compute_job_mask()):
+            for job in self.instance.jobs:
+                if job.job_id in self.completed_jobs:
+                    continue
+                next_op = next((op for op in job.operations if not op.is_scheduled), None)
+                if next_op is None:
+                    continue
+                for m_id in next_op.eligible_machines:
+                    machine = self.instance.get_machine(m_id)
+                    if machine is None:
+                        continue
+                    for w_id in next_op.eligible_workers:
+                        worker = self.instance.get_worker(w_id)
+                        if worker is None:
+                            continue
+                        for mode_id in range(self.max_modes):
+                            if mode_id not in next_op.processing_times.get(m_id, {}):
+                                continue
+                            feasible_start = self._find_temporally_feasible_start(
+                                job.job_id,
+                                next_op,
+                                machine,
+                                worker,
+                                mode_id,
+                            )
+                            if feasible_start is not None and feasible_start > self.current_time:
+                                next_event = min(next_event, feasible_start)
             if next_event != float('inf'):
                 self.current_time = next_event
             else:
-                # No active operations, but jobs unscheduled?
-                # This usually implies a gap/wait state. Advance by small increment.
-                self.current_time += 10.0
+                raise RuntimeError("Environment found no future feasible decision point")
 
         for machine in self.instance.machines:
             machine.repair(self.current_time)
@@ -654,30 +712,20 @@ class SFJSSPEnv(gym.Env):
                 mask[i] = 1.0
         return mask
 
-    def compute_resource_mask(self, job_idx: int) -> np.ndarray:
+    def compute_resource_mask(self, job_idx: int, op_idx: Optional[int] = None) -> np.ndarray:
         """
         Compute valid machines and workers for the current operation of a job.
         Returns a (n_machines, n_workers, max_modes) mask.
         """
-        max_modes = 4
-        mask = np.zeros((self.instance.n_machines, self.instance.n_workers, max_modes), dtype=np.float32)
-        
-        job = self.instance.get_job(job_idx)
-        next_op = next((op for op in job.operations if not op.is_scheduled), None)
-        if not next_op:
+        mask = np.zeros(
+            (self.instance.n_machines, self.instance.n_workers, self.max_modes),
+            dtype=np.float32,
+        )
+
+        job, next_op, _ = self._get_target_operation(job_idx, op_idx)
+        if job is None or next_op is None:
             return mask
 
-        prev_comp = 0.0
-        if next_op.op_id > 0:
-            prev_op = self.schedule.get_operation(job_idx, next_op.op_id - 1)
-            if prev_op:
-                prev_model_op = job.operations[next_op.op_id - 1]
-                prev_comp = (
-                    prev_op.completion_time
-                    + prev_op.transport_time
-                    + getattr(prev_model_op, 'waiting_time', 0.0)
-                )
-        
         for m_id in next_op.eligible_machines:
             machine = self.instance.get_machine(m_id)
             if machine is None:
@@ -687,35 +735,17 @@ class SFJSSPEnv(gym.Env):
                 if worker is None:
                     continue
 
-                earliest_start = max(
-                    self.current_time,
-                    job.arrival_time if next_op.op_id == 0 else prev_comp,
-                    machine.available_time + machine.setup_time,
-                    worker.available_time,
-                    worker.mandatory_shift_lockout_until,
-                )
-
-                for mode_id in range(max_modes):
+                for mode_id in range(self.max_modes):
                     if mode_id not in next_op.processing_times.get(m_id, {}):
                         continue
-                    est_pt = next_op.get_processing_time(
-                        m_id,
+                    if self._find_temporally_feasible_start(
+                        job_idx,
+                        next_op,
+                        machine,
+                        worker,
                         mode_id,
-                        worker.get_efficiency(),
-                    )
-                    temp_start = earliest_start
-                    risk_rate = self.instance.get_ergonomic_risk(job_idx, next_op.op_id)
-                    for _ in range(50):
-                        m_valid, m_next = machine.validate_gap(temp_start, machine.setup_time)
-                        if not m_valid:
-                            temp_start = max(temp_start, m_next)
-                            continue
-                        w_valid, w_next = worker.validate_assignment(temp_start, est_pt, risk_rate)
-                        if not w_valid:
-                            temp_start = max(temp_start, w_next)
-                            continue
+                    ) is not None:
                         mask[m_id, w_id, mode_id] = 1.0
-                        break
         return mask
 
     def _is_operation_ready(self, op: Operation) -> bool:
@@ -723,13 +753,14 @@ class SFJSSPEnv(gym.Env):
         if op.op_id == 0:
             job = self.instance.get_job(op.job_id)
             return job is not None and job.arrival_time <= self.current_time
+
         prev_op = self.instance.get_job(op.job_id).operations[op.op_id - 1]
         if not prev_op.is_completed:
             return False
-        required_start = (
-            prev_op.completion_time
-            + getattr(prev_op, 'transport_time', 0.0)
-            + getattr(prev_op, 'waiting_time', 0.0)
+        required_start = self.schedule.get_ready_time_for_assignment(
+            self.instance,
+            op.job_id,
+            op.op_id,
         )
         return required_start <= self.current_time
 
@@ -825,3 +856,10 @@ class SFJSSPEnv(gym.Env):
             machine = self.instance.get_machine(machine_id)
             if machine is not None:
                 machine.schedule_breakdown(breakdown_time, repair_duration)
+
+        absence = self.instance.generate_absence_event(self.current_time, self.event_rng)
+        if absence is not None:
+            worker_id, absence_start, absence_duration = absence
+            worker = self.instance.get_worker(worker_id)
+            if worker is not None:
+                worker.schedule_absence(absence_start, absence_start + absence_duration)

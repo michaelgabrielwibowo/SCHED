@@ -390,6 +390,39 @@ class SFJSSPInstance:
 
         return None
 
+    def generate_absence_event(
+        self,
+        current_time: float,
+        rng: np.random.Generator,
+    ) -> Optional[Tuple[int, float, float]]:
+        """
+        Generate a worker absence event at shift boundaries for dynamic instances.
+
+        `absence_probability` is interpreted as the probability that one worker
+        becomes unavailable during a shift boundary review.
+        """
+        if self.dynamic_params is None or not self.workers:
+            return None
+
+        current_period = self.period_clock.get_period(current_time)
+        if abs(current_time - self.period_clock.period_start(current_period)) > 1e-9:
+            return None
+
+        available_workers = [
+            worker
+            for worker in self.workers
+            if not worker.is_absent and worker.available_time <= current_time
+        ]
+        if not available_workers:
+            return None
+
+        if rng.random() >= self.dynamic_params.absence_probability:
+            return None
+
+        worker = available_workers[int(rng.integers(0, len(available_workers)))]
+        duration = float(rng.uniform(0.25, 1.0) * worker.SHIFT_DURATION)
+        return (worker.worker_id, current_time, duration)
+
     def reset(self):
         """Reset all entities to initial state"""
         for job in self.jobs:

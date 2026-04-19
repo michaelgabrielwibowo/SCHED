@@ -1,71 +1,45 @@
-import json
-import os
-import dataclasses
-from enum import Enum
-from utils.benchmark_generator import BenchmarkGenerator, GeneratorConfig, InstanceSize
+"""
+Compatibility wrapper for the canonical benchmark generator CLI.
 
-class CustomEncoder(json.JSONEncoder):
-    def default(self, o):
-        if dataclasses.is_dataclass(o):
-            return dataclasses.asdict(o)
-        if isinstance(o, set):
-            return list(o)
-        if isinstance(o, Enum):
-            return o.value
-        # Handle dict keys that are integers (JSON requires string keys)
-        if isinstance(o, dict):
-            return {str(k): v for k, v in o.items()}
-        return super().default(o)
+The authoritative public entrypoint is `experiments.generate_benchmarks`.
+This module remains for backwards-compatible imports and scripts.
+"""
 
-def convert_dict_keys_to_str(obj):
-    if isinstance(obj, dict):
-        return {str(k): convert_dict_keys_to_str(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [convert_dict_keys_to_str(item) for item in obj]
-    elif dataclasses.is_dataclass(obj):
-        d = dataclasses.asdict(obj)
-        return convert_dict_keys_to_str(d)
-    elif isinstance(obj, set):
-        return list(obj)
-    elif isinstance(obj, Enum):
-        return obj.value
-    else:
-        return obj
+from pathlib import Path
+from typing import Optional
 
-def generate_large_benchmarks():
-    os.makedirs("benchmarks/large", exist_ok=True)
-    
-    for i in range(1, 4):
-        instance_id = f"SFJSSP_LARGE_{i:03d}"
-        print(f"Generating {instance_id}...")
-        
-        config = GeneratorConfig(
-            instance_id=instance_id, 
-            size=InstanceSize.LARGE, 
-            n_jobs=200, 
-            n_machines=20, 
-            n_workers=20, 
-            seed=42 + i
-        )
-        
-        gen = BenchmarkGenerator(config)
-        instance = gen.generate()
-        
-        output_path = f"benchmarks/large/{instance_id}.json"
-        
-        data = instance.to_dict()
-        data["generator_config"] = {
-            "seed": config.seed,
-            "size": config.size.value,
-            "n_jobs": config.n_jobs,
-            "n_machines": config.n_machines,
-            "n_workers": config.n_workers,
-        }
+try:
+    from .experiments.generate_benchmarks import (
+        generate_example,
+        generate_suite,
+        main,
+    )
+    from .utils.benchmark_generator import InstanceSize
+except ImportError:  # pragma: no cover - supports repo-root imports
+    from experiments.generate_benchmarks import (
+        generate_example,
+        generate_suite,
+        main,
+    )
+    from utils.benchmark_generator import InstanceSize
 
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-            
-        print(f"Saved {instance_id} to {output_path}")
+
+def generate_large_benchmarks(
+    output_dir: str = "benchmarks/large",
+    n_instances: int = 3,
+    base_seed: int = 43,
+) -> None:
+    """Backwards-compatible large-slice helper routed to the canonical suite CLI."""
+    output_path = Path(output_dir)
+    suite_root = output_path.parent if output_path.name.lower() == InstanceSize.LARGE.value else output_path
+    generate_suite(
+        output_dir=str(suite_root),
+        n_per_size=n_instances,
+        sizes=[InstanceSize.LARGE],
+        base_seed=base_seed,
+        is_dynamic=False,
+    )
+
 
 if __name__ == "__main__":
-    generate_large_benchmarks()
+    raise SystemExit(main())

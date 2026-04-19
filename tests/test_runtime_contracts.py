@@ -419,6 +419,27 @@ def test_env_records_worker_rest_for_delayed_start():
     assert abs(worker.total_work_time - expected_work) < 1e-9
 
 
+def test_env_rejects_non_next_op_idx():
+    env = SFJSSPEnv(_build_simple_instance(), use_graph_state=False)
+    env.reset()
+
+    _, reward, terminated, truncated, info = env.step(
+        {
+            "job_idx": 0,
+            "op_idx": 1,
+            "machine_idx": 0,
+            "worker_idx": 0,
+            "mode_idx": 0,
+        }
+    )
+
+    assert reward == -10.0
+    assert terminated is False
+    assert truncated is False
+    assert info["invalid"] is True
+    assert "not the next schedulable operation" in info["reason"]
+
+
 def test_nsga3_genome_includes_modes_and_can_score_feasible_instance():
     instance = SFJSSPInstance(instance_id="NSGA_RUNTIME")
     instance.add_machine(

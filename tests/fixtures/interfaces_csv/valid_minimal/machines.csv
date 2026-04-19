@@ -1,0 +1,2 @@
+id,name,default_mode_id,power_processing,power_idle,power_setup,power_transport,startup_energy,setup_time,auxiliary_power_share
+M0,Cut Cell,standard,10.0,2.0,5.0,1.5,0.2,2.0,0.0

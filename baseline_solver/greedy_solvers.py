@@ -269,7 +269,7 @@ def min_energy_rule(
                     if mode:
                         power *= mode.power_multiplier
 
-                    energy = power * pt
+                    energy = power * (pt / 60.0)
                     min_energy = min(min_energy, energy)
 
         if min_energy < best_energy:
@@ -450,19 +450,7 @@ def _get_ready_time(
     if job is None:
         return float("inf")
 
-    if op_id == 0:
-        return job.arrival_time
-
-    prev_sched = schedule.get_operation(job_id, op_id - 1)
-    prev_model_op = job.operations[op_id - 1]
-    if prev_sched is None:
-        return float("inf")
-
-    return (
-        prev_sched.completion_time
-        + prev_sched.transport_time
-        + getattr(prev_model_op, "waiting_time", 0.0)
-    )
+    return schedule.get_ready_time_for_assignment(instance, job_id, op_id)
 
 
 def _get_energy_score(
@@ -496,7 +484,7 @@ def _get_energy_score(
                 if mode:
                     power *= mode.power_multiplier
 
-                energy = power * pt
+                energy = power * (pt / 60.0)
                 min_energy = min(min_energy, energy)
 
     return min_energy if min_energy < float('inf') else 1000.0
@@ -586,21 +574,22 @@ class GreedyScheduler:
                 genuine_rest = start_time - worker_free_at
                 worker.record_rest(genuine_rest)
 
-            # Check for mandatory 12.5% rest rule
-            est_pt = op.get_processing_time(machine_id, mode_id, worker.get_efficiency())
-            mandatory_rest = worker.requires_mandatory_rest(
-                proposed_task_duration=est_pt, 
-                current_time=start_time
-            )
-            
-            if mandatory_rest > 0:
-                start_time += mandatory_rest
-                worker.record_rest(mandatory_rest)
-
-            # Final processing time calculation
+            # Resolve the fixed point between recovered efficiency and mandatory rest.
             processing_time = op.get_processing_time(
                 machine_id, mode_id, worker.get_efficiency()
             )
+            for _ in range(10):
+                mandatory_rest = worker.requires_mandatory_rest(
+                    proposed_task_duration=processing_time,
+                    current_time=start_time
+                )
+                if mandatory_rest <= 1e-9:
+                    break
+                start_time += mandatory_rest
+                worker.record_rest(mandatory_rest)
+                processing_time = op.get_processing_time(
+                    machine_id, mode_id, worker.get_efficiency()
+                )
 
             completion_time = start_time + processing_time
 
@@ -616,24 +605,31 @@ class GreedyScheduler:
                 completion_time = start_time + processing_time
                 jumps += 1
 
-            # Re-check mandatory rest after period jump
-            mandatory_rest = worker.requires_mandatory_rest(
-                proposed_task_duration=processing_time, 
-                current_time=start_time
-            )
-            if mandatory_rest > 0:
+            # Re-check mandatory rest after period jump using the same fixed-point logic.
+            for _ in range(10):
+                mandatory_rest = worker.requires_mandatory_rest(
+                    proposed_task_duration=processing_time,
+                    current_time=start_time
+                )
+                if mandatory_rest <= 1e-9:
+                    break
                 start_time += mandatory_rest
                 worker.record_rest(mandatory_rest)
+                processing_time = op.get_processing_time(
+                    machine_id, mode_id, worker.get_efficiency()
+                )
                 completion_time = start_time + processing_time
             
             op.start_time = start_time
             op.completion_time = completion_time
             op.assign_period_bounds(instance.period_clock)
 
-            prev_op_sched = schedule.get_operation(job_id, op_id - 1) if op_id > 0 else None
-            transport_time = 0.0
-            if prev_op_sched and prev_op_sched.machine_id != machine_id:
-                transport_time = getattr(op, "transport_time", 0.0)
+            schedule.update_predecessor_transport(
+                instance,
+                job_id,
+                op_id,
+                machine_id,
+            )
 
             actual_setup = 0.0
             last_machine_free = machine_available[machine_id]
@@ -652,7 +648,7 @@ class GreedyScheduler:
                 completion_time=completion_time,
                 processing_time=processing_time,
                 setup_time=actual_setup,
-                transport_time=transport_time,
+                transport_time=0.0,
             )
 
             # Update resource availability
@@ -664,15 +660,17 @@ class GreedyScheduler:
                 # If there's a gap, some of it is setup, the rest is idle
                 # In this simple model, we assume setup happens first if needed
                 idle_gap = start_time - last_machine_free
-                setup_needed = machine.setup_time
                 actual_idle = idle_gap - actual_setup
                 
                 machine.total_setup_time += actual_setup
                 machine.total_idle_time += actual_idle
 
-            # [FIX] Record transport time for machine (if job moved)
-            if transport_time > 0:
-                machine.total_transport_time += transport_time
+            # Record transport time on the predecessor machine when a transfer occurs.
+            prev_sched = schedule.get_operation(job_id, op_id - 1) if op_id > 0 else None
+            if prev_sched and prev_sched.transport_time > 0:
+                prev_machine = instance.get_machine(prev_sched.machine_id)
+                if prev_machine is not None:
+                    prev_machine.total_transport_time += prev_sched.transport_time
 
             if machine.total_processing_time == 0.0:
                 machine.startup_count += 1
@@ -741,34 +739,24 @@ class GreedyScheduler:
 
                 # Initial earliest start
                 earliest_start = max(
-                    job.arrival_time if op_id == 0 else 0.0,
                     machine_available.get(m_id, 0.0) + machine.setup_time,
                     worker_available.get(w_id, 0.0),
-                    worker.mandatory_shift_lockout_until
+                    worker.mandatory_shift_lockout_until,
+                    schedule.get_ready_time_for_assignment(
+                        instance,
+                        job_id,
+                        op_id,
+                        next_machine_id=m_id,
+                    ),
                 )
-                
-                if op_id > 0:
-                    prev_op = schedule.get_operation(job_id, op_id - 1)
-                    if prev_op:
-                        # [FIX] Include transport and waiting from PREV op
-                        prev_model_op = instance.get_job(job_id).operations[op_id - 1]
-                        earliest_start = max(
-                            earliest_start, 
-                            prev_op.completion_time + prev_op.transport_time + getattr(prev_model_op, "waiting_time", 0.0)
-                        )
 
                 # Evaluate each mode
                 if m_id in op.processing_times:
                     for mode_id, pt in op.processing_times[m_id].items():
-                        est_proc = op.get_processing_time(
-                            m_id,
-                            mode_id,
-                            worker.get_efficiency(),
-                        )
-                        
                         temp_start = earliest_start
                         clock = instance.period_clock
                         risk_rate = instance.get_ergonomic_risk(job_id, op_id)
+                        est_proc = None
                         
                         # Find earliest time that works
                         max_tries = 50
@@ -779,6 +767,16 @@ class GreedyScheduler:
                             if not m_valid:
                                 temp_start = max(temp_start, m_next)
                                 continue
+
+                            projected_worker = worker.__class__.from_dict(worker.to_dict())
+                            projected_rest_gap = max(0.0, temp_start - worker.available_time)
+                            if projected_rest_gap > 0:
+                                projected_worker.record_rest(projected_rest_gap)
+                            est_proc = op.get_processing_time(
+                                m_id,
+                                mode_id,
+                                projected_worker.get_efficiency(),
+                            )
 
                             # 2. Worker check (centralized Industry 5.0 engine)
                             w_valid, w_next = worker.validate_assignment(temp_start, est_proc, risk_rate)
@@ -792,7 +790,7 @@ class GreedyScheduler:
                             continue
 
                         score = self._evaluate_assignment(
-                            instance, op, m_id, w_id, mode_id, pt,
+                            instance, op, m_id, w_id, mode_id, est_proc,
                             machine_available, worker_available
                         )
 
@@ -827,6 +825,6 @@ class GreedyScheduler:
             machine = instance.get_machine(machine_id)
             mode = next((m for m in machine.modes if m.mode_id == mode_id), None)
             power = machine.power_processing * (mode.power_multiplier if mode else 1.0)
-            return power * processing_time
+            return power * (processing_time / 60.0)
         else:
             return processing_time

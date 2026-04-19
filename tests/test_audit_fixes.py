@@ -91,6 +91,43 @@ def test_feasibility_setup_time():
     assert any("Machine overlap" in v for v in schedule.constraint_violations)
 
 
+def test_feasibility_first_operation_setup_gap():
+    """Verify the first machine operation cannot start before its setup gap."""
+    instance = SFJSSPInstance(instance_id="test_first_setup_gap")
+    instance.add_machine(Machine(machine_id=0, setup_time=5.0))
+    instance.add_worker(Worker(0))
+    instance.add_job(
+        Job(
+            job_id=0,
+            operations=[
+                Operation(
+                    job_id=0,
+                    op_id=0,
+                    processing_times={0: {0: 10.0}},
+                    eligible_machines={0},
+                    eligible_workers={0},
+                )
+            ],
+        )
+    )
+
+    schedule = Schedule(instance_id="test_first_setup_gap")
+    schedule.add_operation(
+        job_id=0,
+        op_id=0,
+        machine_id=0,
+        worker_id=0,
+        mode_id=0,
+        start_time=3.0,
+        completion_time=13.0,
+        processing_time=10.0,
+        setup_time=5.0,
+    )
+
+    assert schedule.check_feasibility(instance) is False
+    assert any("Machine setup violation" in v for v in schedule.constraint_violations)
+
+
 def test_due_dates_are_soft_constraints():
     """Late jobs should contribute tardiness, not infeasibility."""
     instance = SFJSSPInstance(instance_id="test_soft_due_dates")

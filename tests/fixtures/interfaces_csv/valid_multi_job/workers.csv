@@ -1,0 +1,3 @@
+id,name,labor_cost_per_hour,base_efficiency,fatigue_rate,recovery_rate,fatigue_max,ocra_max_per_shift,ergonomic_tolerance,min_rest_fraction,learning_coefficient
+W2,Senior Operator,28.0,1.1,0.02,0.05,1.0,2.2,1.1,0.1,0.08
+W1,Operator,22.0,0.95,0.03,0.06,1.0,2.2,1.0,0.125,0.1

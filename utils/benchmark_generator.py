@@ -5,12 +5,12 @@ This module is the single implementation used by both utility scripts and the
 `experiments.generate_benchmarks` public surface.
 """
 
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from enum import Enum
 import json
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -42,21 +42,73 @@ class InstanceSize(Enum):
     SMALL = "small"
     MEDIUM = "medium"
     LARGE = "large"
-    INDUSTRIAL = "industrial"
 
 
 SIZE_DEFAULTS = {
     InstanceSize.SMALL: (10, 5, 5),
     InstanceSize.MEDIUM: (50, 10, 10),
     InstanceSize.LARGE: (200, 20, 20),
-    InstanceSize.INDUSTRIAL: (500, 50, 50),
 }
+
+SUPPORTED_INSTANCE_SIZES: Tuple[InstanceSize, ...] = (
+    InstanceSize.SMALL,
+    InstanceSize.MEDIUM,
+    InstanceSize.LARGE,
+)
+DEFAULT_SUITE_SIZES: Tuple[InstanceSize, ...] = (
+    InstanceSize.SMALL,
+    InstanceSize.MEDIUM,
+)
+BENCHMARK_DOCUMENT_SCHEMA = "sfjssp_benchmark_document_v1"
+BENCHMARK_DOCUMENT_VERSION = 1
+BENCHMARK_GENERATOR_VERSION = "3.0"
 
 DEFAULT_CALIBRATION_SOURCES = [
     "DyDFJSP 2023 (fatigue parameters)",
     "E-DFJSP 2025 (energy parameters)",
     "NSGA-III 2021 (ergonomic parameters)",
 ]
+
+
+def coerce_instance_size(value: Any) -> InstanceSize:
+    """Normalize a string or enum value to an `InstanceSize`."""
+    if isinstance(value, InstanceSize):
+        return value
+    normalized = str(value).strip().lower()
+    for size in SUPPORTED_INSTANCE_SIZES:
+        if size.value == normalized:
+            return size
+    raise ValueError(
+        f"Unsupported instance size {value!r}; expected one of "
+        f"{[size.value for size in SUPPORTED_INSTANCE_SIZES]}"
+    )
+
+
+def get_size_preset_table() -> Dict[str, Dict[str, int]]:
+    """Return the authoritative public size preset table."""
+    return {
+        size.value: {
+            "n_jobs": SIZE_DEFAULTS[size][0],
+            "n_machines": SIZE_DEFAULTS[size][1],
+            "n_workers": SIZE_DEFAULTS[size][2],
+        }
+        for size in SUPPORTED_INSTANCE_SIZES
+    }
+
+
+def _json_ready(value: Any) -> Any:
+    """Convert config/provenance payloads into JSON-compatible values."""
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, tuple):
+        return [_json_ready(item) for item in value]
+    if isinstance(value, list):
+        return [_json_ready(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _json_ready(item) for key, item in value.items()}
+    return value
 
 
 @dataclass
@@ -187,13 +239,14 @@ class BenchmarkGenerator:
         base_seed: int = 42,
     ) -> List[SFJSSPInstance]:
         """Generate a suite of benchmark instances."""
-        sizes = sizes or [InstanceSize.SMALL, InstanceSize.MEDIUM, InstanceSize.LARGE]
+        sizes = [coerce_instance_size(size) for size in (sizes or DEFAULT_SUITE_SIZES)]
         instances: List[SFJSSPInstance] = []
+        original_config = self.config
 
         for size in sizes:
             for idx in range(instances_per_size):
                 config = replace(
-                    self.config,
+                    original_config,
                     instance_id=f"SFJSSP_{size.value}_{idx:03d}",
                     size=size,
                     seed=base_seed + idx,
@@ -205,6 +258,8 @@ class BenchmarkGenerator:
                 self.rng = np.random.default_rng(config.seed)
                 instances.append(self.generate())
 
+        self.config = original_config
+        self.rng = np.random.default_rng(self.config.seed)
         return instances
 
     def save_instance(self, instance: SFJSSPInstance, filepath: str):
@@ -212,15 +267,7 @@ class BenchmarkGenerator:
         path = Path(filepath)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        data = instance.to_dict()
-        data["generator_config"] = {
-            "seed": self.config.seed,
-            "size": self.config.size.value,
-            "n_jobs": self.config.n_jobs,
-            "n_machines": self.config.n_machines,
-            "n_workers": self.config.n_workers,
-            "is_dynamic": self.config.is_dynamic,
-        }
+        data = self.build_instance_document(instance)
         data["machines_summary"] = [
             {
                 "machine_id": machine.machine_id,
@@ -279,11 +326,25 @@ class BenchmarkGenerator:
             }
         )
         metadata = {
+            "document_schema": BENCHMARK_DOCUMENT_SCHEMA,
+            "document_version": BENCHMARK_DOCUMENT_VERSION,
+            "document_type": "suite_manifest",
+            "generator_provenance": self._build_generator_provenance(),
             "n_instances": len(instances),
             "sizes": sizes,
             "instance_types": sorted({instance.instance_type.value for instance in instances}),
             "generation_date": datetime.now().isoformat(),
-            "generator_version": "2.0",
+            "generator_version": BENCHMARK_GENERATOR_VERSION,
+            "size_preset_table": get_size_preset_table(),
+            "instances": [
+                {
+                    "instance_id": instance.instance_id,
+                    "filename": f"{instance.instance_id}.json",
+                    "size": self._infer_size_label(instance),
+                    "instance_type": instance.instance_type.value,
+                }
+                for instance in instances
+            ],
             "config": {
                 "is_dynamic": self.config.is_dynamic,
                 "calibration_sources": list(self.config.calibration_sources),
@@ -461,6 +522,34 @@ class BenchmarkGenerator:
         if index < len(values):
             return float(values[index])
         return float(fallback)
+
+    def _serialize_config(self) -> Dict[str, Any]:
+        """Return the full generator config as a JSON-ready dictionary."""
+        return {
+            key: _json_ready(value)
+            for key, value in asdict(self.config).items()
+        }
+
+    def _build_generator_provenance(self) -> Dict[str, Any]:
+        """Return generator provenance embedded in saved benchmark artifacts."""
+        return {
+            "generator_module": "utils.benchmark_generator",
+            "generator_version": BENCHMARK_GENERATOR_VERSION,
+            "generated_at": datetime.now().isoformat(),
+            "runtime_supported_sizes": [size.value for size in SUPPORTED_INSTANCE_SIZES],
+            "default_suite_sizes": [size.value for size in DEFAULT_SUITE_SIZES],
+        }
+
+    def build_instance_document(self, instance: SFJSSPInstance) -> Dict[str, Any]:
+        """Build the canonical persisted benchmark document for one instance."""
+        data = instance.to_dict()
+        data["document_schema"] = BENCHMARK_DOCUMENT_SCHEMA
+        data["document_version"] = BENCHMARK_DOCUMENT_VERSION
+        data["document_type"] = "instance"
+        data["generator_provenance"] = self._build_generator_provenance()
+        data["generator_config"] = self._serialize_config()
+        data["size_preset_table"] = get_size_preset_table()
+        return data
 
     @staticmethod
     def _infer_size_label(instance: SFJSSPInstance) -> Optional[str]:

@@ -10,6 +10,17 @@ import json
 from typing import Any, Dict, List, Optional
 import math
 
+try:
+    from ..experiments.artifact_schemas import (
+        COMPARISON_ARTIFACT_SCHEMA,
+        LEGACY_COMPARISON_ARTIFACT_SCHEMAS,
+    )
+except ImportError:  # pragma: no cover - supports repo-root imports
+    from experiments.artifact_schemas import (
+        COMPARISON_ARTIFACT_SCHEMA,
+        LEGACY_COMPARISON_ARTIFACT_SCHEMAS,
+    )
+
 
 def load_results(filepath: str) -> Any:
     """Load results from JSON file."""
@@ -31,6 +42,13 @@ def _extract_provenance(payload: Any) -> Optional[Dict[str, Any]]:
     if isinstance(payload, dict):
         return payload.get("provenance")
     return None
+
+
+def _get_artifact_schema(provenance: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Return the declared comparison artifact schema when present."""
+    if provenance is None:
+        return None
+    return provenance.get("artifact_schema")
 
 
 def _metric_or_nan(value: Any) -> float:
@@ -65,18 +83,47 @@ def _get_plot_method_label(
 def _get_experiment_metric(
     exp: Dict[str, Any],
     metric: str,
+    provenance: Optional[Dict[str, Any]] = None,
 ) -> Any:
     """Return plot-ready metrics, preferring explicit report-member fields for NSGA."""
     if exp["method"].startswith("NSGA-III"):
+        artifact_schema = _get_artifact_schema(provenance)
+        if artifact_schema == COMPARISON_ARTIFACT_SCHEMA:
+            if "report_member_metrics" not in exp:
+                raise ValueError(
+                    "Current comparison artifacts require report_member_metrics for NSGA rows"
+                )
+            if metric == "weighted_tardiness" and "report_weighted_tardiness" not in exp:
+                raise ValueError(
+                    "Current comparison artifacts require report_weighted_tardiness for NSGA rows"
+                )
+            if metric == "n_tardy_jobs" and "report_n_tardy_jobs" not in exp:
+                raise ValueError(
+                    "Current comparison artifacts require report_n_tardy_jobs for NSGA rows"
+                )
         report_metrics = exp.get("report_member_metrics") or {}
         if metric == "makespan":
             return report_metrics.get("makespan", exp.get("makespan"))
-        if metric == "energy":
-            return report_metrics.get("total_energy", exp.get("energy"))
+        if metric in {"total_energy", "energy"}:
+            return report_metrics.get("total_energy", exp.get("total_energy", exp.get("energy")))
+        if metric == "max_ergonomic_exposure":
+            return report_metrics.get("max_ergonomic_exposure", exp.get("max_ergonomic_exposure"))
+        if metric == "total_labor_cost":
+            return report_metrics.get("total_labor_cost", exp.get("total_labor_cost"))
         if metric == "weighted_tardiness":
-            return exp.get("report_weighted_tardiness", exp.get("selected_weighted_tardiness"))
+            if artifact_schema == COMPARISON_ARTIFACT_SCHEMA:
+                return exp["report_weighted_tardiness"]
+            if artifact_schema in LEGACY_COMPARISON_ARTIFACT_SCHEMAS or artifact_schema is None:
+                return exp.get("report_weighted_tardiness", exp.get("selected_weighted_tardiness"))
+            return exp.get("report_weighted_tardiness")
         if metric == "n_tardy_jobs":
-            return exp.get("report_n_tardy_jobs", exp.get("selected_n_tardy_jobs"))
+            if artifact_schema == COMPARISON_ARTIFACT_SCHEMA:
+                return exp["report_n_tardy_jobs"]
+            if artifact_schema in LEGACY_COMPARISON_ARTIFACT_SCHEMAS or artifact_schema is None:
+                return exp.get("report_n_tardy_jobs", exp.get("selected_n_tardy_jobs"))
+            return exp.get("report_n_tardy_jobs")
+    if metric == "energy":
+        return exp.get("total_energy", exp.get("energy"))
     return exp.get(metric)
 
 
@@ -111,9 +158,9 @@ def plot_comparison(results: Any, output_dir: str = "experiments/results/plots")
                 time_data[method] = []
                 tardiness_data[method] = []
             
-            makespan_data[method].append(_metric_or_nan(_get_experiment_metric(exp, 'makespan')))
+            makespan_data[method].append(_metric_or_nan(_get_experiment_metric(exp, 'makespan', provenance=provenance)))
             time_data[method].append(_metric_or_nan(exp.get('time_seconds', 0)))
-            tardiness_data[method].append(_metric_or_nan(_get_experiment_metric(exp, 'weighted_tardiness')))
+            tardiness_data[method].append(_metric_or_nan(_get_experiment_metric(exp, 'weighted_tardiness', provenance=provenance)))
 
     # Plot 1: Makespan comparison
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -210,7 +257,7 @@ def plot_comparison(results: Any, output_dir: str = "experiments/results/plots")
             method = _get_plot_method_label(exp, provenance=provenance)
             if method not in energy_data:
                 energy_data[method] = []
-            energy_data[method].append(_metric_or_nan(_get_experiment_metric(exp, 'energy')))
+            energy_data[method].append(_metric_or_nan(_get_experiment_metric(exp, 'total_energy', provenance=provenance)))
     
     if energy_data:
         energy_means = []
@@ -241,17 +288,17 @@ def print_best_results(results: Any):
         instance = r['instance']
         valid_experiments = [
             exp for exp in r['experiments']
-            if _get_experiment_metric(exp, 'makespan') is not None
+            if _get_experiment_metric(exp, 'makespan', provenance=provenance) is not None
         ]
         if not valid_experiments:
             print(f"{instance}: no finite makespan result in artifact")
             continue
         best = min(
             valid_experiments,
-            key=lambda x: _get_experiment_metric(x, 'makespan'),
+            key=lambda x: _get_experiment_metric(x, 'makespan', provenance=provenance),
         )
         label = _get_plot_method_label(best, provenance=provenance)
-        best_makespan = _get_experiment_metric(best, 'makespan')
+        best_makespan = _get_experiment_metric(best, 'makespan', provenance=provenance)
         print(f"{instance}: {label} ({best_makespan:.1f})")
 
     print("\n" + "=" * 70)
@@ -263,8 +310,8 @@ def print_best_results(results: Any):
         if nsga is None:
             continue
         label = _get_plot_method_label(nsga, provenance=provenance)
-        report_makespan = _get_experiment_metric(nsga, 'makespan')
-        report_weighted_tardiness = _get_experiment_metric(nsga, 'weighted_tardiness')
+        report_makespan = _get_experiment_metric(nsga, 'makespan', provenance=provenance)
+        report_weighted_tardiness = _get_experiment_metric(nsga, 'weighted_tardiness', provenance=provenance)
         print(
             f"{instance}: {label} (makespan={report_makespan:.1f}, "
             f"weighted_tardiness={_metric_or_nan(report_weighted_tardiness):.1f})"

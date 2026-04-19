@@ -1,12 +1,8 @@
 """
-SFJSSP Core Model Package
-Sustainable Flexible Job-Shop Scheduling Problem data structures
+SFJSSP core model package.
 
-Evidence Status: PROPOSED implementation based on literature synthesis
-- Target survey (2023) conceptual model
-- E-DFJSP 2025 energy model
-- DyDFJSP 2023 fatigue dynamics
-- NSGA-III 2021 ergonomic indices
+The canonical executable semantics are defined by `Schedule.check_feasibility`,
+`Schedule.evaluate`, and the project-level `SEMANTICS.md`.
 """
 
 from .job import Job, Operation
