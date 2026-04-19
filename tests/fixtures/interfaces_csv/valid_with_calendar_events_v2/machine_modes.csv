@@ -1,0 +1,2 @@
+machine_id,id,name,speed_factor,power_multiplier,tool_wear_rate
+M0,standard,Standard,1.0,1.0,1.0

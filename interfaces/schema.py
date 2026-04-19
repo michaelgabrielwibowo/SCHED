@@ -5,24 +5,33 @@ Versioned schema contract for external SFJSSP inputs.
 surface. It accepts only the fields required to build a canonical
 `SFJSSPInstance` without inventing a second scheduling semantics layer.
 
+`sfjssp_external_v2` extends the JSON contract with validated `calendar` and
+`events` sections that map directly onto canonical resource-unavailability
+windows and typed breakdown/absence events. CSV bundle support remains on v1
+until its package layout is widened in a later slice.
+
 Units:
 - all durations are in minutes
 - all power values are in kW
 - all energy values are in kWh
 - labor cost is in currency per hour
 - ergonomic risk rates are in OCRA-index per minute
-
-Reserved top-level sections `transport`, `calendar`, and `events` are rejected
-in v1 because the current external workflow does not yet expose them as a
-validated public contract.
 """
 
 from __future__ import annotations
 
 
-EXTERNAL_INPUT_SCHEMA = "sfjssp_external_v1"
+EXTERNAL_INPUT_SCHEMA_V1 = "sfjssp_external_v1"
+EXTERNAL_INPUT_SCHEMA_V2 = "sfjssp_external_v2"
 
-SUPPORTED_TOP_LEVEL_FIELDS = frozenset(
+# Backward-compatible alias used by the current CSV bundle path.
+EXTERNAL_INPUT_SCHEMA = EXTERNAL_INPUT_SCHEMA_V1
+LATEST_EXTERNAL_INPUT_SCHEMA = EXTERNAL_INPUT_SCHEMA_V2
+SUPPORTED_EXTERNAL_INPUT_SCHEMAS = frozenset(
+    {EXTERNAL_INPUT_SCHEMA_V1, EXTERNAL_INPUT_SCHEMA_V2}
+)
+
+SUPPORTED_TOP_LEVEL_FIELDS_V1 = frozenset(
     {
         "schema",
         "metadata",
@@ -32,7 +41,15 @@ SUPPORTED_TOP_LEVEL_FIELDS = frozenset(
         "jobs",
     }
 )
-RESERVED_UNSUPPORTED_TOP_LEVEL_FIELDS = frozenset({"transport", "calendar", "events"})
+SUPPORTED_TOP_LEVEL_FIELDS_V2 = frozenset(
+    set(SUPPORTED_TOP_LEVEL_FIELDS_V1) | {"calendar", "events"}
+)
+SUPPORTED_TOP_LEVEL_FIELDS = SUPPORTED_TOP_LEVEL_FIELDS_V1
+
+RESERVED_UNSUPPORTED_TOP_LEVEL_FIELDS_V1 = frozenset({"transport", "calendar", "events"})
+RESERVED_UNSUPPORTED_TOP_LEVEL_FIELDS_V2 = frozenset({"transport"})
+RESERVED_UNSUPPORTED_TOP_LEVEL_FIELDS = RESERVED_UNSUPPORTED_TOP_LEVEL_FIELDS_V1
+
 REQUIRED_TOP_LEVEL_FIELDS = frozenset({"schema", "metadata", "machines", "workers", "jobs"})
 
 SUPPORTED_METADATA_FIELDS = frozenset(
@@ -123,6 +140,66 @@ REQUIRED_OPERATION_FIELDS = frozenset({"id", "processing_options", "eligible_wor
 SUPPORTED_PROCESSING_OPTION_FIELDS = frozenset({"machine_id", "mode_id", "duration"})
 REQUIRED_PROCESSING_OPTION_FIELDS = frozenset({"machine_id", "mode_id", "duration"})
 
+SUPPORTED_CALENDAR_FIELDS = frozenset({"machine_unavailability", "worker_unavailability"})
+
+SUPPORTED_MACHINE_UNAVAILABILITY_FIELDS = frozenset(
+    {"machine_id", "start_time", "end_time", "reason", "source", "details"}
+)
+REQUIRED_MACHINE_UNAVAILABILITY_FIELDS = frozenset(
+    {"machine_id", "start_time", "end_time"}
+)
+
+SUPPORTED_WORKER_UNAVAILABILITY_FIELDS = frozenset(
+    {"worker_id", "start_time", "end_time", "reason", "source", "details"}
+)
+REQUIRED_WORKER_UNAVAILABILITY_FIELDS = frozenset(
+    {"worker_id", "start_time", "end_time"}
+)
+
+SUPPORTED_EVENTS_FIELDS = frozenset({"machine_breakdowns", "worker_absences"})
+
+SUPPORTED_MACHINE_BREAKDOWN_FIELDS = frozenset(
+    {"machine_id", "start_time", "repair_duration", "source", "details"}
+)
+REQUIRED_MACHINE_BREAKDOWN_FIELDS = frozenset(
+    {"machine_id", "start_time", "repair_duration"}
+)
+
+SUPPORTED_WORKER_ABSENCE_FIELDS = frozenset(
+    {"worker_id", "start_time", "end_time", "source", "details"}
+)
+REQUIRED_WORKER_ABSENCE_FIELDS = frozenset({"worker_id", "start_time", "end_time"})
+
 DEFAULT_PERIOD_DURATION = 480.0
 DEFAULT_HORIZON_START = 0.0
 DEFAULT_INSTANCE_TYPE = "static"
+
+
+def normalize_external_schema_name(schema_name: object) -> str | None:
+    """Return the normalized supported schema name, or `None` if unsupported."""
+
+    if schema_name in SUPPORTED_EXTERNAL_INPUT_SCHEMAS:
+        return str(schema_name)
+    return None
+
+
+def get_supported_top_level_fields(schema_name: str) -> frozenset[str]:
+    """Return the allowed top-level fields for one schema version."""
+
+    if schema_name == EXTERNAL_INPUT_SCHEMA_V2:
+        return SUPPORTED_TOP_LEVEL_FIELDS_V2
+    return SUPPORTED_TOP_LEVEL_FIELDS_V1
+
+
+def get_reserved_unsupported_top_level_fields(schema_name: str) -> frozenset[str]:
+    """Return top-level sections that are reserved but unsupported."""
+
+    if schema_name == EXTERNAL_INPUT_SCHEMA_V2:
+        return RESERVED_UNSUPPORTED_TOP_LEVEL_FIELDS_V2
+    return RESERVED_UNSUPPORTED_TOP_LEVEL_FIELDS_V1
+
+
+def schema_supports_calendar_events(schema_name: str) -> bool:
+    """True when the declared schema supports the public calendar/events contract."""
+
+    return schema_name == EXTERNAL_INPUT_SCHEMA_V2

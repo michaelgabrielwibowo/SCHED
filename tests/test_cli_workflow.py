@@ -36,6 +36,22 @@ def test_cli_validate_input_happy_path():
     assert payload["counts"]["operations"] == 1
 
 
+def test_cli_validate_input_accepts_v2_json():
+    result = _run_cli(
+        "validate-input",
+        "--input",
+        str(FIXTURE_ROOT / "valid_with_calendar_events_v2.json"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "ok"
+    assert payload["command"] == "validate-input"
+    assert payload["schema"] == "sfjssp_external_v2"
+    assert payload["input_format"] == "json"
+    assert payload["instance_id"] == "EXT_V2"
+
+
 def test_cli_validate_input_accepts_csv_bundle():
     result = _run_cli(
         "validate-input",
@@ -48,6 +64,21 @@ def test_cli_validate_input_accepts_csv_bundle():
     assert payload["status"] == "ok"
     assert payload["input_format"] == "csv_bundle"
     assert payload["instance_id"] == "EXT_MINIMAL"
+
+
+def test_cli_validate_input_accepts_v2_csv_bundle():
+    result = _run_cli(
+        "validate-input",
+        "--input",
+        str(CSV_FIXTURE_ROOT / "valid_with_calendar_events_v2"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "ok"
+    assert payload["schema"] == "sfjssp_external_v2"
+    assert payload["input_format"] == "csv_bundle"
+    assert payload["instance_id"] == "EXT_V2"
 
 
 def test_cli_validate_input_returns_structured_validation_error(tmp_path):
@@ -131,6 +162,26 @@ def test_cli_run_accepts_csv_bundle(tmp_path):
     assert payload["input_format"] == "csv_bundle"
     assert Path(payload["manifest_path"]).exists()
     assert (output_dir / "schedule.json").exists()
+
+
+def test_cli_run_accepts_v2_csv_bundle(tmp_path):
+    output_dir = tmp_path / "csv-v2-out"
+    result = _run_cli(
+        "run",
+        "--input",
+        str(CSV_FIXTURE_ROOT / "valid_with_calendar_events_v2"),
+        "--solver",
+        "greedy:spt",
+        "--output-dir",
+        str(output_dir),
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "ok"
+    assert payload["input_format"] == "csv_bundle"
+    assert payload["instance_id"] == "EXT_V2"
+    assert Path(payload["manifest_path"]).exists()
 
 
 def test_cli_run_rejects_unsupported_solver(tmp_path):

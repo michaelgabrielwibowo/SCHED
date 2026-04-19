@@ -24,7 +24,11 @@ The current canonical schedule problem enforces:
   - predecessor transport time when the successor moves to a different machine
 - Machine capacity: machine operations cannot overlap, and the gap before an
   operation must contain that operation's setup time.
+- Explicit machine unavailability: a scheduled operation cannot overlap any
+  instance-level machine unavailability window.
 - Worker capacity: worker operations cannot overlap.
+- Explicit worker unavailability: a scheduled operation cannot overlap any
+  instance-level worker unavailability window.
 - Resource eligibility: assigned machines and workers must belong to the
   operation's eligible sets.
 - Single-period containment: a scheduled operation cannot cross a period
@@ -63,17 +67,28 @@ The canonical model does not enforce a "no consecutive periods" rule.
 
 ## External Data Contract Boundary
 
-- The external JSON import contract is `sfjssp_external_v1`.
+- The external JSON import contracts are `sfjssp_external_v1` and
+  `sfjssp_external_v2`.
 - That contract is a thin projection onto the canonical instance model, not an
   independent scheduling semantics layer.
 - Supported top-level sections in v1 are `schema`, `metadata`, `defaults`,
   `machines`, `workers`, and `jobs`.
+- Supported top-level sections in v2 are the v1 sections plus `calendar` and
+  `events`.
 - Durations are expressed in minutes, machine power in kW, energy values in
   kWh, labor cost in currency per hour, and ergonomic risk in OCRA-index per
   minute.
 - Operation precedence is defined by list order within each job.
-- Top-level `transport`, `calendar`, and `events` sections are reserved and are
-  rejected by the current importer instead of being silently ignored.
+- Top-level `transport` remains reserved and is rejected by the current
+  importers instead of being silently ignored.
+- In `sfjssp_external_v2`, `calendar` and `events` are public JSON sections that
+  map directly to canonical instance-level resource unavailability and typed
+  machine-breakdown/worker-absence events.
+- In `sfjssp_external_v2`, CSV bundles may expose the same semantics through
+  optional tables `machine_unavailability.csv`, `worker_unavailability.csv`,
+  `machine_breakdowns.csv`, and `worker_absences.csv`.
+- CSV `details_json` cells must decode to JSON objects and are mapped directly
+  to the corresponding canonical `details` payloads.
 
 ### Energy Accounting
 

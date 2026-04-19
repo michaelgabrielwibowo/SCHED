@@ -27,6 +27,7 @@ from .schema import (
     DEFAULT_INSTANCE_TYPE,
     DEFAULT_PERIOD_DURATION,
     EXTERNAL_INPUT_SCHEMA,
+    REQUIRED_MACHINE_BREAKDOWN_FIELDS,
     REQUIRED_ELECTRICITY_PRICE_FIELDS,
     REQUIRED_JOB_FIELDS,
     REQUIRED_MACHINE_FIELDS,
@@ -35,18 +36,30 @@ from .schema import (
     REQUIRED_OPERATION_FIELDS,
     REQUIRED_PROCESSING_OPTION_FIELDS,
     REQUIRED_TOP_LEVEL_FIELDS,
+    REQUIRED_MACHINE_UNAVAILABILITY_FIELDS,
+    REQUIRED_WORKER_ABSENCE_FIELDS,
+    REQUIRED_WORKER_UNAVAILABILITY_FIELDS,
     REQUIRED_WORKER_FIELDS,
-    RESERVED_UNSUPPORTED_TOP_LEVEL_FIELDS,
     SUPPORTED_DEFAULT_FIELDS,
     SUPPORTED_ELECTRICITY_PRICE_FIELDS,
+    SUPPORTED_EVENTS_FIELDS,
     SUPPORTED_JOB_FIELDS,
+    SUPPORTED_CALENDAR_FIELDS,
+    SUPPORTED_MACHINE_BREAKDOWN_FIELDS,
     SUPPORTED_MACHINE_FIELDS,
     SUPPORTED_MACHINE_MODE_FIELDS,
+    SUPPORTED_MACHINE_UNAVAILABILITY_FIELDS,
     SUPPORTED_METADATA_FIELDS,
     SUPPORTED_OPERATION_FIELDS,
     SUPPORTED_PROCESSING_OPTION_FIELDS,
-    SUPPORTED_TOP_LEVEL_FIELDS,
+    SUPPORTED_WORKER_ABSENCE_FIELDS,
+    SUPPORTED_WORKER_UNAVAILABILITY_FIELDS,
     SUPPORTED_WORKER_FIELDS,
+    SUPPORTED_EXTERNAL_INPUT_SCHEMAS,
+    get_reserved_unsupported_top_level_fields,
+    get_supported_top_level_fields,
+    normalize_external_schema_name,
+    schema_supports_calendar_events,
 )
 from .types import ExternalId, IdentifierMaps, ImportedInstance, TypedIdKey
 
@@ -73,7 +86,7 @@ def load_instance_from_json(path: Any, strict: bool = True) -> ImportedInstance:
     return import_instance_from_dict(payload, strict=strict)
 
 
-def import_instance_from_dict(payload: Dict[str, Any], strict: bool = True) -> ImportedInstance:
+def import_instance_from_dict(payload: Any, strict: bool = True) -> ImportedInstance:
     """Validate a raw payload and construct a canonical `SFJSSPInstance`."""
 
     normalizer = _ExternalPayloadNormalizer(strict=strict)
@@ -84,15 +97,16 @@ class _ExternalPayloadNormalizer:
     def __init__(self, strict: bool):
         self.strict = strict
         self.issues: List[ValidationIssue] = []
+        self.schema_name = EXTERNAL_INPUT_SCHEMA
 
-    def import_payload(self, payload: Dict[str, Any]) -> ImportedInstance:
+    def import_payload(self, payload: Any) -> ImportedInstance:
         normalized = self._normalize_payload(payload)
         self._raise_if_needed()
         id_maps = self._build_identifier_maps(normalized)
         instance = self._build_instance(normalized, id_maps)
         self._raise_if_needed()
         return ImportedInstance(
-            schema=EXTERNAL_INPUT_SCHEMA,
+            schema=self.schema_name,
             normalized_payload=normalized,
             instance=instance,
             id_maps=id_maps,
@@ -105,28 +119,40 @@ class _ExternalPayloadNormalizer:
             )
             return {}
 
-        self._ensure_allowed_keys(payload, SUPPORTED_TOP_LEVEL_FIELDS, ())
-        self._require_keys(payload, REQUIRED_TOP_LEVEL_FIELDS, ())
-
-        if payload.get("schema") != EXTERNAL_INPUT_SCHEMA:
+        declared_schema = payload.get("schema")
+        normalized_schema = normalize_external_schema_name(declared_schema)
+        if normalized_schema is None:
             self.issues.append(
                 issue(
                     SCHEMA_MISMATCH,
                     "schema",
                     message=(
-                        f"Expected schema {EXTERNAL_INPUT_SCHEMA!r}, got {payload.get('schema')!r}."
+                        "Expected one of "
+                        f"{sorted(SUPPORTED_EXTERNAL_INPUT_SCHEMAS)!r}, got {declared_schema!r}."
                     ),
                 )
             )
+            self.schema_name = EXTERNAL_INPUT_SCHEMA
+        else:
+            self.schema_name = normalized_schema
 
-        for section in RESERVED_UNSUPPORTED_TOP_LEVEL_FIELDS:
+        self._ensure_allowed_keys(payload, get_supported_top_level_fields(self.schema_name), ())
+        self._require_keys(payload, REQUIRED_TOP_LEVEL_FIELDS, ())
+
+        for section in get_reserved_unsupported_top_level_fields(self.schema_name):
             if section in payload:
                 self.issues.append(
                     issue(
                         UNSUPPORTED_SECTION,
                         section,
-                        message=f"Top-level section {section!r} is reserved and unsupported in v1.",
-                        hint="Use only metadata, defaults, machines, workers, and jobs.",
+                        message=(
+                            f"Top-level section {section!r} is reserved and unsupported "
+                            f"in {self.schema_name}."
+                        ),
+                        hint=(
+                            "Use metadata, defaults, machines, workers, jobs, and the "
+                            "documented schema-specific sections only."
+                        ),
                     )
                 )
 
@@ -135,6 +161,11 @@ class _ExternalPayloadNormalizer:
         machines = self._normalize_machine_list(payload.get("machines"), ("machines",))
         workers = self._normalize_worker_list(payload.get("workers"), ("workers",), metadata)
         jobs = self._normalize_job_list(payload.get("jobs"), ("jobs",), defaults)
+        calendar = None
+        events = None
+        if schema_supports_calendar_events(self.schema_name):
+            calendar = self._normalize_calendar(payload.get("calendar", {}), ("calendar",))
+            events = self._normalize_events(payload.get("events", {}), ("events",))
 
         if metadata.get("instance_type") == "static":
             if any(job["arrival_time"] > 0.0 for job in jobs):
@@ -148,14 +179,18 @@ class _ExternalPayloadNormalizer:
                     )
                 )
 
-        return {
-            "schema": EXTERNAL_INPUT_SCHEMA,
+        normalized_payload = {
+            "schema": self.schema_name,
             "metadata": metadata,
             "defaults": defaults,
             "machines": machines,
             "workers": workers,
             "jobs": jobs,
         }
+        if calendar is not None:
+            normalized_payload["calendar"] = calendar
+            normalized_payload["events"] = events
+        return normalized_payload
 
     def _normalize_metadata(self, metadata: Any, path: Tuple[object, ...]) -> Dict[str, Any]:
         if not isinstance(metadata, dict):
@@ -288,6 +323,220 @@ class _ExternalPayloadNormalizer:
             REQUIRED_MACHINE_FIELDS,
             self._normalize_machine,
         )
+
+    def _normalize_calendar(self, calendar: Any, path: Tuple[object, ...]) -> Dict[str, Any]:
+        if calendar is None:
+            calendar = {}
+        if not isinstance(calendar, dict):
+            self.issues.append(issue(INVALID_TYPE, *path, message="calendar must be an object."))
+            return {
+                "machine_unavailability": [],
+                "worker_unavailability": [],
+            }
+
+        self._ensure_allowed_keys(calendar, SUPPORTED_CALENDAR_FIELDS, path)
+
+        return {
+            "machine_unavailability": self._normalize_unavailability_list(
+                calendar.get("machine_unavailability", []),
+                path + ("machine_unavailability",),
+                resource_field="machine_id",
+                supported_fields=SUPPORTED_MACHINE_UNAVAILABILITY_FIELDS,
+                required_fields=REQUIRED_MACHINE_UNAVAILABILITY_FIELDS,
+                default_reason="calendar_unavailable",
+                default_source="calendar",
+            ),
+            "worker_unavailability": self._normalize_unavailability_list(
+                calendar.get("worker_unavailability", []),
+                path + ("worker_unavailability",),
+                resource_field="worker_id",
+                supported_fields=SUPPORTED_WORKER_UNAVAILABILITY_FIELDS,
+                required_fields=REQUIRED_WORKER_UNAVAILABILITY_FIELDS,
+                default_reason="calendar_unavailable",
+                default_source="calendar",
+            ),
+        }
+
+    def _normalize_events(self, events: Any, path: Tuple[object, ...]) -> Dict[str, Any]:
+        if events is None:
+            events = {}
+        if not isinstance(events, dict):
+            self.issues.append(issue(INVALID_TYPE, *path, message="events must be an object."))
+            return {
+                "machine_breakdowns": [],
+                "worker_absences": [],
+            }
+
+        self._ensure_allowed_keys(events, SUPPORTED_EVENTS_FIELDS, path)
+
+        return {
+            "machine_breakdowns": self._normalize_machine_breakdown_list(
+                events.get("machine_breakdowns", []),
+                path + ("machine_breakdowns",),
+            ),
+            "worker_absences": self._normalize_worker_absence_list(
+                events.get("worker_absences", []),
+                path + ("worker_absences",),
+            ),
+        }
+
+    def _normalize_unavailability_list(
+        self,
+        value: Any,
+        path: Tuple[object, ...],
+        *,
+        resource_field: str,
+        supported_fields: Iterable[str],
+        required_fields: Iterable[str],
+        default_reason: str,
+        default_source: str,
+    ) -> List[Dict[str, Any]]:
+        if value is None:
+            value = []
+        if not isinstance(value, list):
+            self.issues.append(issue(INVALID_TYPE, *path, message="Expected a list."))
+            return []
+
+        normalized: List[Tuple[Tuple[str, float, float, str, str], Dict[str, Any]]] = []
+        for index, raw_item in enumerate(value):
+            item_path = path + (index,)
+            if not isinstance(raw_item, dict):
+                self.issues.append(issue(INVALID_TYPE, *item_path, message="Each entry must be an object."))
+                continue
+            self._ensure_allowed_keys(raw_item, supported_fields, item_path)
+            self._require_keys(raw_item, required_fields, item_path)
+
+            resource_id = self._normalize_identifier(raw_item.get(resource_field), item_path + (resource_field,))
+            start_time = self._required_number(raw_item.get("start_time"), item_path + ("start_time",), minimum=0.0)
+            end_time = self._required_number(raw_item.get("end_time"), item_path + ("end_time",), minimum=0.0)
+            if end_time < start_time:
+                self.issues.append(
+                    issue(
+                        INVALID_VALUE,
+                        *item_path,
+                        "end_time",
+                        message="end_time must be greater than or equal to start_time.",
+                    )
+                )
+            reason = self._optional_string(raw_item.get("reason"), item_path + ("reason",), default_reason)
+            source = self._optional_string(raw_item.get("source"), item_path + ("source",), default_source)
+            details = self._optional_mapping(raw_item.get("details"), item_path + ("details",))
+            normalized_item = {
+                resource_field: resource_id,
+                "start_time": start_time,
+                "end_time": end_time,
+                "reason": reason,
+                "source": source,
+                "details": details,
+            }
+            sort_key = (
+                self._identifier_key(resource_id),
+                start_time,
+                end_time,
+                reason,
+                source,
+            )
+            normalized.append((sort_key, normalized_item))
+
+        normalized.sort(key=lambda pair: pair[0])
+        return [item for _, item in normalized]
+
+    def _normalize_machine_breakdown_list(
+        self,
+        value: Any,
+        path: Tuple[object, ...],
+    ) -> List[Dict[str, Any]]:
+        if value is None:
+            value = []
+        if not isinstance(value, list):
+            self.issues.append(issue(INVALID_TYPE, *path, message="Expected a list."))
+            return []
+
+        normalized: List[Tuple[Tuple[str, float, float, str], Dict[str, Any]]] = []
+        for index, raw_item in enumerate(value):
+            item_path = path + (index,)
+            if not isinstance(raw_item, dict):
+                self.issues.append(issue(INVALID_TYPE, *item_path, message="Each entry must be an object."))
+                continue
+            self._ensure_allowed_keys(raw_item, SUPPORTED_MACHINE_BREAKDOWN_FIELDS, item_path)
+            self._require_keys(raw_item, REQUIRED_MACHINE_BREAKDOWN_FIELDS, item_path)
+
+            machine_id = self._normalize_identifier(raw_item.get("machine_id"), item_path + ("machine_id",))
+            start_time = self._required_number(raw_item.get("start_time"), item_path + ("start_time",), minimum=0.0)
+            repair_duration = self._required_number(
+                raw_item.get("repair_duration"),
+                item_path + ("repair_duration",),
+                minimum=1e-9,
+            )
+            source = self._optional_string(raw_item.get("source"), item_path + ("source",), "event")
+            details = self._optional_mapping(raw_item.get("details"), item_path + ("details",))
+            normalized_item = {
+                "machine_id": machine_id,
+                "start_time": start_time,
+                "repair_duration": repair_duration,
+                "source": source,
+                "details": details,
+            }
+            normalized.append(
+                (
+                    (self._identifier_key(machine_id), start_time, repair_duration, source),
+                    normalized_item,
+                )
+            )
+
+        normalized.sort(key=lambda pair: pair[0])
+        return [item for _, item in normalized]
+
+    def _normalize_worker_absence_list(
+        self,
+        value: Any,
+        path: Tuple[object, ...],
+    ) -> List[Dict[str, Any]]:
+        if value is None:
+            value = []
+        if not isinstance(value, list):
+            self.issues.append(issue(INVALID_TYPE, *path, message="Expected a list."))
+            return []
+
+        normalized: List[Tuple[Tuple[str, float, float, str], Dict[str, Any]]] = []
+        for index, raw_item in enumerate(value):
+            item_path = path + (index,)
+            if not isinstance(raw_item, dict):
+                self.issues.append(issue(INVALID_TYPE, *item_path, message="Each entry must be an object."))
+                continue
+            self._ensure_allowed_keys(raw_item, SUPPORTED_WORKER_ABSENCE_FIELDS, item_path)
+            self._require_keys(raw_item, REQUIRED_WORKER_ABSENCE_FIELDS, item_path)
+
+            worker_id = self._normalize_identifier(raw_item.get("worker_id"), item_path + ("worker_id",))
+            start_time = self._required_number(raw_item.get("start_time"), item_path + ("start_time",), minimum=0.0)
+            end_time = self._required_number(raw_item.get("end_time"), item_path + ("end_time",), minimum=0.0)
+            if end_time < start_time:
+                self.issues.append(
+                    issue(
+                        INVALID_VALUE,
+                        *item_path,
+                        "end_time",
+                        message="end_time must be greater than or equal to start_time.",
+                    )
+                )
+            source = self._optional_string(raw_item.get("source"), item_path + ("source",), "event")
+            details = self._optional_mapping(raw_item.get("details"), item_path + ("details",))
+            normalized_item = {
+                "worker_id": worker_id,
+                "start_time": start_time,
+                "end_time": end_time,
+                "source": source,
+                "details": details,
+            }
+            normalized.append(
+                (
+                    (self._identifier_key(worker_id), start_time, end_time, source),
+                    normalized_item,
+                )
+            )
+
+        normalized.sort(key=lambda pair: pair[0])
+        return [item for _, item in normalized]
 
     def _normalize_worker_list(
         self,
@@ -752,7 +1001,117 @@ class _ExternalPayloadNormalizer:
                 for worker_id in operation.eligible_workers:
                     instance.workers[worker_id].eligible_operations.add((job.job_id, operation.op_id))
 
+        self._apply_calendar_payload(instance, normalized.get("calendar"), id_maps)
+        self._apply_event_payload(instance, normalized.get("events"), id_maps)
         return instance
+
+    def _apply_calendar_payload(
+        self,
+        instance: SFJSSPInstance,
+        calendar_payload: Optional[Dict[str, Any]],
+        id_maps: IdentifierMaps,
+    ) -> None:
+        if not calendar_payload:
+            return
+
+        for index, window in enumerate(calendar_payload.get("machine_unavailability", [])):
+            machine_key = self._identifier_key(window["machine_id"])
+            if machine_key not in id_maps.machines:
+                self.issues.append(
+                    issue(
+                        INVALID_REFERENCE,
+                        "calendar",
+                        "machine_unavailability",
+                        index,
+                        "machine_id",
+                        message=f"Unknown machine reference {window['machine_id']!r}.",
+                    )
+                )
+                continue
+            instance.add_machine_unavailability(
+                id_maps.machines[machine_key],
+                window["start_time"],
+                window["end_time"],
+                reason=window["reason"],
+                source=window["source"],
+                details=window["details"],
+            )
+
+        for index, window in enumerate(calendar_payload.get("worker_unavailability", [])):
+            worker_key = self._identifier_key(window["worker_id"])
+            if worker_key not in id_maps.workers:
+                self.issues.append(
+                    issue(
+                        INVALID_REFERENCE,
+                        "calendar",
+                        "worker_unavailability",
+                        index,
+                        "worker_id",
+                        message=f"Unknown worker reference {window['worker_id']!r}.",
+                    )
+                )
+                continue
+            instance.add_worker_unavailability(
+                id_maps.workers[worker_key],
+                window["start_time"],
+                window["end_time"],
+                reason=window["reason"],
+                source=window["source"],
+                details=window["details"],
+            )
+
+    def _apply_event_payload(
+        self,
+        instance: SFJSSPInstance,
+        events_payload: Optional[Dict[str, Any]],
+        id_maps: IdentifierMaps,
+    ) -> None:
+        if not events_payload:
+            return
+
+        for index, event in enumerate(events_payload.get("machine_breakdowns", [])):
+            machine_key = self._identifier_key(event["machine_id"])
+            if machine_key not in id_maps.machines:
+                self.issues.append(
+                    issue(
+                        INVALID_REFERENCE,
+                        "events",
+                        "machine_breakdowns",
+                        index,
+                        "machine_id",
+                        message=f"Unknown machine reference {event['machine_id']!r}.",
+                    )
+                )
+                continue
+            instance.add_machine_breakdown_event(
+                id_maps.machines[machine_key],
+                event["start_time"],
+                event["repair_duration"],
+                source=event["source"],
+                details=event["details"],
+            )
+
+        for index, event in enumerate(events_payload.get("worker_absences", [])):
+            worker_key = self._identifier_key(event["worker_id"])
+            if worker_key not in id_maps.workers:
+                self.issues.append(
+                    issue(
+                        INVALID_REFERENCE,
+                        "events",
+                        "worker_absences",
+                        index,
+                        "worker_id",
+                        message=f"Unknown worker reference {event['worker_id']!r}.",
+                    )
+                )
+                continue
+            instance.add_worker_absence_event(
+                id_maps.workers[worker_key],
+                event["start_time"],
+                event["end_time"],
+                source=event["source"],
+                details=event["details"],
+            )
 
     def _ensure_allowed_keys(
         self,
@@ -763,14 +1122,17 @@ class _ExternalPayloadNormalizer:
         if not self.strict:
             return
         allowed = set(allowed_fields)
+        reserved_top_level = (
+            get_reserved_unsupported_top_level_fields(self.schema_name) if not path else set()
+        )
         for key in payload.keys():
-            if key not in allowed and key not in RESERVED_UNSUPPORTED_TOP_LEVEL_FIELDS:
+            if key not in allowed and key not in reserved_top_level:
                 self.issues.append(
                     issue(
                         UNKNOWN_FIELD,
                         *path,
                         key,
-                        message=f"Field {key!r} is not supported by {EXTERNAL_INPUT_SCHEMA}.",
+                        message=f"Field {key!r} is not supported by {self.schema_name}.",
                     )
                 )
 
@@ -834,6 +1196,14 @@ class _ExternalPayloadNormalizer:
             self.issues.append(issue(INVALID_TYPE, *path, message="Expected a string."))
             return default
         return value
+
+    def _optional_mapping(self, value: Any, path: Tuple[object, ...]) -> Dict[str, Any]:
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            self.issues.append(issue(INVALID_TYPE, *path, message="Expected an object."))
+            return {}
+        return dict(value)
 
     def _optional_string_list(self, value: Any, path: Tuple[object, ...]) -> List[str]:
         if value is None:

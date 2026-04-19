@@ -1,0 +1,183 @@
+{
+  "schema": "sfjssp_external_v1",
+  "metadata": {
+    "instance_id": "EXT_MULTI",
+    "instance_name": "Multi-job external fixture",
+    "instance_type": "dynamic",
+    "planning_horizon": 720.0,
+    "period_duration": 480.0,
+    "source": "phase6-fixture",
+    "label": "fully_synthetic",
+    "label_justification": "Fixture for external interface tests",
+    "calibration_sources": [
+      "fixture-source"
+    ],
+    "known_limitations": [
+      "synthetic"
+    ]
+  },
+  "defaults": {
+    "default_ergonomic_risk": 0.0015,
+    "default_electricity_price": 0.13,
+    "electricity_prices": [
+      {
+        "period": 0,
+        "price": 0.11
+      },
+      {
+        "period": 60,
+        "price": 0.17
+      }
+    ],
+    "carbon_emission_factor": 0.45,
+    "auxiliary_power_total": 18.0
+  },
+  "machines": [
+    {
+      "id": "M2",
+      "name": "Paint",
+      "default_mode_id": "eco",
+      "power_processing": 9.0,
+      "power_idle": 1.5,
+      "power_setup": 3.5,
+      "power_transport": 1.2,
+      "startup_energy": 0.5,
+      "setup_time": 4.0,
+      "modes": [
+        {
+          "id": "fast",
+          "name": "Fast",
+          "speed_factor": 1.2,
+          "power_multiplier": 1.3,
+          "tool_wear_rate": 1.4
+        },
+        {
+          "id": "eco",
+          "name": "Eco",
+          "speed_factor": 1.0,
+          "power_multiplier": 1.0,
+          "tool_wear_rate": 1.0
+        }
+      ]
+    },
+    {
+      "id": "M1",
+      "name": "Cut",
+      "default_mode_id": "base",
+      "power_processing": 12.0,
+      "power_idle": 2.5,
+      "power_setup": 4.5,
+      "power_transport": 1.0,
+      "startup_energy": 0.4,
+      "setup_time": 3.0,
+      "modes": [
+        {
+          "id": "base",
+          "name": "Base",
+          "speed_factor": 1.0,
+          "power_multiplier": 1.0,
+          "tool_wear_rate": 1.0
+        }
+      ]
+    }
+  ],
+  "workers": [
+    {
+      "id": "W2",
+      "name": "Senior Operator",
+      "labor_cost_per_hour": 28.0,
+      "base_efficiency": 1.1,
+      "fatigue_rate": 0.02,
+      "recovery_rate": 0.05,
+      "fatigue_max": 1.0,
+      "ocra_max_per_shift": 2.2,
+      "ergonomic_tolerance": 1.1,
+      "min_rest_fraction": 0.1,
+      "learning_coefficient": 0.08
+    },
+    {
+      "id": "W1",
+      "name": "Operator",
+      "labor_cost_per_hour": 22.0,
+      "base_efficiency": 0.95,
+      "fatigue_rate": 0.03,
+      "recovery_rate": 0.06,
+      "fatigue_max": 1.0,
+      "ocra_max_per_shift": 2.2,
+      "ergonomic_tolerance": 1.0,
+      "min_rest_fraction": 0.125,
+      "learning_coefficient": 0.1
+    }
+  ],
+  "jobs": [
+    {
+      "id": "J2",
+      "arrival_time": 15.0,
+      "due_date": 180.0,
+      "weight": 2.0,
+      "operations": [
+        {
+          "id": "paint",
+          "eligible_workers": [
+            "W1",
+            "W2"
+          ],
+          "processing_options": [
+            {
+              "machine_id": "M2",
+              "mode_id": "eco",
+              "duration": 24.0
+            },
+            {
+              "machine_id": "M2",
+              "mode_id": "fast",
+              "duration": 20.0
+            }
+          ],
+          "transport_time": 3.0,
+          "waiting_time": 2.0
+        }
+      ]
+    },
+    {
+      "id": "J1",
+      "arrival_time": 0.0,
+      "due_date": 150.0,
+      "weight": 1.0,
+      "operations": [
+        {
+          "id": "cut",
+          "eligible_workers": [
+            "W2"
+          ],
+          "processing_options": [
+            {
+              "machine_id": "M1",
+              "mode_id": "base",
+              "duration": 18.0
+            }
+          ],
+          "ergonomic_risk_rate": 0.0025,
+          "transport_time": 0.0,
+          "waiting_time": 0.0
+        },
+        {
+          "id": "finish",
+          "eligible_workers": [
+            "W1",
+            "W2"
+          ],
+          "processing_options": [
+            {
+              "machine_id": "M2",
+              "mode_id": "eco",
+              "duration": 16.0
+            }
+          ],
+          "transport_time": 4.0,
+          "waiting_time": 1.0
+        }
+      ]
+    }
+  ]
+}

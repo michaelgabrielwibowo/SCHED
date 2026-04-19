@@ -889,6 +889,58 @@ class Schedule:
                     )
                 )
 
+            for window in instance.get_machine_conflicting_windows(
+                sched_op.machine_id,
+                sched_op.start_time,
+                sched_op.completion_time,
+            ):
+                violations.append(
+                    self._build_violation(
+                        "machine_unavailable",
+                        f"Machine unavailable: M{sched_op.machine_id} "
+                        f"during Job {job_id} Op {op_id}",
+                        job_id=job_id,
+                        op_id=op_id,
+                        machine_id=sched_op.machine_id,
+                        worker_id=sched_op.worker_id,
+                        details={
+                            "scheduled_start_time": sched_op.start_time,
+                            "scheduled_completion_time": sched_op.completion_time,
+                            "window_start_time": window.start_time,
+                            "window_end_time": window.end_time,
+                            "window_reason": window.reason,
+                            "window_source": window.source,
+                            "window_details": dict(window.details),
+                        },
+                    )
+                )
+
+            for window in instance.get_worker_conflicting_windows(
+                sched_op.worker_id,
+                sched_op.start_time,
+                sched_op.completion_time,
+            ):
+                violations.append(
+                    self._build_violation(
+                        "worker_unavailable",
+                        f"Worker unavailable: W{sched_op.worker_id} "
+                        f"during Job {job_id} Op {op_id}",
+                        job_id=job_id,
+                        op_id=op_id,
+                        machine_id=sched_op.machine_id,
+                        worker_id=sched_op.worker_id,
+                        details={
+                            "scheduled_start_time": sched_op.start_time,
+                            "scheduled_completion_time": sched_op.completion_time,
+                            "window_start_time": window.start_time,
+                            "window_end_time": window.end_time,
+                            "window_reason": window.reason,
+                            "window_source": window.source,
+                            "window_details": dict(window.details),
+                        },
+                    )
+                )
+
         # Check period bounds.
         for job in instance.jobs:
             for op in job.operations:

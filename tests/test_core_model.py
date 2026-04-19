@@ -13,13 +13,25 @@ try:
     from ..sfjssp_model.job import Job, Operation
     from ..sfjssp_model.machine import Machine, MachineMode, MachineState
     from ..sfjssp_model.worker import Worker, WorkerState
-    from ..sfjssp_model.instance import SFJSSPInstance, InstanceType, DynamicEventParams
+    from ..sfjssp_model.instance import (
+        MachineBreakdownEvent,
+        SFJSSPInstance,
+        InstanceType,
+        DynamicEventParams,
+        WorkerAbsenceEvent,
+    )
     from ..sfjssp_model.schedule import Schedule, ScheduledOperation
 except ImportError:  # pragma: no cover - supports repo-root imports
     from sfjssp_model.job import Job, Operation
     from sfjssp_model.machine import Machine, MachineMode, MachineState
     from sfjssp_model.worker import Worker, WorkerState
-    from sfjssp_model.instance import SFJSSPInstance, InstanceType, DynamicEventParams
+    from sfjssp_model.instance import (
+        MachineBreakdownEvent,
+        SFJSSPInstance,
+        InstanceType,
+        DynamicEventParams,
+        WorkerAbsenceEvent,
+    )
     from sfjssp_model.schedule import Schedule, ScheduledOperation
 
 
@@ -456,6 +468,74 @@ class TestSFJSSPInstance:
         assert start_time == 0.0
         assert duration > 0.0
 
+    def test_typed_dynamic_event_records_are_generated_without_mutation(self):
+        instance = SFJSSPInstance(
+            instance_id="TEST_TYPED_DYNAMIC_EVENTS",
+            instance_type=InstanceType.DYNAMIC,
+            dynamic_params=DynamicEventParams(
+                breakdown_rate=1.0,
+                repair_rate=1.0,
+                absence_probability=1.0,
+            ),
+        )
+        instance.add_machine(Machine(machine_id=0))
+        instance.add_worker(Worker(worker_id=0))
+
+        breakdown = instance.generate_breakdown_record(0.0, np.random.default_rng(3))
+        absence = instance.generate_absence_record(0.0, np.random.default_rng(7))
+
+        assert isinstance(breakdown, MachineBreakdownEvent)
+        assert breakdown.machine_id == 0
+        assert breakdown.repair_duration > 0.0
+        assert isinstance(absence, WorkerAbsenceEvent)
+        assert absence.worker_id == 0
+        assert absence.duration > 0.0
+        assert instance.machine_breakdown_events == []
+        assert instance.worker_absence_events == []
+
+    def test_instance_serialization_round_trip_preserves_unavailability_and_events(self):
+        instance = SFJSSPInstance(instance_id="TEST_CALENDAR_ROUND_TRIP")
+        instance.add_machine(Machine(machine_id=0))
+        instance.add_worker(Worker(worker_id=0))
+        instance.add_machine_unavailability(
+            0,
+            10.0,
+            20.0,
+            reason="maintenance",
+            source="calendar",
+            details={"ticket": "M-1"},
+        )
+        instance.add_worker_unavailability(
+            0,
+            30.0,
+            40.0,
+            reason="training",
+            source="calendar",
+            details={"ticket": "W-1"},
+        )
+        instance.add_machine_breakdown_event(
+            0,
+            50.0,
+            8.0,
+            source="event",
+            details={"generated": False},
+        )
+        instance.add_worker_absence_event(
+            0,
+            70.0,
+            90.0,
+            source="event",
+            details={"generated": False},
+        )
+
+        restored = SFJSSPInstance.from_dict(instance.to_dict())
+
+        assert restored.to_dict() == instance.to_dict()
+        assert restored.get_machine_unavailability(0)[0].reason == "maintenance"
+        assert restored.get_machine_unavailability(0)[1].reason == "breakdown"
+        assert restored.get_worker_unavailability(0)[0].reason == "training"
+        assert restored.get_worker_unavailability(0)[1].reason == "absence"
+
     def test_to_dict(self):
         """Test instance serialization"""
         instance = SFJSSPInstance(
@@ -690,6 +770,62 @@ class TestSchedule:
         schedule.add_operation(1, 0, 1, 0, 0, 480.0, 490.0, 10.0)
 
         assert schedule.check_feasibility(instance) is True
+
+    def test_check_feasibility_rejects_machine_unavailability_windows(self):
+        instance = SFJSSPInstance(instance_id="TEST_MACHINE_UNAVAILABLE")
+        instance.add_machine(Machine(machine_id=0))
+        instance.add_worker(
+            Worker(worker_id=0, min_rest_fraction=0.0, ocra_max_per_shift=999.0)
+        )
+        op = Operation(
+            job_id=0,
+            op_id=0,
+            processing_times={0: {0: 10.0}},
+            eligible_machines={0},
+            eligible_workers={0},
+        )
+        instance.add_job(Job(job_id=0, operations=[op]))
+        instance.add_machine_unavailability(
+            0,
+            5.0,
+            15.0,
+            reason="maintenance",
+            source="calendar",
+        )
+
+        schedule = Schedule(instance_id="TEST_MACHINE_UNAVAILABLE")
+        schedule.add_operation(0, 0, 0, 0, 0, 10.0, 20.0, 10.0)
+
+        assert schedule.check_feasibility(instance) is False
+        assert any(
+            violation.code == "machine_unavailable"
+            for violation in schedule.constraint_violation_details
+        )
+
+    def test_check_feasibility_rejects_worker_unavailability_windows(self):
+        instance = SFJSSPInstance(instance_id="TEST_WORKER_UNAVAILABLE")
+        instance.add_machine(Machine(machine_id=0))
+        instance.add_worker(
+            Worker(worker_id=0, min_rest_fraction=0.0, ocra_max_per_shift=999.0)
+        )
+        op = Operation(
+            job_id=0,
+            op_id=0,
+            processing_times={0: {0: 10.0}},
+            eligible_machines={0},
+            eligible_workers={0},
+        )
+        instance.add_job(Job(job_id=0, operations=[op]))
+        instance.add_worker_absence_event(0, 12.0, 18.0, source="event")
+
+        schedule = Schedule(instance_id="TEST_WORKER_UNAVAILABLE")
+        schedule.add_operation(0, 0, 0, 0, 0, 10.0, 20.0, 10.0)
+
+        assert schedule.check_feasibility(instance) is False
+        assert any(
+            violation.code == "worker_unavailable"
+            for violation in schedule.constraint_violation_details
+        )
 
     def test_evaluate(self):
         """Test schedule evaluation"""

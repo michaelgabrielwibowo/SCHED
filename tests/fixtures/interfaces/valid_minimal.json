@@ -1,0 +1,75 @@
+{
+  "schema": "sfjssp_external_v1",
+  "metadata": {
+    "instance_id": "EXT_MINIMAL",
+    "instance_name": "Minimal external fixture"
+  },
+  "defaults": {
+    "default_ergonomic_risk": 0.0
+  },
+  "machines": [
+    {
+      "id": "M0",
+      "name": "Cut Cell",
+      "default_mode_id": "standard",
+      "power_processing": 10.0,
+      "power_idle": 2.0,
+      "power_setup": 5.0,
+      "power_transport": 1.5,
+      "startup_energy": 0.2,
+      "setup_time": 2.0,
+      "auxiliary_power_share": 0.0,
+      "modes": [
+        {
+          "id": "standard",
+          "name": "Standard",
+          "speed_factor": 1.0,
+          "power_multiplier": 1.0,
+          "tool_wear_rate": 1.0
+        }
+      ]
+    }
+  ],
+  "workers": [
+    {
+      "id": "W0",
+      "name": "Operator 0",
+      "labor_cost_per_hour": 20.0,
+      "base_efficiency": 1.0,
+      "fatigue_rate": 0.03,
+      "recovery_rate": 0.05,
+      "fatigue_max": 1.0,
+      "ocra_max_per_shift": 2.2,
+      "ergonomic_tolerance": 1.0,
+      "min_rest_fraction": 0.125,
+      "max_consecutive_work_time": 480.0,
+      "learning_coefficient": 0.1
+    }
+  ],
+  "jobs": [
+    {
+      "id": "J0",
+      "arrival_time": 0.0,
+      "due_date": 60.0,
+      "weight": 1.0,
+      "operations": [
+        {
+          "id": "OP0",
+          "eligible_workers": [
+            "W0"
+          ],
+          "processing_options": [
+            {
+              "machine_id": "M0",
+              "mode_id": "standard",
+              "duration": 12.0
+            }
+          ],
+          "ergonomic_risk_rate": 0.002,
+          "transport_time": 0.0,
+          "waiting_time": 0.0
+        }
+      ]
+    }
+  ]
+}

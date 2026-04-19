@@ -1,0 +1,2 @@
+id,name,labor_cost_per_hour,base_efficiency,fatigue_rate,recovery_rate,fatigue_max,ocra_max_per_shift,ergonomic_tolerance,min_rest_fraction,max_consecutive_work_time,learning_coefficient
+W0,Operator 0,20.0,1.0,0.03,0.05,1.0,2.2,1.0,0.125,480.0,0.1

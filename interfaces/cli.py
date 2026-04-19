@@ -134,7 +134,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
     validate_parser = subparsers.add_parser(
         "validate-input",
-        help="Validate a JSON input document or CSV bundle against sfjssp_external_v1.",
+        help=(
+            "Validate a JSON input document or CSV bundle against the supported "
+            "sfjssp_external_v1/v2 contracts."
+        ),
     )
     validate_parser.add_argument(
         "--input",

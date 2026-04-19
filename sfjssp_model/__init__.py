@@ -9,7 +9,12 @@ from .job import Job, Operation
 from .machine import Machine, MachineMode
 from .worker import Worker
 from .schedule import Schedule
-from .instance import SFJSSPInstance
+from .instance import (
+    AvailabilityWindow,
+    MachineBreakdownEvent,
+    SFJSSPInstance,
+    WorkerAbsenceEvent,
+)
 
 __all__ = [
     'Job',
@@ -18,5 +23,8 @@ __all__ = [
     'MachineMode',
     'Worker',
     'Schedule',
+    'AvailabilityWindow',
+    'MachineBreakdownEvent',
     'SFJSSPInstance',
+    'WorkerAbsenceEvent',
 ]

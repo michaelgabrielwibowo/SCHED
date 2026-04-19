@@ -14,5 +14,7 @@ plots/
 logs/
 *.log
 *.json
+!tests/fixtures/interfaces/*.json
+!tests/fixtures/interfaces/**/*.json
 experiments/results/
 !plots/pareto_frontier.png

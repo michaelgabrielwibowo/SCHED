@@ -1,0 +1,2 @@
+worker_id,start_time,end_time,reason,source,details_json
+W0,130.0,150.0,training,calendar,"{""course"": ""safe-handling""}"

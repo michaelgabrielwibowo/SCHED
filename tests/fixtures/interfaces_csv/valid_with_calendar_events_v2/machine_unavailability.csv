@@ -1,0 +1,2 @@
+machine_id,start_time,end_time,reason,source,details_json
+M0,90.0,120.0,maintenance,calendar,"{""ticket"": ""PM-001""}"

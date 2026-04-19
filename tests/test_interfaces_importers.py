@@ -7,6 +7,7 @@ import pytest
 try:
     from ..interfaces import (
         EXTERNAL_INPUT_SCHEMA,
+        EXTERNAL_INPUT_SCHEMA_V2,
         InterfaceValidationError,
         import_instance_from_dict,
         load_instance_from_json,
@@ -14,6 +15,7 @@ try:
 except ImportError:  # pragma: no cover - supports repo-root imports
     from interfaces import (
         EXTERNAL_INPUT_SCHEMA,
+        EXTERNAL_INPUT_SCHEMA_V2,
         InterfaceValidationError,
         import_instance_from_dict,
         load_instance_from_json,
@@ -73,6 +75,30 @@ def test_import_multi_job_fixture_normalizes_ids_and_defaults():
     assert imported.instance.workers[1].eligible_operations == {(0, 0), (0, 1), (1, 0)}
 
 
+def test_load_v2_fixture_builds_calendar_and_event_state():
+    imported = load_instance_from_json(FIXTURE_ROOT / "valid_with_calendar_events_v2.json")
+
+    assert imported.schema == EXTERNAL_INPUT_SCHEMA_V2
+    assert imported.instance.instance_id == "EXT_V2"
+    assert imported.normalized_payload["schema"] == EXTERNAL_INPUT_SCHEMA_V2
+
+    machine_windows = imported.instance.get_machine_unavailability(0)
+    worker_windows = imported.instance.get_worker_unavailability(0)
+
+    assert [(window.reason, window.start_time, window.end_time) for window in machine_windows] == [
+        ("maintenance", 90.0, 120.0),
+        ("breakdown", 200.0, 225.0),
+    ]
+    assert [(window.reason, window.start_time, window.end_time) for window in worker_windows] == [
+        ("training", 130.0, 150.0),
+        ("absence", 160.0, 180.0),
+    ]
+    assert len(imported.instance.machine_breakdown_events) == 1
+    assert len(imported.instance.worker_absence_events) == 1
+    assert imported.instance.machine_breakdown_events[0].repair_duration == pytest.approx(25.0)
+    assert imported.instance.worker_absence_events[0].duration == pytest.approx(20.0)
+
+
 def test_importer_rejects_unknown_top_level_field():
     payload = _load_fixture("valid_minimal.json")
     payload["mystery"] = {}
@@ -93,6 +119,16 @@ def test_importer_rejects_reserved_unsupported_section():
     _assert_issue(excinfo.value, "unsupported_section", "$.events")
 
 
+def test_v2_rejects_reserved_transport_section():
+    payload = _load_fixture("valid_with_calendar_events_v2.json")
+    payload["transport"] = {"matrix": []}
+
+    with pytest.raises(InterfaceValidationError) as excinfo:
+        import_instance_from_dict(payload)
+
+    _assert_issue(excinfo.value, "unsupported_section", "$.transport")
+
+
 def test_importer_rejects_unknown_worker_reference():
     payload = _load_fixture("valid_minimal.json")
     payload["jobs"][0]["operations"][0]["eligible_workers"] = ["UNKNOWN"]
@@ -101,6 +137,26 @@ def test_importer_rejects_unknown_worker_reference():
         import_instance_from_dict(payload)
 
     _assert_issue(excinfo.value, "invalid_reference", "$.jobs[0].operations[0].eligible_workers")
+
+
+def test_v2_rejects_unknown_machine_reference_in_calendar():
+    payload = _load_fixture("valid_with_calendar_events_v2.json")
+    payload["calendar"]["machine_unavailability"][0]["machine_id"] = "UNKNOWN"
+
+    with pytest.raises(InterfaceValidationError) as excinfo:
+        import_instance_from_dict(payload)
+
+    _assert_issue(excinfo.value, "invalid_reference", "$.calendar.machine_unavailability[0].machine_id")
+
+
+def test_v2_rejects_invalid_worker_absence_interval():
+    payload = _load_fixture("valid_with_calendar_events_v2.json")
+    payload["events"]["worker_absences"][0]["end_time"] = 100.0
+
+    with pytest.raises(InterfaceValidationError) as excinfo:
+        import_instance_from_dict(payload)
+
+    _assert_issue(excinfo.value, "invalid_value", "$.events.worker_absences[0].end_time")
 
 
 def test_importer_normalizes_equivalent_orderings_deterministically():
@@ -115,3 +171,26 @@ def test_importer_normalizes_equivalent_orderings_deterministically():
 
     assert imported_unsorted.normalized_payload == imported_sorted.normalized_payload
     assert imported_unsorted.instance.to_dict() == imported_sorted.instance.to_dict()
+
+
+def test_v2_importer_normalizes_calendar_and_event_orderings_deterministically():
+    unsorted_payload = _load_fixture("valid_with_calendar_events_v2.json")
+    reordered_payload = deepcopy(unsorted_payload)
+    reordered_payload["calendar"]["machine_unavailability"] = list(
+        reversed(reordered_payload["calendar"]["machine_unavailability"])
+    )
+    reordered_payload["calendar"]["worker_unavailability"] = list(
+        reversed(reordered_payload["calendar"]["worker_unavailability"])
+    )
+    reordered_payload["events"]["machine_breakdowns"] = list(
+        reversed(reordered_payload["events"]["machine_breakdowns"])
+    )
+    reordered_payload["events"]["worker_absences"] = list(
+        reversed(reordered_payload["events"]["worker_absences"])
+    )
+
+    imported_unsorted = import_instance_from_dict(unsorted_payload)
+    imported_reordered = import_instance_from_dict(reordered_payload)
+
+    assert imported_unsorted.normalized_payload == imported_reordered.normalized_payload
+    assert imported_unsorted.instance.to_dict() == imported_reordered.instance.to_dict()

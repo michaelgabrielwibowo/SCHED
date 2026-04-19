@@ -21,11 +21,13 @@ and `SEMANTICS.md`, not by any single paper or survey.
 
 ## External Input Contract
 
-The first external workflow slice is available under `interfaces/` through the
-versioned schema `sfjssp_external_v1`, exposed as either a JSON document or a
-fixed CSV bundle that normalizes into the same canonical payload.
+The external workflow is available under `interfaces/` through two versioned
+JSON contracts and matching CSV bundle contracts:
 
-Current supported top-level sections:
+- `sfjssp_external_v1`: JSON and CSV bundle
+- `sfjssp_external_v2`: JSON and CSV bundle
+
+Shared supported top-level sections:
 - `schema`
 - `metadata`
 - `defaults`
@@ -33,7 +35,7 @@ Current supported top-level sections:
 - `workers`
 - `jobs`
 
-Current v1 behavior:
+Current shared behavior:
 - durations are in minutes
 - machine power is in kW
 - energy inputs are in kWh
@@ -42,7 +44,20 @@ Current v1 behavior:
 - operation precedence is the list order within each job
 - operation transport and waiting delays are provided per operation
 - unknown fields are rejected in strict mode
-- reserved top-level sections `transport`, `calendar`, and `events` are rejected in v1 instead of being silently ignored
+
+Current version-specific behavior:
+- `sfjssp_external_v1` rejects reserved top-level sections `transport`,
+  `calendar`, and `events`
+- `sfjssp_external_v2` adds validated `calendar` and `events` sections for:
+  - explicit machine and worker unavailability windows
+  - typed machine breakdown events
+  - typed worker absence events
+- `sfjssp_external_v2` CSV bundles expose those sections through optional tables:
+  - `machine_unavailability.csv`
+  - `worker_unavailability.csv`
+  - `machine_breakdowns.csv`
+  - `worker_absences.csv`
+- CSV `details_json` columns must decode to JSON objects
 
 The importer is intentionally narrower than `SFJSSPInstance.to_dict()`. It is a
 thin validation layer over the canonical model, not a second semantics engine.
@@ -55,6 +70,14 @@ instance = imported.instance
 
 csv_imported = load_instance_from_csv_bundle(
     "tests/fixtures/interfaces_csv/valid_minimal"
+)
+
+v2_imported = load_instance_from_json(
+    "tests/fixtures/interfaces/valid_with_calendar_events_v2.json"
+)
+
+v2_csv_imported = load_instance_from_csv_bundle(
+    "tests/fixtures/interfaces_csv/valid_with_calendar_events_v2"
 )
 ```
 
@@ -71,8 +94,10 @@ CLI happy path:
 
 ```bash
 python -m interfaces.cli validate-input --input tests/fixtures/interfaces/valid_minimal.json
+python -m interfaces.cli validate-input --input tests/fixtures/interfaces/valid_with_calendar_events_v2.json
 python -m interfaces.cli run --input tests/fixtures/interfaces/valid_minimal.json --solver greedy:spt --output-dir out
 python -m interfaces.cli validate-input --input tests/fixtures/interfaces_csv/valid_minimal
+python -m interfaces.cli validate-input --input tests/fixtures/interfaces_csv/valid_with_calendar_events_v2
 ```
 
 ## Project Structure
