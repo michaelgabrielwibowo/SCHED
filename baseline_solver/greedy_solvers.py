@@ -514,8 +514,12 @@ class GreedyScheduler:
         schedule = Schedule(instance_id=instance.instance_id)
 
         # Track resource availability
-        machine_available = {m.machine_id: 0.0 for m in instance.machines}
-        worker_available = {w.worker_id: 0.0 for w in instance.workers}
+        machine_available = {
+            machine.machine_id: machine.available_time for machine in instance.machines
+        }
+        worker_available = {
+            worker.worker_id: worker.available_time for worker in instance.workers
+        }
 
         # Get all operations
         all_ops = []
@@ -654,6 +658,8 @@ class GreedyScheduler:
             # Update resource availability
             machine_available[machine_id] = completion_time
             worker_available[worker_id] = completion_time
+            machine.available_time = completion_time
+            worker.available_time = completion_time
 
             # [FIX] Record idle and setup time for machine
             if start_time > last_machine_free:
@@ -782,6 +788,17 @@ class GreedyScheduler:
                             w_valid, w_next = worker.validate_assignment(temp_start, est_proc, risk_rate)
                             if not w_valid:
                                 temp_start = max(temp_start, w_next)
+                                continue
+
+                            blackout_free_start = schedule.shift_start_past_explicit_unavailability(
+                                instance,
+                                m_id,
+                                w_id,
+                                temp_start,
+                                est_proc,
+                            )
+                            if blackout_free_start > temp_start:
+                                temp_start = blackout_free_start
                                 continue
 
                             found = True

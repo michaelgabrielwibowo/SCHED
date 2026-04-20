@@ -150,17 +150,20 @@ def test_cp_energy_objective_matches_schedule_energy_ranking():
 
     expected_machine = min(manual_energies, key=manual_energies.get)
 
-    with pytest.warns(UserWarning, match="experimental"):
-        schedule = solve_sfjssp(
-            instance,
-            method="cp",
-            objective="energy",
-            time_limit=5,
-            verbose=False,
-        )
+    schedule = solve_sfjssp(
+        instance,
+        method="cp",
+        objective="energy",
+        time_limit=5,
+        verbose=False,
+    )
 
     assert schedule is not None
     assert schedule.get_operation(0, 0).machine_id == expected_machine
+    assert schedule.metadata["surrogate_objective"] is False
+    assert schedule.metadata["surrogate_run"] is False
+    assert schedule.metadata["verified_scope"] == "single_operation_energy_tradeoff_fixture"
+    assert schedule.metadata["objective_verification_status"] == "verified_fixture_scope"
 
 
 def test_cp_composite_objective_matches_schedule_composite_ranking():

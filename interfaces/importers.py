@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from .adapters import adapt_source_payload
 from .errors import (
     DUPLICATE_ID,
     EMPTY_COLLECTION,
@@ -22,6 +23,7 @@ from .errors import (
     ValidationIssue,
     issue,
 )
+from .site_profiles import apply_site_profile
 from .schema import (
     DEFAULT_HORIZON_START,
     DEFAULT_INSTANCE_TYPE,
@@ -38,6 +40,7 @@ from .schema import (
     REQUIRED_TOP_LEVEL_FIELDS,
     REQUIRED_MACHINE_UNAVAILABILITY_FIELDS,
     REQUIRED_WORKER_ABSENCE_FIELDS,
+    REQUIRED_WORKER_SHIFT_FIELDS,
     REQUIRED_WORKER_UNAVAILABILITY_FIELDS,
     REQUIRED_WORKER_FIELDS,
     SUPPORTED_DEFAULT_FIELDS,
@@ -53,6 +56,7 @@ from .schema import (
     SUPPORTED_OPERATION_FIELDS,
     SUPPORTED_PROCESSING_OPTION_FIELDS,
     SUPPORTED_WORKER_ABSENCE_FIELDS,
+    SUPPORTED_WORKER_SHIFT_FIELDS,
     SUPPORTED_WORKER_UNAVAILABILITY_FIELDS,
     SUPPORTED_WORKER_FIELDS,
     SUPPORTED_EXTERNAL_INPUT_SCHEMAS,
@@ -64,33 +68,138 @@ from .schema import (
 from .types import ExternalId, IdentifierMaps, ImportedInstance, TypedIdKey
 
 try:
-    from ..sfjssp_model.instance import InstanceLabel, InstanceType, SFJSSPInstance
+    from ..sfjssp_model.instance import (
+        CALIBRATION_EVIDENCE_REQUIRED_STATUSES,
+        PUBLIC_CALIBRATION_STATUSES,
+        InstanceLabel,
+        InstanceType,
+        SFJSSPInstance,
+        instance_label_from_public_calibration_status,
+        normalize_public_calibration_status,
+    )
     from ..sfjssp_model.job import Job, Operation
     from ..sfjssp_model.machine import Machine, MachineMode
     from ..sfjssp_model.period_clock import PeriodClock
     from ..sfjssp_model.worker import Worker
 except ImportError:  # pragma: no cover - supports repo-root imports
-    from sfjssp_model.instance import InstanceLabel, InstanceType, SFJSSPInstance
+    from sfjssp_model.instance import (
+        CALIBRATION_EVIDENCE_REQUIRED_STATUSES,
+        PUBLIC_CALIBRATION_STATUSES,
+        InstanceLabel,
+        InstanceType,
+        SFJSSPInstance,
+        instance_label_from_public_calibration_status,
+        normalize_public_calibration_status,
+    )
     from sfjssp_model.job import Job, Operation
     from sfjssp_model.machine import Machine, MachineMode
     from sfjssp_model.period_clock import PeriodClock
     from sfjssp_model.worker import Worker
 
 
-def load_instance_from_json(path: Any, strict: bool = True) -> ImportedInstance:
-    """Load, validate, and normalize an external JSON document."""
+def load_instance_from_json(
+    path: Any,
+    strict: bool = True,
+    *,
+    adapter_name: Optional[str] = None,
+    site_profile_name: Optional[str] = None,
+) -> ImportedInstance:
+    """Load, validate, and normalize a JSON document through the interface stack."""
 
     json_path = Path(path)
     with json_path.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
-    return import_instance_from_dict(payload, strict=strict)
+    return import_instance_from_dict(
+        payload,
+        strict=strict,
+        adapter_name=adapter_name,
+        site_profile_name=site_profile_name,
+        raw_source_id=str(json_path),
+        raw_input_format="json",
+    )
 
 
-def import_instance_from_dict(payload: Any, strict: bool = True) -> ImportedInstance:
+def import_instance_from_dict(
+    payload: Any,
+    strict: bool = True,
+    *,
+    adapter_name: Optional[str] = None,
+    site_profile_name: Optional[str] = None,
+    raw_source_id: str = "in_memory",
+    raw_input_format: str = "dict",
+) -> ImportedInstance:
     """Validate a raw payload and construct a canonical `SFJSSPInstance`."""
 
+    adapter_provenance: Optional[Dict[str, Any]] = None
+    external_payload = payload
+    if adapter_name is not None:
+        adapted = adapt_source_payload(
+            external_payload,
+            adapter_name=adapter_name,
+            strict=strict,
+        )
+        external_payload = adapted["payload"]
+        adapter_provenance = dict(adapted["provenance"])
+
+    payload_defaults_present = bool(
+        isinstance(external_payload, dict) and external_payload.get("defaults")
+    )
+    site_profile_provenance: Optional[Dict[str, Any]] = None
+    if site_profile_name is not None:
+        profiled = apply_site_profile(
+            external_payload,
+            profile_name=site_profile_name,
+        )
+        external_payload = profiled["payload"]
+        site_profile_provenance = dict(profiled["provenance"])
+
     normalizer = _ExternalPayloadNormalizer(strict=strict)
-    return normalizer.import_payload(payload)
+    imported = normalizer.import_payload(external_payload)
+    return ImportedInstance(
+        schema=imported.schema,
+        normalized_payload=imported.normalized_payload,
+        instance=imported.instance,
+        id_maps=imported.id_maps,
+        provenance=_build_import_provenance(
+            raw_source_id=raw_source_id,
+            raw_input_format=raw_input_format,
+            external_schema=imported.schema,
+            instance=imported.instance,
+            adapter_provenance=adapter_provenance,
+            site_profile_provenance=site_profile_provenance,
+            payload_defaults_present=payload_defaults_present,
+        ),
+    )
+
+
+def _build_import_provenance(
+    *,
+    raw_source_id: str,
+    raw_input_format: str,
+    external_schema: str,
+    instance: SFJSSPInstance,
+    adapter_provenance: Optional[Dict[str, Any]],
+    site_profile_provenance: Optional[Dict[str, Any]],
+    payload_defaults_present: bool,
+) -> Dict[str, Any]:
+    raw_source = {
+        "source_id": raw_source_id,
+        "input_format": raw_input_format,
+    }
+    if adapter_provenance is not None:
+        raw_source["source_schema"] = adapter_provenance.get("source_schema")
+    return {
+        "raw_source": raw_source,
+        "external_schema": external_schema,
+        "calibration": instance.build_calibration_record(),
+        "adapter": adapter_provenance,
+        "site_profile": site_profile_provenance,
+        "parameter_sources": {
+            "payload_defaults_present": payload_defaults_present,
+            "site_profile_applied": site_profile_provenance is not None,
+            "calibration_sources_present": bool(instance.calibration_sources),
+        },
+    }
 
 
 class _ExternalPayloadNormalizer:
@@ -227,26 +336,135 @@ class _ExternalPayloadNormalizer:
                 DEFAULT_HORIZON_START,
             ),
             "source": self._optional_string(metadata.get("source"), path + ("source",), ""),
-            "label": self._optional_enum(
-                metadata.get("label"),
-                {label.value for label in InstanceLabel},
-                path + ("label",),
-                InstanceLabel.FULLY_SYNTHETIC.value,
-            ),
-            "label_justification": self._optional_string(
-                metadata.get("label_justification"),
-                path + ("label_justification",),
-                "Imported external document",
-            ),
-            "calibration_sources": self._optional_string_list(
-                metadata.get("calibration_sources"),
-                path + ("calibration_sources",),
-            ),
+            **self._normalize_calibration_metadata(metadata, path),
             "known_limitations": self._optional_string_list(
                 metadata.get("known_limitations"),
                 path + ("known_limitations",),
             ),
         }
+
+    def _normalize_calibration_metadata(
+        self,
+        metadata: Dict[str, Any],
+        path: Tuple[object, ...],
+    ) -> Dict[str, Any]:
+        raw_status = metadata.get("calibration_status")
+        legacy_status = metadata.get("label")
+        normalized_status = self._normalize_calibration_status(
+            raw_status,
+            path + ("calibration_status",),
+        )
+        normalized_legacy_status = self._normalize_calibration_status(
+            legacy_status,
+            path + ("label",),
+        )
+        if (
+            normalized_status is not None
+            and normalized_legacy_status is not None
+            and normalized_status != normalized_legacy_status
+        ):
+            self.issues.append(
+                issue(
+                    INVALID_VALUE,
+                    *path,
+                    "calibration_status",
+                    message=(
+                        "metadata.calibration_status and compatibility alias "
+                        "metadata.label disagree."
+                    ),
+                )
+            )
+
+        calibration_status = (
+            normalized_status
+            or normalized_legacy_status
+            or InstanceLabel.FULLY_SYNTHETIC.value
+        )
+
+        raw_justification = metadata.get("calibration_status_justification")
+        legacy_justification = metadata.get("label_justification")
+        if (
+            raw_justification is not None
+            and legacy_justification is not None
+            and raw_justification != legacy_justification
+        ):
+            self.issues.append(
+                issue(
+                    INVALID_VALUE,
+                    *path,
+                    "calibration_status_justification",
+                    message=(
+                        "metadata.calibration_status_justification and compatibility "
+                        "alias metadata.label_justification disagree."
+                    ),
+                )
+            )
+        calibration_justification = self._optional_string(
+            raw_justification if raw_justification is not None else legacy_justification,
+            path + ("calibration_status_justification",),
+            "Imported external document",
+        )
+        calibration_sources = self._optional_string_list(
+            metadata.get("calibration_sources"),
+            path + ("calibration_sources",),
+        )
+
+        if calibration_status in CALIBRATION_EVIDENCE_REQUIRED_STATUSES:
+            if raw_justification is None and legacy_justification is None:
+                self.issues.append(
+                    issue(
+                        MISSING_REQUIRED,
+                        *path,
+                        "calibration_status_justification",
+                        message=(
+                            f"Calibration status {calibration_status!r} requires an explicit "
+                            "justification."
+                        ),
+                    )
+                )
+            if not calibration_sources:
+                self.issues.append(
+                    issue(
+                        MISSING_REQUIRED,
+                        *path,
+                        "calibration_sources",
+                        message=(
+                            f"Calibration status {calibration_status!r} requires at least one "
+                            "calibration source reference."
+                        ),
+                    )
+                )
+
+        return {
+            "calibration_status": calibration_status,
+            "calibration_status_justification": calibration_justification,
+            "calibration_sources": calibration_sources,
+        }
+
+    def _normalize_calibration_status(
+        self,
+        value: Any,
+        path: Tuple[object, ...],
+    ) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = normalize_public_calibration_status(value)
+        if normalized is None:
+            self.issues.append(
+                issue(
+                    INVALID_VALUE,
+                    *path,
+                    message=(
+                        "Expected one of "
+                        f"{sorted(PUBLIC_CALIBRATION_STATUSES)!r}, got {value!r}."
+                    ),
+                    hint=(
+                        "Use metadata.calibration_status for public payloads; "
+                        "metadata.label remains a compatibility alias only."
+                    ),
+                )
+            )
+        return normalized
 
     def _normalize_defaults(self, defaults: Any, path: Tuple[object, ...]) -> Dict[str, Any]:
         if defaults is None:
@@ -331,6 +549,7 @@ class _ExternalPayloadNormalizer:
             self.issues.append(issue(INVALID_TYPE, *path, message="calendar must be an object."))
             return {
                 "machine_unavailability": [],
+                "worker_shifts": [],
                 "worker_unavailability": [],
             }
 
@@ -345,6 +564,10 @@ class _ExternalPayloadNormalizer:
                 required_fields=REQUIRED_MACHINE_UNAVAILABILITY_FIELDS,
                 default_reason="calendar_unavailable",
                 default_source="calendar",
+            ),
+            "worker_shifts": self._normalize_worker_shift_list(
+                calendar.get("worker_shifts", []),
+                path + ("worker_shifts",),
             ),
             "worker_unavailability": self._normalize_unavailability_list(
                 calendar.get("worker_unavailability", []),
@@ -441,7 +664,7 @@ class _ExternalPayloadNormalizer:
         normalized.sort(key=lambda pair: pair[0])
         return [item for _, item in normalized]
 
-    def _normalize_machine_breakdown_list(
+    def _normalize_worker_shift_list(
         self,
         value: Any,
         path: Tuple[object, ...],
@@ -453,6 +676,63 @@ class _ExternalPayloadNormalizer:
             return []
 
         normalized: List[Tuple[Tuple[str, float, float, str], Dict[str, Any]]] = []
+        for index, raw_item in enumerate(value):
+            item_path = path + (index,)
+            if not isinstance(raw_item, dict):
+                self.issues.append(
+                    issue(INVALID_TYPE, *item_path, message="Each entry must be an object.")
+                )
+                continue
+            self._ensure_allowed_keys(raw_item, SUPPORTED_WORKER_SHIFT_FIELDS, item_path)
+            self._require_keys(raw_item, REQUIRED_WORKER_SHIFT_FIELDS, item_path)
+
+            worker_id = self._normalize_identifier(raw_item.get("worker_id"), item_path + ("worker_id",))
+            start_time = self._required_number(raw_item.get("start_time"), item_path + ("start_time",), minimum=0.0)
+            end_time = self._required_number(raw_item.get("end_time"), item_path + ("end_time",), minimum=0.0)
+            if end_time < start_time:
+                self.issues.append(
+                    issue(
+                        INVALID_VALUE,
+                        *item_path,
+                        "end_time",
+                        message="end_time must be greater than or equal to start_time.",
+                    )
+                )
+            shift_label = self._optional_string(
+                raw_item.get("shift_label"),
+                item_path + ("shift_label",),
+                "shift",
+            )
+            details = self._optional_mapping(raw_item.get("details"), item_path + ("details",))
+            normalized_item = {
+                "worker_id": worker_id,
+                "start_time": start_time,
+                "end_time": end_time,
+                "shift_label": shift_label,
+                "details": details,
+            }
+            normalized.append(
+                (
+                    (self._identifier_key(worker_id), start_time, end_time, shift_label),
+                    normalized_item,
+                )
+            )
+
+        normalized.sort(key=lambda pair: pair[0])
+        return [item for _, item in normalized]
+
+    def _normalize_machine_breakdown_list(
+        self,
+        value: Any,
+        path: Tuple[object, ...],
+    ) -> List[Dict[str, Any]]:
+        if value is None:
+            value = []
+        if not isinstance(value, list):
+            self.issues.append(issue(INVALID_TYPE, *path, message="Expected a list."))
+            return []
+
+        normalized: List[Tuple[Tuple[str, float, float, str, str], Dict[str, Any]]] = []
         for index, raw_item in enumerate(value):
             item_path = path + (index,)
             if not isinstance(raw_item, dict):
@@ -469,17 +749,19 @@ class _ExternalPayloadNormalizer:
                 minimum=1e-9,
             )
             source = self._optional_string(raw_item.get("source"), item_path + ("source",), "event")
+            event_id = self._optional_string(raw_item.get("event_id"), item_path + ("event_id",), "")
             details = self._optional_mapping(raw_item.get("details"), item_path + ("details",))
             normalized_item = {
                 "machine_id": machine_id,
                 "start_time": start_time,
                 "repair_duration": repair_duration,
                 "source": source,
+                "event_id": event_id,
                 "details": details,
             }
             normalized.append(
                 (
-                    (self._identifier_key(machine_id), start_time, repair_duration, source),
+                    (self._identifier_key(machine_id), start_time, repair_duration, source, event_id),
                     normalized_item,
                 )
             )
@@ -498,7 +780,7 @@ class _ExternalPayloadNormalizer:
             self.issues.append(issue(INVALID_TYPE, *path, message="Expected a list."))
             return []
 
-        normalized: List[Tuple[Tuple[str, float, float, str], Dict[str, Any]]] = []
+        normalized: List[Tuple[Tuple[str, float, float, str, str], Dict[str, Any]]] = []
         for index, raw_item in enumerate(value):
             item_path = path + (index,)
             if not isinstance(raw_item, dict):
@@ -520,17 +802,19 @@ class _ExternalPayloadNormalizer:
                     )
                 )
             source = self._optional_string(raw_item.get("source"), item_path + ("source",), "event")
+            event_id = self._optional_string(raw_item.get("event_id"), item_path + ("event_id",), "")
             details = self._optional_mapping(raw_item.get("details"), item_path + ("details",))
             normalized_item = {
                 "worker_id": worker_id,
                 "start_time": start_time,
                 "end_time": end_time,
                 "source": source,
+                "event_id": event_id,
                 "details": details,
             }
             normalized.append(
                 (
-                    (self._identifier_key(worker_id), start_time, end_time, source),
+                    (self._identifier_key(worker_id), start_time, end_time, source, event_id),
                     normalized_item,
                 )
             )
@@ -847,8 +1131,10 @@ class _ExternalPayloadNormalizer:
         instance = SFJSSPInstance(
             instance_id=str(metadata["instance_id"]),
             instance_name=metadata["instance_name"],
-            label=InstanceLabel(metadata["label"]),
-            label_justification=metadata["label_justification"],
+            label=instance_label_from_public_calibration_status(
+                metadata["calibration_status"]
+            ),
+            label_justification=metadata["calibration_status_justification"],
             instance_type=InstanceType(metadata["instance_type"]),
             planning_horizon=metadata["planning_horizon"],
             source=metadata["source"],
@@ -863,6 +1149,7 @@ class _ExternalPayloadNormalizer:
         instance.electricity_prices = {
             entry["period"]: entry["price"] for entry in defaults["electricity_prices"]
         }
+        instance.build_calibration_record()
 
         for machine_index, machine_payload in enumerate(normalized["machines"]):
             machine_key = self._identifier_key(machine_payload["id"])
@@ -1014,6 +1301,28 @@ class _ExternalPayloadNormalizer:
         if not calendar_payload:
             return
 
+        for index, window in enumerate(calendar_payload.get("worker_shifts", [])):
+            worker_key = self._identifier_key(window["worker_id"])
+            if worker_key not in id_maps.workers:
+                self.issues.append(
+                    issue(
+                        INVALID_REFERENCE,
+                        "calendar",
+                        "worker_shifts",
+                        index,
+                        "worker_id",
+                        message=f"Unknown worker reference {window['worker_id']!r}.",
+                    )
+                )
+                continue
+            instance.add_worker_shift_window(
+                id_maps.workers[worker_key],
+                window["start_time"],
+                window["end_time"],
+                shift_label=window["shift_label"],
+                details=window["details"],
+            )
+
         for index, window in enumerate(calendar_payload.get("machine_unavailability", [])):
             machine_key = self._identifier_key(window["machine_id"])
             if machine_key not in id_maps.machines:
@@ -1088,6 +1397,7 @@ class _ExternalPayloadNormalizer:
                 event["start_time"],
                 event["repair_duration"],
                 source=event["source"],
+                event_id=event["event_id"] or None,
                 details=event["details"],
             )
 
@@ -1110,6 +1420,7 @@ class _ExternalPayloadNormalizer:
                 event["start_time"],
                 event["end_time"],
                 source=event["source"],
+                event_id=event["event_id"] or None,
                 details=event["details"],
             )
 

@@ -6,16 +6,24 @@ import pytest
 try:
     from ..interfaces import build_schedule_audit, import_instance_from_dict
     from ..sfjssp_model import Job, Machine, MachineMode, Operation, Schedule, SFJSSPInstance, Worker
+    from ..sfjssp_model.instance import InstanceLabel
 except ImportError:  # pragma: no cover - supports repo-root imports
     from interfaces import build_schedule_audit, import_instance_from_dict
     from sfjssp_model import Job, Machine, MachineMode, Operation, Schedule, SFJSSPInstance, Worker
+    from sfjssp_model.instance import InstanceLabel
 
 
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "interfaces"
+ADAPTER_FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "interfaces_adapters"
 
 
 def _load_fixture(name: str) -> dict:
     with (FIXTURE_ROOT / name).open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _load_adapter_fixture(name: str) -> dict:
+    with (ADAPTER_FIXTURE_ROOT / name).open("r", encoding="utf-8") as handle:
         return json.load(handle)
 
 
@@ -49,7 +57,8 @@ def test_schedule_audit_feasible_imported_schedule_includes_external_ids_and_pro
         input_schema=imported.schema,
     )
 
-    assert audit["audit_schema"] == "schedule_audit_v1"
+    assert audit["audit_schema"] == "schedule_audit_v2"
+    assert audit["calibration"]["status"] == "fully_synthetic"
     assert audit["feasible"] is True
     assert audit["hard_violation_count"] == 0
     assert audit["hard_violations"] == []
@@ -57,13 +66,131 @@ def test_schedule_audit_feasible_imported_schedule_includes_external_ids_and_pro
     assert audit["job_tardiness"][0]["job_external_id"] == "J0"
     assert audit["job_tardiness"][0]["weighted_tardiness"] == 0.0
     assert audit["resource_conflicts"] == {"machines": [], "workers": []}
+    assert audit["resource_calendars"]["machines"] == [
+        {
+            "machine_id": 0,
+            "machine_external_id": "M0",
+            "unavailability_windows": [],
+        }
+    ]
+    assert audit["resource_calendars"]["workers"] == [
+        {
+            "worker_id": 0,
+            "worker_external_id": "W0",
+            "shift_windows": [],
+            "unavailability_windows": [],
+        }
+    ]
+    assert audit["canonical_events"] == []
     assert audit["provenance"]["solver"] == "greedy:spt"
     assert audit["provenance"]["objective"] == "makespan"
     assert audit["provenance"]["seed"] == 7
     assert audit["provenance"]["runtime_seconds"] == pytest.approx(0.12)
     assert audit["provenance"]["input_schema"] == imported.schema
+    assert audit["provenance"]["calibration"]["status"] == "fully_synthetic"
     assert "git_dirty" in audit["provenance"]
     assert "git_status_short" in audit["provenance"]
+
+
+def test_schedule_audit_surfaces_v2_calendar_and_event_provenance():
+    imported = import_instance_from_dict(_load_fixture("valid_with_calendar_events_v2.json"))
+    schedule = Schedule(instance_id=imported.instance.instance_id)
+    schedule.add_operation(
+        job_id=0,
+        op_id=0,
+        machine_id=0,
+        worker_id=0,
+        mode_id=0,
+        start_time=2.0,
+        completion_time=14.0,
+        processing_time=12.0,
+        setup_time=2.0,
+    )
+
+    audit = build_schedule_audit(
+        schedule,
+        imported.instance,
+        provenance={"solver": "greedy:spt"},
+        id_maps=imported.id_maps,
+        input_schema=imported.schema,
+    )
+
+    assert audit["feasible"] is True
+    assert audit["resource_calendars"]["machines"][0]["unavailability_windows"][0]["reason"] == "maintenance"
+    assert audit["resource_calendars"]["workers"][0]["shift_windows"][0]["shift_label"] == "day"
+    assert [event["event_id"] for event in audit["canonical_events"]] == [
+        "worker-absence-000002",
+        "machine-breakdown-000001",
+    ]
+    assert audit["canonical_events"][0]["resource_external_id"] == "W0"
+    assert audit["canonical_events"][1]["resource_external_id"] == "M0"
+
+
+def test_schedule_audit_preserves_import_adapter_and_site_profile_provenance():
+    imported = import_instance_from_dict(
+        _load_adapter_fixture("valid_plant_tables_v1.json"),
+        adapter_name="plant_tables_v1",
+        site_profile_name="light_assembly_demo_v1",
+    )
+    schedule = Schedule(instance_id=imported.instance.instance_id)
+    schedule.add_operation(
+        job_id=0,
+        op_id=0,
+        machine_id=0,
+        worker_id=0,
+        mode_id=0,
+        start_time=4.0,
+        completion_time=14.0,
+        processing_time=10.0,
+        setup_time=4.0,
+        transport_time=2.0,
+    )
+
+    audit = build_schedule_audit(
+        schedule,
+        imported.instance,
+        provenance={"solver": "greedy:spt", **imported.provenance},
+        id_maps=imported.id_maps,
+        input_schema=imported.schema,
+    )
+
+    assert audit["provenance"]["external_schema"] == imported.schema
+    assert audit["provenance"]["calibration"]["status"] == "calibrated_synthetic"
+    assert audit["provenance"]["adapter"]["adapter_name"] == "plant_tables_v1"
+    assert audit["provenance"]["site_profile"]["profile_id"] == "light_assembly_demo_v1"
+
+
+def test_schedule_audit_rejects_calibration_sensitive_claim_without_sources():
+    instance = SFJSSPInstance(instance_id="AUDIT_BAD_CALIBRATION")
+    instance.label = InstanceLabel.CALIBRATED_SYNTHETIC
+    instance.label_justification = "Claimed calibration"
+    instance.calibration_sources = []
+    instance.add_machine(Machine(machine_id=0, modes=[MachineMode(mode_id=0)]))
+    instance.add_worker(Worker(worker_id=0, min_rest_fraction=0.0, ocra_max_per_shift=999.0))
+    operation = Operation(
+        job_id=0,
+        op_id=0,
+        processing_times={0: {0: 10.0}},
+        eligible_machines={0},
+        eligible_workers={0},
+    )
+    instance.add_job(Job(job_id=0, operations=[operation]))
+    instance.ergonomic_risk_map[(0, 0)] = 0.0
+
+    schedule = Schedule(instance_id=instance.instance_id)
+    schedule.add_operation(
+        job_id=0,
+        op_id=0,
+        machine_id=0,
+        worker_id=0,
+        mode_id=0,
+        start_time=0.0,
+        completion_time=10.0,
+        processing_time=10.0,
+    )
+
+    with pytest.raises(ValueError, match="requires at least one calibration source"):
+        build_schedule_audit(schedule, instance)
 
 
 def test_schedule_audit_classifies_transport_gap():

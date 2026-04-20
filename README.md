@@ -49,18 +49,39 @@ Current version-specific behavior:
 - `sfjssp_external_v1` rejects reserved top-level sections `transport`,
   `calendar`, and `events`
 - `sfjssp_external_v2` adds validated `calendar` and `events` sections for:
-  - explicit machine and worker unavailability windows
+  - explicit machine unavailability windows
+  - worker shift windows and derived off-shift semantics
+  - explicit worker unavailability windows
   - typed machine breakdown events
   - typed worker absence events
-- `sfjssp_external_v2` CSV bundles expose those sections through optional tables:
-  - `machine_unavailability.csv`
-  - `worker_unavailability.csv`
-  - `machine_breakdowns.csv`
-  - `worker_absences.csv`
+- `sfjssp_external_v2` JSON accepts:
+  - `calendar.worker_shifts`
+  - `calendar.machine_unavailability`
+  - `calendar.worker_unavailability`
+  - `events.machine_breakdowns`
+  - `events.worker_absences`
+- `sfjssp_external_v2` CSV bundles expose the same semantics through:
+  - `machine_calendar.csv`
+  - `worker_calendar.csv`
+  - `events.csv`
+- the v2 CSV loader still accepts the earlier split tables
+  (`machine_unavailability.csv`, `worker_unavailability.csv`,
+  `machine_breakdowns.csv`, `worker_absences.csv`) as compatibility inputs and
+  normalizes them into the same v2 payload
 - CSV `details_json` columns must decode to JSON objects
 
 The importer is intentionally narrower than `SFJSSPInstance.to_dict()`. It is a
 thin validation layer over the canonical model, not a second semantics engine.
+
+Industrial ingestion is layered on top of that same contract:
+- raw plant-like layouts can be normalized through `interfaces/adapters/`
+- the current bundled adapter is `plant_tables_v1`
+- site parameter overlays are explicit and optional through
+  `interfaces/site_profiles.py`
+- the bundled example site profiles are illustrative only and are marked
+  `illustrative_not_calibrated` in provenance
+- adapter runs declare dropped source fields and unsupported source sections
+  explicitly in provenance instead of silently ignoring them
 
 ```python
 from interfaces import load_instance_from_csv_bundle, load_instance_from_json
@@ -79,10 +100,27 @@ v2_imported = load_instance_from_json(
 v2_csv_imported = load_instance_from_csv_bundle(
     "tests/fixtures/interfaces_csv/valid_with_calendar_events_v2"
 )
+
+adapted = load_instance_from_json(
+    "tests/fixtures/interfaces_adapters/valid_plant_tables_v1.json",
+    adapter_name="plant_tables_v1",
+    site_profile_name="light_assembly_demo_v1",
+)
 ```
 
+Calibration truthfulness contract:
+- public inputs should use `metadata.calibration_status` and
+  `metadata.calibration_status_justification`
+- supported statuses are `fully_synthetic`, `calibrated_synthetic`, and
+  `site_calibrated`
+- `metadata.label` and `metadata.label_justification` remain accepted only as
+  compatibility aliases for older payloads
+- non-synthetic claims must include at least one `calibration_sources` reference
+- audit and export payloads now carry the same explicit calibration record so
+  synthetic and calibrated runs are mechanically distinguishable
+
 The matching audit surface is `build_schedule_audit(...)`, which emits the
-versioned payload `schedule_audit_v1` from the canonical schedule oracle rather
+versioned payload `schedule_audit_v2` from the canonical schedule oracle rather
 than from solver-specific diagnostics.
 
 Stable file exports are written by `export_schedule_artifacts(...)`, which
@@ -95,10 +133,41 @@ CLI happy path:
 ```bash
 python -m interfaces.cli validate-input --input tests/fixtures/interfaces/valid_minimal.json
 python -m interfaces.cli validate-input --input tests/fixtures/interfaces/valid_with_calendar_events_v2.json
-python -m interfaces.cli run --input tests/fixtures/interfaces/valid_minimal.json --solver greedy:spt --output-dir out
+python -m interfaces.cli solve --input tests/fixtures/interfaces/valid_minimal.json --solver greedy:spt --output-root runs
 python -m interfaces.cli validate-input --input tests/fixtures/interfaces_csv/valid_minimal
 python -m interfaces.cli validate-input --input tests/fixtures/interfaces_csv/valid_with_calendar_events_v2
+python -m interfaces.cli solve --input tests/fixtures/interfaces/valid_with_calendar_events_v2.json --solver greedy:spt --output-root runs
+python -m interfaces.cli validate-input --input tests/fixtures/interfaces_adapters/valid_plant_tables_v1.json --adapter plant_tables_v1 --site-profile light_assembly_demo_v1
+python -m interfaces.cli solve --input tests/fixtures/interfaces_adapters/valid_plant_tables_v1.json --adapter plant_tables_v1 --site-profile light_assembly_demo_v1 --solver greedy:spt --output-root runs
+python -m interfaces.cli audit --run-dir runs/EXT_MINIMAL/greedy-spt
+python -m interfaces.cli export --run-dir runs/EXT_MINIMAL/greedy-spt --target-dir handoff/EXT_MINIMAL-greedy-spt
 ```
+
+Operator workflow notes:
+- `solve` is the preferred end-to-end command; `run` remains as a compatibility alias
+- if `--output-dir` is omitted, the CLI writes to the deterministic run directory
+  `runs/<instance-id>/<solver-spec>`
+- `audit` validates `run_manifest.json`, checks that every documented artifact exists,
+  and returns a machine-readable summary of violations and provenance
+- `export` copies the spreadsheet-facing artifact set from a validated run
+  directory into a handoff directory without re-solving the instance
+- the full operator contract is frozen in [interfaces/runbook.py](/C:/Users/s1233/SCHEDULE/interfaces/runbook.py)
+
+Stable CLI exit codes and error classes:
+- `0` / `success`: command completed and emitted a valid machine-readable payload
+- `2` / `validation_error`: input or argument validation failed
+- `3` / `unsupported_request`: unsupported solver, adapter, or workflow shape
+- `4` / `solver_error`: solver failed to produce a supported schedule result
+- `5` / `runtime_error`: unexpected CLI/runtime failure outside documented validation or solver failures
+- `6` / `artifact_error`: run directory or exported artifact bundle is incomplete or contract-invalid
+
+The run/export provenance now distinguishes:
+- raw source path and format
+- raw source schema when an adapter is used
+- adapter mapping name plus dropped source fields
+- public external schema version
+- applied site profile and its overlay scope
+- calibration status, justification, and supporting source references
 
 ## Project Structure
 
@@ -286,10 +355,17 @@ pareto = nsga3.get_pareto_solutions()
 
 ### Generated Instances
 
-The benchmark generator creates instances with explicit labeling:
-- **FULLY_SYNTHETIC**: All parameters computer-generated
-- **CALIBRATED_SYNTHETIC**: Synthetic instances whose parameter ranges were
-  chosen with literature-informed defaults, not factory calibration
+The benchmark generator emits explicit calibration status metadata:
+- `fully_synthetic`: all parameters are computer-generated and not claimed as
+  site-calibrated
+- `calibrated_synthetic`: synthetic structure with documented calibration
+  source references
+- `site_calibrated`: reserved for documented site-specific calibration evidence
+
+Current bundled benchmark generation remains synthetic by default. Literature
+references can motivate parameter ranges, but they are not treated as site
+calibration evidence unless they are explicitly attached as
+`calibration_sources` to a non-synthetic claim.
 
 Saved benchmark documents are emitted under the canonical schema documented in
 `utils/benchmark_document.schema.json`. New generated artifacts include
@@ -370,9 +446,12 @@ python verify_all_solvers.py
 - NSGA-III now encodes machine modes and the bundled demo produces non-penalty schedules.
 - `torch` and `ortools` are optional, and both optional paths have now been smoke-tested in this environment.
 - The CP-SAT path is parity-tested only on narrow canonical fixtures for the
-  `makespan` objective; non-makespan objectives remain experimental surrogate
-  modes, and stored small benchmarks are not yet parity-validated under machine
-  setup semantics.
+  `makespan` objective, including simple fixed machine/worker blackout windows
+  and typed breakdown/absence events when they reduce to canonical no-overlap
+  intervals. The `energy` objective is additionally parity-tested only on a
+  dedicated single-operation energy-tradeoff fixture slice; all other
+  non-makespan objectives remain experimental surrogate modes, and stored small
+  benchmarks are not yet parity-validated under machine setup semantics.
 - The torch-backed PPO training entrypoint runs one episode and writes checkpoints/history.
 - The MIP exact solver is currently quarantined and raises a clear `NotImplementedError` instead of returning invalid schedules.
 - Generated solver comparison artifacts embed provenance metadata, including git

@@ -96,7 +96,10 @@ def test_cp_solver_smoke_when_ortools_installed():
     assert schedule.metadata["solver"] == "cp_sat"
     assert schedule.metadata["solver_objective"] == "makespan"
     assert schedule.metadata["surrogate_objective"] is False
+    assert schedule.metadata["surrogate_run"] is False
     assert schedule.metadata["surrogate_timing"] is False
+    assert schedule.metadata["verified_scope"] == "narrow_canonical_makespan_fixtures"
+    assert schedule.metadata["objective_verification_status"] == "verified_fixture_scope"
 
 
 def test_mip_solver_is_quarantined():
@@ -121,7 +124,10 @@ def test_cp_non_makespan_objective_warns_when_ortools_installed():
 
     assert schedule is not None
     assert schedule.metadata["surrogate_objective"] is True
+    assert schedule.metadata["surrogate_run"] is True
     assert schedule.metadata["solver_objective"] == "energy"
+    assert schedule.metadata["verified_scope"] == "experimental_surrogate_objective"
+    assert schedule.metadata["objective_verification_status"] == "experimental_surrogate_objective"
 
 
 def test_cp_setup_gap_truth_metadata_when_ortools_installed():
@@ -138,9 +144,66 @@ def test_cp_setup_gap_truth_metadata_when_ortools_installed():
         )
 
     assert schedule is not None
+    assert schedule.metadata["surrogate_objective"] is False
+    assert schedule.metadata["surrogate_run"] is True
     assert schedule.is_feasible is False
     assert schedule.metadata["surrogate_timing"] is True
     assert schedule.metadata["surrogate_timing_reason"] == "machine_setup_not_encoded_in_cp_intervals"
+
+
+@pytest.mark.parametrize(
+    ("builder", "expected_start", "expected_semantics"),
+    [
+        (_build_cp_fixture, 0.0, "none"),
+    ],
+)
+def test_cp_solver_smoke_metadata_matches_verified_slice_when_ortools_installed(
+    builder,
+    expected_start,
+    expected_semantics,
+):
+    pytest.importorskip("ortools")
+
+    instance = builder(setup_time=0.0)
+    schedule = solve_sfjssp(
+        instance,
+        method="cp",
+        objective="makespan",
+        time_limit=5,
+        verbose=False,
+    )
+
+    assert schedule is not None
+    assert schedule.check_feasibility(instance) is True
+    assert schedule.get_operation(0, 0).start_time == pytest.approx(expected_start)
+    assert schedule.metadata["calendar_event_semantics"] == expected_semantics
+
+
+def test_cp_supports_machine_calendar_blackout_when_ortools_installed():
+    pytest.importorskip("ortools")
+
+    instance = _build_cp_fixture(setup_time=0.0)
+    instance.add_machine_unavailability(
+        0,
+        0.0,
+        20.0,
+        reason="maintenance",
+        source="calendar",
+    )
+
+    schedule = solve_sfjssp(
+        instance,
+        method="cp",
+        objective="makespan",
+        time_limit=5,
+        verbose=False,
+    )
+
+    assert schedule is not None
+    assert schedule.check_feasibility(instance) is True
+    assert schedule.get_operation(0, 0).start_time == pytest.approx(20.0)
+    assert schedule.metadata["calendar_event_semantics"] == "fixed_blackout_intervals"
+    assert schedule.metadata["calendar_event_semantics_verified"] is True
 
 
 def test_solve_sfjssp_mip_method_is_quarantined():

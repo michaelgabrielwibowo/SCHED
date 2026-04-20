@@ -75,6 +75,17 @@
     }
   ],
   "calendar": {
+    "worker_shifts": [
+      {
+        "worker_id": "W0",
+        "start_time": 0.0,
+        "end_time": 240.0,
+        "shift_label": "day",
+        "details": {
+          "roster": "weekday"
+        }
+      }
+    ],
     "machine_unavailability": [
       {
         "machine_id": "M0",
@@ -107,8 +118,9 @@
         "start_time": 200.0,
         "repair_duration": 25.0,
         "source": "event",
+        "event_id": "machine-breakdown-000001",
         "details": {
-          "event_id": "BD-1"
+          "ticket": "BD-1"
         }
       }
     ],
@@ -118,8 +130,9 @@
         "start_time": 160.0,
         "end_time": 180.0,
         "source": "event",
+        "event_id": "worker-absence-000002",
         "details": {
-          "event_id": "ABS-1"
+          "ticket": "ABS-1"
         }
       }
     ]

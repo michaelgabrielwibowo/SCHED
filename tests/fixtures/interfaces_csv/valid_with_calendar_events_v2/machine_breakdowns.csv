@@ -1,2 +1,0 @@
-machine_id,start_time,repair_duration,source,details_json
-M0,200.0,25.0,event,"{""event_id"": ""BD-1""}"

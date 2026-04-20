@@ -11,6 +11,12 @@ Evidence Status:
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Tuple
 from enum import Enum
+from .calendar import (
+    AvailabilityWindow,
+    MachineBreakdownEvent,
+    sort_machine_breakdown_events,
+    sort_windows,
+)
 
 
 class MachineState(Enum):
@@ -126,6 +132,11 @@ class Machine:
 
     # Tool wear state (INDUSTRY 5.0 Resilience)
     tool_health: float = 1.0  # 1.0 = new, 0.0 = broken
+
+    # Canonical calendar/event state used for deterministic replay.
+    calendar_horizon: float = 0.0
+    unavailability_windows: List[AvailabilityWindow] = field(default_factory=list)
+    breakdown_events: List[MachineBreakdownEvent] = field(default_factory=list)
     
     def degrade_tool(self, duration: float, mode_id: Optional[int] = None):
         """
@@ -167,6 +178,11 @@ class Machine:
             'breakdown_time': self.breakdown_time,
             'repair_time': self.repair_time,
             'tool_health': self.tool_health,
+            'calendar_horizon': self.calendar_horizon,
+            'unavailability_windows': [
+                window.to_dict() for window in self.unavailability_windows
+            ],
+            'breakdown_events': [event.to_dict() for event in self.breakdown_events],
         }
 
     @classmethod
@@ -199,7 +215,78 @@ class Machine:
         m.breakdown_time = data.get('breakdown_time')
         m.repair_time = data.get('repair_time')
         m.tool_health = data.get('tool_health', 1.0)
+        m.calendar_horizon = data.get("calendar_horizon", 0.0)
+        m.unavailability_windows = sort_windows(
+            AvailabilityWindow.from_dict(window)
+            for window in data.get("unavailability_windows", [])
+        )
+        m.breakdown_events = sort_machine_breakdown_events(
+            MachineBreakdownEvent.from_dict(event)
+            for event in data.get("breakdown_events", [])
+        )
+        if not m.unavailability_windows and m.breakdown_events:
+            for event in m.breakdown_events:
+                m._append_unavailability_window(event.to_availability_window())
         return m
+
+    def _append_unavailability_window(self, window: AvailabilityWindow):
+        self.unavailability_windows = sort_windows([*self.unavailability_windows, window])
+
+    def add_unavailability_window(
+        self,
+        start_time: float,
+        end_time: float,
+        *,
+        reason: str = "calendar_unavailable",
+        source: str = "calendar",
+        details: Optional[Dict[str, object]] = None,
+        event_id: str = "",
+    ) -> AvailabilityWindow:
+        """Register one canonical machine blackout window."""
+        window = AvailabilityWindow(
+            start_time=start_time,
+            end_time=end_time,
+            reason=reason,
+            source=source,
+            details=details or {},
+            event_id=event_id,
+        )
+        self._append_unavailability_window(window)
+        return window
+
+    def add_breakdown_event(
+        self,
+        start_time: float,
+        repair_duration: float,
+        *,
+        source: str = "event",
+        details: Optional[Dict[str, object]] = None,
+        event_id: str = "",
+    ) -> MachineBreakdownEvent:
+        """Register a canonical machine-breakdown event and its blackout."""
+        event = MachineBreakdownEvent(
+            machine_id=self.machine_id,
+            start_time=start_time,
+            repair_duration=repair_duration,
+            source=source,
+            details=details or {},
+            event_id=event_id,
+        )
+        self.breakdown_events = sort_machine_breakdown_events([*self.breakdown_events, event])
+        self._append_unavailability_window(event.to_availability_window())
+        return event
+
+    def get_conflicting_windows(
+        self,
+        start_time: float,
+        end_time: float,
+    ) -> List[AvailabilityWindow]:
+        """Return canonical machine blackout windows that overlap the interval."""
+        return [
+            window
+            for window in self.unavailability_windows
+            if window.overlaps(start_time, end_time)
+        ]
 
     @staticmethod
     def _minutes_to_hours(duration: float) -> float:
@@ -222,6 +309,12 @@ class Machine:
         Validate if the machine has enough gap for an incoming operation.
         Must accommodate current available_time plus setup duration.
         """
+        calendar_conflicts = self.get_conflicting_windows(
+            start_time,
+            start_time + max(setup_duration, 1e-9),
+        )
+        if calendar_conflicts:
+            return False, max(window.end_time for window in calendar_conflicts)
         if self.is_broken:
             return False, float('inf')
         earliest_start = self.available_time + setup_duration
@@ -289,10 +382,22 @@ class Machine:
 
     def is_available(self, current_time: float, ignore_temporal: bool = False) -> bool:
         """Check if machine is available at current time"""
+        if not ignore_temporal:
+            if any(
+                window.overlaps(current_time, current_time + 1e-9)
+                for window in self.unavailability_windows
+            ):
+                return False
         return not self.is_broken and (ignore_temporal or self.available_time <= current_time)
 
     def schedule_breakdown(self, breakdown_time: float, repair_duration: float):
-        """Schedule a machine breakdown"""
+        """Compatibility wrapper that records a canonical runtime breakdown."""
+        self.add_breakdown_event(
+            breakdown_time,
+            repair_duration,
+            source="runtime",
+            details={"legacy_method": "schedule_breakdown"},
+        )
         self.is_broken = True
         self.breakdown_time = breakdown_time
         self.repair_time = breakdown_time + repair_duration

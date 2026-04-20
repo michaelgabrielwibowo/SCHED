@@ -11,20 +11,24 @@ from typing import Any, Dict, List, Optional
 from .types import IdentifierMaps
 
 try:
-    from ..sfjssp_model.instance import SFJSSPInstance
+    from ..sfjssp_model.instance import SFJSSPInstance, build_public_calibration_record
     from ..sfjssp_model.schedule import ConstraintViolation, Schedule
 except ImportError:  # pragma: no cover - supports repo-root imports
-    from sfjssp_model.instance import SFJSSPInstance
+    from sfjssp_model.instance import SFJSSPInstance, build_public_calibration_record
     from sfjssp_model.schedule import ConstraintViolation, Schedule
 
 
-SCHEDULE_AUDIT_SCHEMA = "schedule_audit_v1"
+SCHEDULE_AUDIT_SCHEMA = "schedule_audit_v2"
 MACHINE_CONFLICT_CODES = {
     "machine_overlap",
     "setup_gap",
     "transport_gap",
     "ineligible_machine_assignment",
     "period_violation",
+    "machine_unavailable",
+    "machine_maintenance_violation",
+    "machine_outage_violation",
+    "machine_breakdown_violation",
 }
 WORKER_CONFLICT_CODES = {
     "worker_overlap",
@@ -32,6 +36,9 @@ WORKER_CONFLICT_CODES = {
     "ocra_violation",
     "ineligible_worker_assignment",
     "arrival_violation",
+    "worker_unavailable",
+    "worker_off_shift_violation",
+    "worker_absence_violation",
 }
 
 
@@ -48,6 +55,7 @@ def build_schedule_audit(
 
     feasible = schedule.check_feasibility(instance)
     metrics = schedule.evaluate(instance)
+    calibration = instance.build_calibration_record()
     hard_violations = [
         _serialize_violation(violation, id_maps)
         for violation in schedule.constraint_violation_details
@@ -57,6 +65,7 @@ def build_schedule_audit(
         "audit_schema": SCHEDULE_AUDIT_SCHEMA,
         "instance_id": instance.instance_id,
         "instance_name": instance.instance_name,
+        "calibration": calibration,
         "feasible": feasible,
         "hard_violation_count": len(hard_violations),
         "hard_violation_counts": _count_violation_codes(hard_violations),
@@ -75,9 +84,12 @@ def build_schedule_audit(
         },
         "job_tardiness": _build_job_tardiness_summary(schedule, instance, id_maps),
         "resource_conflicts": _build_resource_conflict_summary(hard_violations, id_maps),
+        "resource_calendars": _build_resource_calendar_summary(instance, id_maps),
+        "canonical_events": _build_canonical_event_summary(instance, id_maps),
         "provenance": _build_audit_provenance(
             schedule,
             instance,
+            calibration=calibration,
             provenance=provenance,
             input_schema=input_schema,
             input_source_id=input_source_id,
@@ -89,6 +101,7 @@ def _build_audit_provenance(
     schedule: Schedule,
     instance: SFJSSPInstance,
     *,
+    calibration: Dict[str, Any],
     provenance: Optional[Dict[str, Any]],
     input_schema: Optional[str],
     input_source_id: Optional[str],
@@ -96,7 +109,7 @@ def _build_audit_provenance(
     provenance = dict(provenance or {})
     schedule_metadata = dict(schedule.metadata)
     git_status_short = _get_git_status_short()
-    return {
+    audit_provenance = {
         "audit_schema": SCHEDULE_AUDIT_SCHEMA,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "solver": provenance.get("solver") or schedule_metadata.get("solver") or "unknown",
@@ -111,11 +124,59 @@ def _build_audit_provenance(
         ),
         "input_source_id": provenance.get("input_source_id") or input_source_id or instance.instance_id,
         "input_schema": provenance.get("input_schema") or input_schema,
+        "calibration": calibration,
         "git_commit": _get_git_commit(),
         "git_dirty": bool(git_status_short),
         "git_status_short": git_status_short,
         "schedule_metadata": schedule_metadata,
     }
+    reserved_keys = {
+        "solver",
+        "objective",
+        "seed",
+        "runtime_seconds",
+        "time_seconds",
+        "input_source_id",
+        "input_schema",
+        "calibration",
+    }
+    for key, value in provenance.items():
+        if key not in reserved_keys:
+            audit_provenance[key] = _json_ready(value)
+    return audit_provenance
+
+
+def validate_schedule_audit_payload(audit_payload: Dict[str, Any]) -> None:
+    """Reject audit payloads that omit the enforced calibration provenance contract."""
+
+    if audit_payload.get("audit_schema") != SCHEDULE_AUDIT_SCHEMA:
+        raise ValueError(
+            f"Expected audit_schema {SCHEDULE_AUDIT_SCHEMA!r}, got "
+            f"{audit_payload.get('audit_schema')!r}."
+        )
+    calibration = audit_payload.get("calibration")
+    if not isinstance(calibration, dict):
+        raise ValueError("Audit payload must include a top-level calibration record.")
+    canonical_calibration = build_public_calibration_record(
+        calibration.get("status"),
+        calibration.get("justification", ""),
+        calibration.get("sources", []),
+    )
+    if dict(calibration) != canonical_calibration:
+        raise ValueError(
+            "Audit payload calibration record does not match the canonical calibration contract."
+        )
+
+    provenance = audit_payload.get("provenance")
+    if not isinstance(provenance, dict):
+        raise ValueError("Audit payload must include provenance.")
+    provenance_calibration = provenance.get("calibration")
+    if not isinstance(provenance_calibration, dict):
+        raise ValueError("Audit provenance must include calibration.")
+    if dict(provenance_calibration) != canonical_calibration:
+        raise ValueError(
+            "Audit provenance calibration record does not match the top-level calibration record."
+        )
 
 
 def _serialize_violation(
@@ -217,6 +278,90 @@ def _build_resource_conflict_summary(
     return {
         "machines": [machine_buckets[key] for key in sorted(machine_buckets)],
         "workers": [worker_buckets[key] for key in sorted(worker_buckets)],
+    }
+
+
+def _build_resource_calendar_summary(
+    instance: SFJSSPInstance,
+    id_maps: Optional[IdentifierMaps],
+) -> Dict[str, List[Dict[str, Any]]]:
+    machines: List[Dict[str, Any]] = []
+    for machine in sorted(instance.machines, key=lambda item: item.machine_id):
+        machines.append(
+            {
+                "machine_id": machine.machine_id,
+                "machine_external_id": id_maps.reverse_machines.get(machine.machine_id) if id_maps is not None else None,
+                "unavailability_windows": [
+                    _serialize_window(window)
+                    for window in instance.get_machine_unavailability(machine.machine_id)
+                ],
+            }
+        )
+
+    workers: List[Dict[str, Any]] = []
+    for worker in sorted(instance.workers, key=lambda item: item.worker_id):
+        workers.append(
+            {
+                "worker_id": worker.worker_id,
+                "worker_external_id": id_maps.reverse_workers.get(worker.worker_id) if id_maps is not None else None,
+                "shift_windows": [
+                    {
+                        "start_time": window.start_time,
+                        "end_time": window.end_time,
+                        "shift_label": window.shift_label,
+                        "details": _json_ready(window.details),
+                    }
+                    for window in worker.shift_windows
+                ],
+                "unavailability_windows": [
+                    _serialize_window(window)
+                    for window in instance.get_worker_unavailability(worker.worker_id)
+                ],
+            }
+        )
+
+    return {"machines": machines, "workers": workers}
+
+
+def _build_canonical_event_summary(
+    instance: SFJSSPInstance,
+    id_maps: Optional[IdentifierMaps],
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for event in instance.iter_canonical_events():
+        resource_type = "machine" if event["event_type"] == "machine_breakdown" else "worker"
+        resource_id = int(event["resource_id"])
+        if resource_type == "machine":
+            resource_external_id = (
+                id_maps.reverse_machines.get(resource_id) if id_maps is not None else None
+            )
+        else:
+            resource_external_id = (
+                id_maps.reverse_workers.get(resource_id) if id_maps is not None else None
+            )
+        rows.append(
+            {
+                "event_type": event["event_type"],
+                "event_id": event.get("event_id"),
+                "resource_type": resource_type,
+                "resource_id": resource_id,
+                "resource_external_id": resource_external_id,
+                "start_time": event["start_time"],
+                "end_time": event["end_time"],
+                "payload": _json_ready(event.get("payload", {})),
+            }
+        )
+    return rows
+
+
+def _serialize_window(window: Any) -> Dict[str, Any]:
+    return {
+        "start_time": window.start_time,
+        "end_time": window.end_time,
+        "reason": window.reason,
+        "source": window.source,
+        "event_id": getattr(window, "event_id", ""),
+        "details": _json_ready(window.details),
     }
 
 

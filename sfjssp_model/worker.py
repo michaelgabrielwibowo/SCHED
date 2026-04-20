@@ -12,6 +12,14 @@ from dataclasses import dataclass, field
 from typing import Dict, Set, List, Optional, Tuple
 from enum import Enum
 import numpy as np
+from .calendar import (
+    AvailabilityWindow,
+    ShiftWindow,
+    WorkerAbsenceEvent,
+    sort_shift_windows,
+    sort_windows,
+    sort_worker_absence_events,
+)
 from .period_clock import PeriodClock
 
 
@@ -148,6 +156,13 @@ class Worker:
     is_absent: bool = False
     absence_end_time: Optional[float] = None
 
+    # Canonical calendar/event state used for deterministic replay.
+    calendar_horizon: float = 0.0
+    shift_windows: List[ShiftWindow] = field(default_factory=list)
+    off_shift_windows: List[AvailabilityWindow] = field(default_factory=list)
+    unavailability_windows: List[AvailabilityWindow] = field(default_factory=list)
+    absence_events: List[WorkerAbsenceEvent] = field(default_factory=list)
+
     @classmethod
     def from_dict(cls, data: dict) -> 'Worker':
         """Create worker from dictionary"""
@@ -192,7 +207,171 @@ class Worker:
         w.ocra_risk_rate_unit = data.get('ocra_risk_rate_unit', "OCRA-index per minute")
         raw_completed = data.get('operations_completed', {})
         w.operations_completed = {int(k): int(v) for k, v in raw_completed.items()}
+        w.calendar_horizon = data.get("calendar_horizon", 0.0)
+        w.shift_windows = sort_shift_windows(
+            ShiftWindow.from_dict(window)
+            for window in data.get("shift_windows", [])
+        )
+        w.off_shift_windows = sort_windows(
+            AvailabilityWindow.from_dict(window)
+            for window in data.get("off_shift_windows", [])
+        )
+        w.unavailability_windows = sort_windows(
+            AvailabilityWindow.from_dict(window)
+            for window in data.get("unavailability_windows", [])
+        )
+        w.absence_events = sort_worker_absence_events(
+            WorkerAbsenceEvent.from_dict(event)
+            for event in data.get("absence_events", [])
+        )
+        if not w.unavailability_windows and w.absence_events:
+            for event in w.absence_events:
+                w._append_unavailability_window(event.to_availability_window())
+        if w.shift_windows and not w.off_shift_windows and w.calendar_horizon > 0.0:
+            w.rebuild_off_shift_windows(w.calendar_horizon)
         return w
+
+    def _append_unavailability_window(self, window: AvailabilityWindow):
+        self.unavailability_windows = sort_windows(
+            [*self.unavailability_windows, window]
+        )
+
+    def add_shift_window(
+        self,
+        start_time: float,
+        end_time: float,
+        *,
+        shift_label: str = "shift",
+        details: Optional[Dict[str, object]] = None,
+        planning_horizon: Optional[float] = None,
+    ) -> ShiftWindow:
+        """Register one canonical worker shift window."""
+        window = ShiftWindow(
+            start_time=start_time,
+            end_time=end_time,
+            shift_label=shift_label,
+            details=details or {},
+        )
+        self.shift_windows = sort_shift_windows([*self.shift_windows, window])
+        if planning_horizon is not None:
+            self.rebuild_off_shift_windows(planning_horizon)
+        return window
+
+    def rebuild_off_shift_windows(self, planning_horizon: float) -> List[AvailabilityWindow]:
+        """
+        Derive canonical off-shift blackouts from explicit shift windows.
+
+        When no shift windows are configured, the worker is interpreted as
+        shift-unconstrained and no synthetic off-shift windows are created.
+        """
+        self.calendar_horizon = max(0.0, planning_horizon)
+        if not self.shift_windows or self.calendar_horizon <= 0.0:
+            self.off_shift_windows = []
+            return []
+
+        clipped_shifts = []
+        for window in self.shift_windows:
+            if window.end_time <= 0.0 or window.start_time >= self.calendar_horizon:
+                continue
+            clipped_shifts.append(
+                ShiftWindow(
+                    start_time=max(0.0, window.start_time),
+                    end_time=min(self.calendar_horizon, window.end_time),
+                    shift_label=window.shift_label,
+                    details=dict(window.details),
+                )
+            )
+
+        clipped_shifts = sort_shift_windows(clipped_shifts)
+        off_shift_windows: List[AvailabilityWindow] = []
+        cursor = 0.0
+
+        for window in clipped_shifts:
+            if window.start_time > cursor:
+                off_shift_windows.append(
+                    AvailabilityWindow(
+                        start_time=cursor,
+                        end_time=window.start_time,
+                        reason="off_shift",
+                        source="calendar",
+                        details={"shift_label": window.shift_label},
+                    )
+                )
+            cursor = max(cursor, window.end_time)
+
+        if cursor < self.calendar_horizon:
+            off_shift_windows.append(
+                AvailabilityWindow(
+                    start_time=cursor,
+                    end_time=self.calendar_horizon,
+                    reason="off_shift",
+                    source="calendar",
+                    details={"derived_from": "shift_windows"},
+                )
+            )
+
+        self.off_shift_windows = sort_windows(off_shift_windows)
+        return list(self.off_shift_windows)
+
+    def add_unavailability_window(
+        self,
+        start_time: float,
+        end_time: float,
+        *,
+        reason: str = "calendar_unavailable",
+        source: str = "calendar",
+        details: Optional[Dict[str, object]] = None,
+        event_id: str = "",
+    ) -> AvailabilityWindow:
+        """Register one canonical worker unavailability window."""
+        window = AvailabilityWindow(
+            start_time=start_time,
+            end_time=end_time,
+            reason=reason,
+            source=source,
+            details=details or {},
+            event_id=event_id,
+        )
+        self._append_unavailability_window(window)
+        return window
+
+    def add_absence_event(
+        self,
+        start_time: float,
+        end_time: float,
+        *,
+        source: str = "event",
+        details: Optional[Dict[str, object]] = None,
+        event_id: str = "",
+    ) -> WorkerAbsenceEvent:
+        """Register a canonical worker absence event and its derived blackout."""
+        event = WorkerAbsenceEvent(
+            worker_id=self.worker_id,
+            start_time=start_time,
+            end_time=end_time,
+            source=source,
+            details=details or {},
+            event_id=event_id,
+        )
+        self.absence_events = sort_worker_absence_events([*self.absence_events, event])
+        self._append_unavailability_window(event.to_availability_window())
+        return event
+
+    def get_canonical_unavailability_windows(self) -> List[AvailabilityWindow]:
+        """Return off-shift and explicit worker blackouts in canonical order."""
+        return sort_windows([*self.off_shift_windows, *self.unavailability_windows])
+
+    def get_conflicting_windows(
+        self,
+        start_time: float,
+        end_time: float,
+    ) -> List[AvailabilityWindow]:
+        """Return canonical worker blackout windows that overlap the interval."""
+        return [
+            window
+            for window in self.get_canonical_unavailability_windows()
+            if window.overlaps(start_time, end_time)
+        ]
 
     def _get_period_index(self, t: float) -> int:
         """
@@ -220,6 +399,13 @@ class Worker:
         - Ergonomics: OCRA exposure per shift <= 2.2.
         - Work limit: Maximum 8 hours continuous work.
         """
+        calendar_conflicts = self.get_conflicting_windows(
+            start_time,
+            start_time + max(duration, 1e-9),
+        )
+        if calendar_conflicts:
+            return False, max(window.end_time for window in calendar_conflicts)
+
         # 1. Availability check (including lockout)
         if not self.is_available(start_time):
             return False, max(self.available_time, self.mandatory_shift_lockout_until)
@@ -452,6 +638,13 @@ class Worker:
         # [CHANGED] Check if the worker is currently locked out due to the consecutive shift rule
         if not ignore_temporal and current_time < self.mandatory_shift_lockout_until:
             return False
+
+        if not ignore_temporal:
+            if any(
+                window.overlaps(current_time, current_time + 1e-9)
+                for window in self.get_canonical_unavailability_windows()
+            ):
+                return False
             
         return (
             not self.is_absent and
@@ -460,14 +653,21 @@ class Worker:
         )
 
     def schedule_absence(self, start_time: float, end_time: float):
-        """Schedule a worker absence"""
+        """Compatibility wrapper that records a canonical runtime absence event."""
+        self.add_absence_event(
+            start_time,
+            end_time,
+            source="runtime",
+            details={"legacy_method": "schedule_absence"},
+        )
         self.is_absent = True
         self.absence_end_time = end_time
-        self.available_time = end_time
+        self.available_time = max(self.available_time, end_time)
+        self.current_state = WorkerState.ABSENT
 
     def end_absence(self, current_time: float):
         """End worker absence"""
-        if self.is_absent and current_time >= self.absence_end_time:
+        if self.is_absent and self.absence_end_time is not None and current_time >= self.absence_end_time:
             self.is_absent = False
             self.absence_end_time = None
             self.current_state = WorkerState.IDLE
@@ -559,6 +759,13 @@ class Worker:
             'operations_completed': {
                 str(k): v for k, v in self.operations_completed.items()
             },
+            'calendar_horizon': self.calendar_horizon,
+            'shift_windows': [window.to_dict() for window in self.shift_windows],
+            'off_shift_windows': [window.to_dict() for window in self.off_shift_windows],
+            'unavailability_windows': [
+                window.to_dict() for window in self.unavailability_windows
+            ],
+            'absence_events': [event.to_dict() for event in self.absence_events],
         }
 
     def __hash__(self):

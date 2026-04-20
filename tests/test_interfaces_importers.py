@@ -73,6 +73,8 @@ def test_import_multi_job_fixture_normalizes_ids_and_defaults():
     assert imported.id_maps.machine_modes[("str:M2", "str:fast")] == 1
     assert imported.instance.workers[0].eligible_operations == {(0, 1), (1, 0)}
     assert imported.instance.workers[1].eligible_operations == {(0, 0), (0, 1), (1, 0)}
+    assert imported.provenance["calibration"]["status"] == "fully_synthetic"
+    assert imported.provenance["calibration"]["sources"] == []
 
 
 def test_load_v2_fixture_builds_calendar_and_event_state():
@@ -84,19 +86,26 @@ def test_load_v2_fixture_builds_calendar_and_event_state():
 
     machine_windows = imported.instance.get_machine_unavailability(0)
     worker_windows = imported.instance.get_worker_unavailability(0)
+    worker_shift_windows = imported.instance.workers[0].shift_windows
 
     assert [(window.reason, window.start_time, window.end_time) for window in machine_windows] == [
         ("maintenance", 90.0, 120.0),
         ("breakdown", 200.0, 225.0),
     ]
+    assert [(window.shift_label, window.start_time, window.end_time) for window in worker_shift_windows] == [
+        ("day", 0.0, 240.0),
+    ]
     assert [(window.reason, window.start_time, window.end_time) for window in worker_windows] == [
         ("training", 130.0, 150.0),
         ("absence", 160.0, 180.0),
+        ("off_shift", 240.0, 1000.0),
     ]
     assert len(imported.instance.machine_breakdown_events) == 1
     assert len(imported.instance.worker_absence_events) == 1
     assert imported.instance.machine_breakdown_events[0].repair_duration == pytest.approx(25.0)
     assert imported.instance.worker_absence_events[0].duration == pytest.approx(20.0)
+    assert imported.instance.machine_breakdown_events[0].event_id == "machine-breakdown-000001"
+    assert imported.instance.worker_absence_events[0].event_id == "worker-absence-000002"
 
 
 def test_importer_rejects_unknown_top_level_field():
@@ -159,6 +168,18 @@ def test_v2_rejects_invalid_worker_absence_interval():
     _assert_issue(excinfo.value, "invalid_value", "$.events.worker_absences[0].end_time")
 
 
+def test_importer_rejects_non_synthetic_calibration_claim_without_sources():
+    payload = _load_fixture("valid_multi_job.json")
+    payload["metadata"]["calibration_status"] = "site_calibrated"
+    payload["metadata"]["calibration_status_justification"] = "Claimed to match one plant"
+    payload["metadata"]["calibration_sources"] = []
+
+    with pytest.raises(InterfaceValidationError) as excinfo:
+        import_instance_from_dict(payload)
+
+    _assert_issue(excinfo.value, "missing_required", "$.metadata.calibration_sources")
+
+
 def test_importer_normalizes_equivalent_orderings_deterministically():
     unsorted_payload = _load_fixture("valid_multi_job.json")
     sorted_payload = deepcopy(unsorted_payload)
@@ -176,6 +197,9 @@ def test_importer_normalizes_equivalent_orderings_deterministically():
 def test_v2_importer_normalizes_calendar_and_event_orderings_deterministically():
     unsorted_payload = _load_fixture("valid_with_calendar_events_v2.json")
     reordered_payload = deepcopy(unsorted_payload)
+    reordered_payload["calendar"]["worker_shifts"] = list(
+        reversed(reordered_payload["calendar"]["worker_shifts"])
+    )
     reordered_payload["calendar"]["machine_unavailability"] = list(
         reversed(reordered_payload["calendar"]["machine_unavailability"])
     )

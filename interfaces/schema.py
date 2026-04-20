@@ -5,10 +5,19 @@ Versioned schema contract for external SFJSSP inputs.
 surface. It accepts only the fields required to build a canonical
 `SFJSSPInstance` without inventing a second scheduling semantics layer.
 
-`sfjssp_external_v2` extends the JSON contract with validated `calendar` and
-`events` sections that map directly onto canonical resource-unavailability
-windows and typed breakdown/absence events. CSV bundle support remains on v1
-until its package layout is widened in a later slice.
+`sfjssp_external_v2` extends the JSON and CSV contracts with validated
+`calendar` and `events` sections that map directly onto canonical worker shift
+windows, explicit resource-unavailability windows, and typed breakdown/absence
+events.
+
+Calibration truthfulness:
+- `metadata.calibration_status` is the public calibration field
+- supported values are `fully_synthetic`, `calibrated_synthetic`, and
+  `site_calibrated`
+- `metadata.label` and `metadata.label_justification` remain accepted only as
+  compatibility aliases for older payloads
+- non-synthetic claims must include both a justification and at least one
+  calibration source reference
 
 Units:
 - all durations are in minutes
@@ -61,6 +70,8 @@ SUPPORTED_METADATA_FIELDS = frozenset(
         "period_duration",
         "horizon_start",
         "source",
+        "calibration_status",
+        "calibration_status_justification",
         "label",
         "label_justification",
         "calibration_sources",
@@ -140,7 +151,9 @@ REQUIRED_OPERATION_FIELDS = frozenset({"id", "processing_options", "eligible_wor
 SUPPORTED_PROCESSING_OPTION_FIELDS = frozenset({"machine_id", "mode_id", "duration"})
 REQUIRED_PROCESSING_OPTION_FIELDS = frozenset({"machine_id", "mode_id", "duration"})
 
-SUPPORTED_CALENDAR_FIELDS = frozenset({"machine_unavailability", "worker_unavailability"})
+SUPPORTED_CALENDAR_FIELDS = frozenset(
+    {"machine_unavailability", "worker_unavailability", "worker_shifts"}
+)
 
 SUPPORTED_MACHINE_UNAVAILABILITY_FIELDS = frozenset(
     {"machine_id", "start_time", "end_time", "reason", "source", "details"}
@@ -156,17 +169,22 @@ REQUIRED_WORKER_UNAVAILABILITY_FIELDS = frozenset(
     {"worker_id", "start_time", "end_time"}
 )
 
+SUPPORTED_WORKER_SHIFT_FIELDS = frozenset(
+    {"worker_id", "start_time", "end_time", "shift_label", "details"}
+)
+REQUIRED_WORKER_SHIFT_FIELDS = frozenset({"worker_id", "start_time", "end_time"})
+
 SUPPORTED_EVENTS_FIELDS = frozenset({"machine_breakdowns", "worker_absences"})
 
 SUPPORTED_MACHINE_BREAKDOWN_FIELDS = frozenset(
-    {"machine_id", "start_time", "repair_duration", "source", "details"}
+    {"machine_id", "start_time", "repair_duration", "source", "details", "event_id"}
 )
 REQUIRED_MACHINE_BREAKDOWN_FIELDS = frozenset(
     {"machine_id", "start_time", "repair_duration"}
 )
 
 SUPPORTED_WORKER_ABSENCE_FIELDS = frozenset(
-    {"worker_id", "start_time", "end_time", "source", "details"}
+    {"worker_id", "start_time", "end_time", "source", "details", "event_id"}
 )
 REQUIRED_WORKER_ABSENCE_FIELDS = frozenset({"worker_id", "start_time", "end_time"})
 

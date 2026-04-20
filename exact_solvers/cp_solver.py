@@ -4,8 +4,13 @@ Exact-solver entrypoints for SFJSSP.
 Public support boundary:
 - CP-SAT is parity-tested only on narrow canonical fixtures for
   `objective="makespan"`.
+- CP-SAT now models canonical machine/worker blackout windows and typed
+  breakdown/absence events as fixed no-overlap intervals for narrow makespan
+  fixtures.
+- CP-SAT `objective="energy"` is parity-tested only on a dedicated
+  single-operation energy-tradeoff fixture slice.
 - CP objective variants `energy`, `ergonomic`, and `composite` remain
-  experimental surrogate objectives.
+  experimental outside explicitly parity-proven fixture scopes.
 - The MIP path is quarantined and unavailable.
 
 Requires: ortools >= 9.8.0 for CP-SAT execution.
@@ -30,6 +35,10 @@ ORTOOLS_IMPORT_ERROR = (
     "pip install ortools>=9.8.0"
 )
 VERIFIED_CP_OBJECTIVE = "makespan"
+VERIFIED_CP_OBJECTIVE_SCOPES = {
+    "makespan": "narrow_canonical_makespan_fixtures",
+    "energy": "single_operation_energy_tradeoff_fixture",
+}
 EXPERIMENTAL_CP_OBJECTIVES = ("energy", "ergonomic", "composite")
 SUPPORTED_CP_OBJECTIVES = (VERIFIED_CP_OBJECTIVE,) + EXPERIMENTAL_CP_OBJECTIVES
 QUARANTINED_MIP_MESSAGE = (
@@ -52,6 +61,135 @@ def _validate_cp_objective(objective: str) -> None:
         raise ValueError(
             f"Unsupported CP objective '{objective}'. Supported objectives: {supported}"
         )
+
+
+def _instance_has_explicit_unavailability(instance: Any) -> bool:
+    """Return whether the instance uses canonical blackout-window semantics."""
+    return any(instance.get_machine_unavailability(machine.machine_id) for machine in instance.machines) or any(
+        instance.get_worker_unavailability(worker.worker_id) for worker in instance.workers
+    ) or bool(getattr(instance, "machine_breakdown_events", [])) or bool(
+        getattr(instance, "worker_absence_events", [])
+    )
+
+
+def _iter_machine_blackout_windows(instance: Any):
+    """Yield canonical machine blackout windows in deterministic order."""
+    for machine in sorted(instance.machines, key=lambda item: item.machine_id):
+        for window in instance.get_machine_unavailability(machine.machine_id):
+            yield machine.machine_id, window
+
+
+def _iter_worker_blackout_windows(instance: Any):
+    """Yield canonical worker blackout windows in deterministic order."""
+    for worker in sorted(instance.workers, key=lambda item: item.worker_id):
+        for window in instance.get_worker_unavailability(worker.worker_id):
+            yield worker.worker_id, window
+
+
+def _compute_cp_horizon(instance: Any, n_ops: int, max_processing: float) -> int:
+    """Compute a conservative integer time horizon for CP-SAT."""
+    base_horizon = int(math.ceil(max(1.0, n_ops * max_processing * 3.0)))
+    latest_arrival = max((float(job.arrival_time) for job in instance.jobs), default=0.0)
+    latest_due_date = max((float(job.due_date) for job in instance.jobs), default=0.0)
+    latest_blackout_end = max(
+        (
+            float(window.end_time)
+            for _, window in _iter_machine_blackout_windows(instance)
+        ),
+        default=0.0,
+    )
+    latest_worker_blackout_end = max(
+        (
+            float(window.end_time)
+            for _, window in _iter_worker_blackout_windows(instance)
+        ),
+        default=0.0,
+    )
+    return int(
+        math.ceil(
+            max(
+                1.0,
+                base_horizon,
+                latest_arrival + max_processing,
+                latest_due_date,
+                latest_blackout_end,
+                latest_worker_blackout_end,
+            )
+        )
+    )
+
+
+def _is_single_operation_energy_fixture_scope(instance: Any) -> bool:
+    """Return whether the instance matches the narrow verified CP energy slice."""
+    if len(getattr(instance, "jobs", [])) != 1:
+        return False
+    job = instance.jobs[0]
+    if len(getattr(job, "operations", [])) != 1:
+        return False
+    operation = job.operations[0]
+    if len(getattr(instance, "workers", [])) != 1 or len(operation.eligible_workers) != 1:
+        return False
+    if _instance_has_explicit_unavailability(instance):
+        return False
+    if any(getattr(machine, "setup_time", 0.0) > 0.0 for machine in instance.machines):
+        return False
+    if getattr(operation, "transport_time", 0.0) != 0.0:
+        return False
+    if getattr(operation, "waiting_time", 0.0) != 0.0:
+        return False
+    if len(operation.eligible_machines) < 2:
+        return False
+    worker_id = next(iter(operation.eligible_workers))
+    worker = instance.get_worker(worker_id)
+    if worker is None:
+        return False
+    if getattr(worker, "min_rest_fraction", 0.0) != 0.0:
+        return False
+    if getattr(instance, "get_ergonomic_risk")(job.job_id, operation.op_id) != 0.0:
+        return False
+    return True
+
+
+def _is_narrow_canonical_makespan_fixture_scope(instance: Any) -> bool:
+    """Return whether the instance matches the current verified CP makespan slice."""
+    if any(getattr(machine, "setup_time", 0.0) > 0.0 for machine in instance.machines):
+        return False
+    for worker in instance.workers:
+        if getattr(worker, "min_rest_fraction", 0.0) != 0.0:
+            return False
+    for job in instance.jobs:
+        for operation in job.operations:
+            if getattr(instance, "get_ergonomic_risk")(job.job_id, operation.op_id) != 0.0:
+                return False
+    return True
+
+
+def _resolve_cp_verification_scope(instance: Any, objective: str) -> Optional[str]:
+    """Return the exact verified solver scope for this run, if one exists."""
+    if objective == VERIFIED_CP_OBJECTIVE and _is_narrow_canonical_makespan_fixture_scope(instance):
+        return VERIFIED_CP_OBJECTIVE_SCOPES["makespan"]
+    if objective == "energy" and _is_single_operation_energy_fixture_scope(instance):
+        return VERIFIED_CP_OBJECTIVE_SCOPES["energy"]
+    return None
+    latest_worker_blackout_end = max(
+        (
+            float(window.end_time)
+            for _, window in _iter_worker_blackout_windows(instance)
+        ),
+        default=0.0,
+    )
+    return int(
+        math.ceil(
+            max(
+                1.0,
+                base_horizon,
+                latest_arrival + max_processing,
+                latest_due_date,
+                latest_blackout_end,
+                latest_worker_blackout_end,
+            )
+        )
+    )
 
 
 class CPScheduler:
@@ -100,7 +238,8 @@ class CPScheduler:
             instance: SFJSSPInstance to solve
             objective: Objective to minimize
                 - "makespan": the only parity-covered CP objective
-                - "energy": experimental surrogate energy objective
+                - "energy": verified only on the single-operation tradeoff
+                  fixture slice; experimental otherwise
                 - "ergonomic": experimental surrogate ergonomic objective
                 - "composite": experimental weighted surrogate objective
             verbose: Print solver progress
@@ -109,13 +248,15 @@ class CPScheduler:
             Schedule object or None if infeasible/timeout
         """
         _validate_cp_objective(objective)
+        verification_scope = _resolve_cp_verification_scope(instance, objective)
 
-        if objective != VERIFIED_CP_OBJECTIVE:
+        if verification_scope is None and objective != VERIFIED_CP_OBJECTIVE:
             warnings.warn(
                 (
                     f"CPScheduler objective='{objective}' is experimental. "
                     "Only objective='makespan' has parity coverage in the "
-                    "canonical test fixtures."
+                    "canonical test fixtures, except for explicitly "
+                    "parity-proven objective slices."
                 ),
                 UserWarning,
                 stacklevel=2,
@@ -196,7 +337,7 @@ class CPScheduler:
                         for pt in op.processing_times[m_id].values():
                             max_processing = max(max_processing, pt)
 
-        horizon = int(n_ops * max_processing * 3)  # Generous horizon
+        horizon = _compute_cp_horizon(instance, n_ops, max_processing)
 
         # Scale factors for objective normalization
         # (CP-SAT requires integer objectives)
@@ -234,6 +375,8 @@ class CPScheduler:
         # Machine/worker intervals
         self.machine_intervals = {m.machine_id: [] for m in machines}
         self.worker_intervals = {w.worker_id: [] for w in workers}
+        self.machine_blackout_counts = {m.machine_id: 0 for m in machines}
+        self.worker_blackout_counts = {w.worker_id: 0 for w in workers}
 
         # Create variables for each operation
         for job_id, op_idx in all_operations:
@@ -497,11 +640,13 @@ class CPScheduler:
                 )
 
         # 4. No-overlap on machines
+        self._add_machine_blackout_intervals(instance)
         for m_id, intervals in self.machine_intervals.items():
             if intervals:
                 model.AddNoOverlap(intervals)
 
         # 5. No-overlap on workers
+        self._add_worker_blackout_intervals(instance)
         for w_id, intervals in self.worker_intervals.items():
             if intervals:
                 model.AddNoOverlap(intervals)
@@ -614,6 +759,46 @@ class CPScheduler:
             for scheduled_op in machine_schedule.operations:
                 scheduled_op.setup_time = required_setup
 
+    def _add_machine_blackout_intervals(self, instance: Any) -> None:
+        """Append fixed canonical machine blackout windows to the no-overlap model."""
+        model = self.model
+        for machine_id, window in _iter_machine_blackout_windows(instance):
+            start_time = int(math.floor(window.start_time))
+            end_time = int(math.ceil(window.end_time))
+            if end_time <= start_time:
+                continue
+            interval = model.NewIntervalVar(
+                model.NewConstant(start_time),
+                end_time - start_time,
+                model.NewConstant(end_time),
+                (
+                    f"machine_blackout_{machine_id}_"
+                    f"{self.machine_blackout_counts[machine_id]}"
+                ),
+            )
+            self.machine_blackout_counts[machine_id] += 1
+            self.machine_intervals[machine_id].append(interval)
+
+    def _add_worker_blackout_intervals(self, instance: Any) -> None:
+        """Append fixed canonical worker blackout windows to the no-overlap model."""
+        model = self.model
+        for worker_id, window in _iter_worker_blackout_windows(instance):
+            start_time = int(math.floor(window.start_time))
+            end_time = int(math.ceil(window.end_time))
+            if end_time <= start_time:
+                continue
+            interval = model.NewIntervalVar(
+                model.NewConstant(start_time),
+                end_time - start_time,
+                model.NewConstant(end_time),
+                (
+                    f"worker_blackout_{worker_id}_"
+                    f"{self.worker_blackout_counts[worker_id]}"
+                ),
+            )
+            self.worker_blackout_counts[worker_id] += 1
+            self.worker_intervals[worker_id].append(interval)
+
     def _extract_solution(self, instance: Any, objective: str) -> Any:
         """Extract a schedule and annotate its solver provenance."""
         try:
@@ -693,21 +878,38 @@ class CPScheduler:
         has_unmodeled_machine_setup = any(
             getattr(machine, "setup_time", 0.0) > 0.0 for machine in instance.machines
         )
+        has_explicit_blackouts = _instance_has_explicit_unavailability(instance)
+        verification_scope = _resolve_cp_verification_scope(instance, objective)
+        objective_verified = objective == VERIFIED_CP_OBJECTIVE or verification_scope is not None
+        run_verified = objective_verified and not has_unmodeled_machine_setup
         schedule.metadata.update(
             {
                 "solver": "cp_sat",
                 "solver_objective": objective,
                 "verified_scope": (
-                    "fixture_parity_makespan_only"
-                    if objective == VERIFIED_CP_OBJECTIVE
+                    verification_scope or "experimental_surrogate_objective"
+                ),
+                "objective_verification_status": (
+                    "verified_fixture_scope"
+                    if run_verified
                     else "experimental_surrogate_objective"
                 ),
-                "surrogate_objective": objective != VERIFIED_CP_OBJECTIVE,
+                "surrogate_objective": not objective_verified,
+                "surrogate_run": not run_verified,
                 "surrogate_timing": has_unmodeled_machine_setup,
                 "surrogate_timing_reason": (
                     "machine_setup_not_encoded_in_cp_intervals"
                     if has_unmodeled_machine_setup
                     else ""
+                ),
+                "calendar_event_semantics": (
+                    "fixed_blackout_intervals"
+                    if has_explicit_blackouts
+                    else "none"
+                ),
+                "calendar_event_semantics_verified": (
+                    run_verified
+                    and has_explicit_blackouts
                 ),
             }
         )
@@ -780,9 +982,10 @@ class EnergyAwareCPScheduler(CPScheduler):
         """
         Solve with explicit energy minimization.
 
-        Experimental helper path. Uses machine modes to trade off speed vs.
-        energy and inherits the same verification warning as `solve(...,
-        objective="energy")`.
+        Uses machine modes to trade off speed vs. energy. This helper inherits
+        the same run-level verification status as `solve(..., objective="energy")`:
+        parity-verified only on the dedicated single-operation tradeoff fixture
+        slice and experimental otherwise.
         """
         return self.solve(instance, objective="energy", verbose=verbose)
 

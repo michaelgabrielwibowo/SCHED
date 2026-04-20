@@ -1,2 +1,0 @@
-worker_id,start_time,end_time,source,details_json
-W0,160.0,180.0,event,"{""event_id"": ""ABS-1""}"

@@ -401,6 +401,17 @@ class SFJSSPEnv(gym.Env):
                 temp_start = max(temp_start, w_next)
                 continue
 
+            blackout_free_start = self.schedule.shift_start_past_explicit_unavailability(
+                self.instance,
+                machine.machine_id,
+                worker.worker_id,
+                temp_start,
+                est_pt,
+            )
+            if blackout_free_start > temp_start:
+                temp_start = blackout_free_start
+                continue
+
             return temp_start
 
         return None

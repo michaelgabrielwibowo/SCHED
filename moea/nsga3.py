@@ -2305,6 +2305,17 @@ def evaluate_sfjssp_genome_detailed(instance: Any, genome: Dict[str, np.ndarray]
             if not w_valid:
                 curr_t = max(curr_t, w_next)
                 continue
+
+            blackout_free_start = schedule.shift_start_past_explicit_unavailability(
+                instance,
+                m_id,
+                w_id,
+                curr_t,
+                pt,
+            )
+            if blackout_free_start > curr_t:
+                curr_t = blackout_free_start
+                continue
                 
             found = True
             break

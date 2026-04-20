@@ -11,8 +11,19 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Tuple, Any
 from enum import Enum
 import json
+import re
 import numpy as np
 
+from .calendar import (
+    AvailabilityWindow,
+    MachineBreakdownEvent,
+    ShiftWindow,
+    WorkerAbsenceEvent,
+    sort_machine_breakdown_events,
+    sort_shift_windows,
+    sort_windows,
+    sort_worker_absence_events,
+)
 from .job import Job, Operation
 from .machine import Machine, MachineMode, MachineState
 from .worker import Worker, WorkerSkill, WorkerState
@@ -25,11 +36,99 @@ class InstanceLabel(Enum):
 
     Evidence: Proposed labeling protocol for synthetic and calibrated instances
     """
+    SITE_CALIBRATED = "site_calibrated"
     REAL_INDUSTRIAL = "real_industrial"
     CALIBRATED_SYNTHETIC = "calibrated_synthetic"
     EXTENDED_SYNTHETIC = "extended_synthetic"
     FULLY_SYNTHETIC = "fully_synthetic"
     ACQUISITION_UNCERTAIN = "acquisition_uncertain"
+
+
+PUBLIC_CALIBRATION_STATUSES = frozenset(
+    {
+        "fully_synthetic",
+        "calibrated_synthetic",
+        "site_calibrated",
+    }
+)
+CALIBRATION_EVIDENCE_REQUIRED_STATUSES = frozenset(
+    {"calibrated_synthetic", "site_calibrated"}
+)
+_LEGACY_PUBLIC_CALIBRATION_STATUS_MAP = {
+    InstanceLabel.FULLY_SYNTHETIC.value: "fully_synthetic",
+    InstanceLabel.EXTENDED_SYNTHETIC.value: "fully_synthetic",
+    InstanceLabel.CALIBRATED_SYNTHETIC.value: "calibrated_synthetic",
+    InstanceLabel.SITE_CALIBRATED.value: "site_calibrated",
+    InstanceLabel.REAL_INDUSTRIAL.value: "site_calibrated",
+}
+
+
+def normalize_public_calibration_status(value: Any) -> Optional[str]:
+    """Normalize one internal or external label to the public calibration contract."""
+
+    if isinstance(value, InstanceLabel):
+        raw_value = value.value
+    elif isinstance(value, str):
+        raw_value = value.strip()
+    else:
+        return None
+    if raw_value in PUBLIC_CALIBRATION_STATUSES:
+        return raw_value
+    return _LEGACY_PUBLIC_CALIBRATION_STATUS_MAP.get(raw_value)
+
+
+def instance_label_from_public_calibration_status(value: Any) -> InstanceLabel:
+    """Map one supported public calibration status back to an internal label."""
+
+    normalized = normalize_public_calibration_status(value)
+    if normalized is None:
+        raise ValueError(
+            f"Unsupported calibration status {value!r}; expected one of "
+            f"{sorted(PUBLIC_CALIBRATION_STATUSES)!r}."
+        )
+    if normalized == "site_calibrated":
+        return InstanceLabel.SITE_CALIBRATED
+    if normalized == "calibrated_synthetic":
+        return InstanceLabel.CALIBRATED_SYNTHETIC
+    return InstanceLabel.FULLY_SYNTHETIC
+
+
+def build_public_calibration_record(
+    label: Any,
+    justification: str,
+    calibration_sources: List[str],
+) -> Dict[str, Any]:
+    """Build one validated public calibration record."""
+
+    status = normalize_public_calibration_status(label)
+    if status is None:
+        raise ValueError(
+            "Calibration status is not publicly supported. Use one of "
+            f"{sorted(PUBLIC_CALIBRATION_STATUSES)!r} or a supported legacy alias."
+        )
+
+    normalized_justification = (justification or "").strip()
+    if not normalized_justification:
+        raise ValueError("Calibration justification must be a non-empty string.")
+
+    normalized_sources = [
+        str(source).strip()
+        for source in calibration_sources
+        if str(source).strip()
+    ]
+    evidence_required = status in CALIBRATION_EVIDENCE_REQUIRED_STATUSES
+    if evidence_required and not normalized_sources:
+        raise ValueError(
+            f"Calibration status {status!r} requires at least one calibration source reference."
+        )
+
+    return {
+        "status": status,
+        "justification": normalized_justification,
+        "sources": normalized_sources,
+        "evidence_required": evidence_required,
+        "evidence_present": bool(normalized_sources),
+    }
 
 
 class InstanceType(Enum):
@@ -59,151 +158,6 @@ class DynamicEventParams:
 
     # Rush order probability
     rush_order_probability: float = 0.1  # probability an arrival is high priority
-
-
-@dataclass(frozen=True)
-class AvailabilityWindow:
-    """Explicit unavailability interval for one machine or worker."""
-
-    start_time: float
-    end_time: float
-    reason: str = "unavailable"
-    source: str = "calendar"
-    details: Dict[str, Any] = field(default_factory=dict)
-
-    def __post_init__(self):
-        if self.start_time < 0.0:
-            raise ValueError("AvailabilityWindow.start_time must be non-negative")
-        if self.end_time < self.start_time:
-            raise ValueError("AvailabilityWindow.end_time must be >= start_time")
-
-    def overlaps(self, start_time: float, end_time: float) -> bool:
-        """True when the half-open intervals [start, end) overlap."""
-        return start_time < self.end_time and end_time > self.start_time
-
-    def to_dict(self) -> dict:
-        return {
-            "start_time": self.start_time,
-            "end_time": self.end_time,
-            "reason": self.reason,
-            "source": self.source,
-            "details": dict(self.details),
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "AvailabilityWindow":
-        return cls(
-            start_time=data["start_time"],
-            end_time=data["end_time"],
-            reason=data.get("reason", "unavailable"),
-            source=data.get("source", "calendar"),
-            details=data.get("details", {}),
-        )
-
-
-@dataclass(frozen=True)
-class MachineBreakdownEvent:
-    """Typed machine breakdown event for canonical replay and serialization."""
-
-    machine_id: int
-    start_time: float
-    repair_duration: float
-    source: str = "generated"
-    details: Dict[str, Any] = field(default_factory=dict)
-
-    @property
-    def end_time(self) -> float:
-        return self.start_time + self.repair_duration
-
-    def to_availability_window(self) -> AvailabilityWindow:
-        details = {"machine_id": self.machine_id, "repair_duration": self.repair_duration}
-        details.update(self.details)
-        return AvailabilityWindow(
-            start_time=self.start_time,
-            end_time=self.end_time,
-            reason="breakdown",
-            source=self.source,
-            details=details,
-        )
-
-    def to_dict(self) -> dict:
-        return {
-            "machine_id": self.machine_id,
-            "start_time": self.start_time,
-            "repair_duration": self.repair_duration,
-            "end_time": self.end_time,
-            "source": self.source,
-            "details": dict(self.details),
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "MachineBreakdownEvent":
-        if "repair_duration" in data:
-            repair_duration = data["repair_duration"]
-        else:
-            repair_duration = data["end_time"] - data["start_time"]
-        return cls(
-            machine_id=data["machine_id"],
-            start_time=data["start_time"],
-            repair_duration=repair_duration,
-            source=data.get("source", "generated"),
-            details=data.get("details", {}),
-        )
-
-
-@dataclass(frozen=True)
-class WorkerAbsenceEvent:
-    """Typed worker absence event for canonical replay and serialization."""
-
-    worker_id: int
-    start_time: float
-    end_time: float
-    source: str = "generated"
-    details: Dict[str, Any] = field(default_factory=dict)
-
-    def __post_init__(self):
-        if self.start_time < 0.0:
-            raise ValueError("WorkerAbsenceEvent.start_time must be non-negative")
-        if self.end_time < self.start_time:
-            raise ValueError("WorkerAbsenceEvent.end_time must be >= start_time")
-
-    @property
-    def duration(self) -> float:
-        return self.end_time - self.start_time
-
-    def to_availability_window(self) -> AvailabilityWindow:
-        details = {"worker_id": self.worker_id, "duration": self.duration}
-        details.update(self.details)
-        return AvailabilityWindow(
-            start_time=self.start_time,
-            end_time=self.end_time,
-            reason="absence",
-            source=self.source,
-            details=details,
-        )
-
-    def to_dict(self) -> dict:
-        return {
-            "worker_id": self.worker_id,
-            "start_time": self.start_time,
-            "end_time": self.end_time,
-            "duration": self.duration,
-            "source": self.source,
-            "details": dict(self.details),
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "WorkerAbsenceEvent":
-        end_time = data.get("end_time")
-        if end_time is None:
-            end_time = data["start_time"] + data["duration"]
-        return cls(
-            worker_id=data["worker_id"],
-            start_time=data["start_time"],
-            end_time=end_time,
-            source=data.get("source", "generated"),
-            details=data.get("details", {}),
-        )
 
 
 @dataclass
@@ -267,6 +221,7 @@ class SFJSSPInstance:
     worker_unavailability: Dict[int, List[AvailabilityWindow]] = field(default_factory=dict)
     machine_breakdown_events: List[MachineBreakdownEvent] = field(default_factory=list)
     worker_absence_events: List[WorkerAbsenceEvent] = field(default_factory=list)
+    event_sequence_counter: int = 0
 
     # Instance statistics (computed)
     n_jobs: int = 0
@@ -294,6 +249,12 @@ class SFJSSPInstance:
         # Sync all workers to the shared period clock
         for worker in self.workers:
             worker.period_clock = self.period_clock
+            if worker.shift_windows and worker.calendar_horizon <= 0.0:
+                worker.rebuild_off_shift_windows(self.planning_horizon)
+        for machine in self.machines:
+            machine.calendar_horizon = max(machine.calendar_horizon, self.planning_horizon)
+
+        self._sync_calendar_indexes_from_resources()
 
     def validate_risk_map(self):
         """
@@ -329,14 +290,26 @@ class SFJSSPInstance:
 
     def add_machine(self, machine: Machine):
         """Add a machine to the instance"""
+        machine.calendar_horizon = max(machine.calendar_horizon, self.planning_horizon)
         self.machines.append(machine)
         self._update_statistics()
+        self._sync_machine_index(machine.machine_id)
+        self.machine_breakdown_events = sort_machine_breakdown_events(
+            [*self.machine_breakdown_events, *machine.breakdown_events]
+        )
 
     def add_worker(self, worker: Worker):
         """Add a worker to the instance"""
         worker.period_clock = self.period_clock
+        worker.calendar_horizon = max(worker.calendar_horizon, self.planning_horizon)
+        if worker.shift_windows and not worker.off_shift_windows:
+            worker.rebuild_off_shift_windows(self.planning_horizon)
         self.workers.append(worker)
         self._update_statistics()
+        self._sync_worker_index(worker.worker_id)
+        self.worker_absence_events = sort_worker_absence_events(
+            [*self.worker_absence_events, *worker.absence_events]
+        )
 
     def get_job(self, job_id: int) -> Optional[Job]:
         """Get job by ID"""
@@ -361,14 +334,68 @@ class SFJSSPInstance:
 
     @staticmethod
     def _sort_windows(windows: List[AvailabilityWindow]) -> List[AvailabilityWindow]:
-        return sorted(
-            windows,
-            key=lambda window: (
-                window.start_time,
-                window.end_time,
-                window.reason,
-                window.source,
-            ),
+        return sort_windows(windows)
+
+    def _next_event_id(self, prefix: str) -> str:
+        self.event_sequence_counter += 1
+        return f"{prefix}-{self.event_sequence_counter:06d}"
+
+    def _resolve_event_id(self, prefix: str, event_id: Optional[str]) -> str:
+        """Return a stable event identifier and keep the sequence counter monotonic."""
+        if not event_id:
+            return self._next_event_id(prefix)
+
+        match = re.fullmatch(rf"{re.escape(prefix)}-(\d+)", event_id)
+        if match is not None:
+            self.event_sequence_counter = max(
+                self.event_sequence_counter,
+                int(match.group(1)),
+            )
+        else:
+            self.event_sequence_counter += 1
+        return event_id
+
+    def _sync_machine_index(self, machine_id: int):
+        machine = self.get_machine(machine_id)
+        if machine is None:
+            self.machine_unavailability.pop(machine_id, None)
+            return
+        self.machine_unavailability[machine_id] = sort_windows(machine.unavailability_windows)
+
+    def _sync_worker_index(self, worker_id: int):
+        worker = self.get_worker(worker_id)
+        if worker is None:
+            self.worker_unavailability.pop(worker_id, None)
+            return
+        if worker.shift_windows and worker.calendar_horizon <= 0.0:
+            worker.rebuild_off_shift_windows(self.planning_horizon)
+        self.worker_unavailability[worker_id] = sort_windows(
+            worker.get_canonical_unavailability_windows()
+        )
+
+    def _sync_calendar_indexes_from_resources(self):
+        self.machine_unavailability = {}
+        self.worker_unavailability = {}
+        self.machine_breakdown_events = []
+        self.worker_absence_events = []
+
+        for machine in self.machines:
+            machine.calendar_horizon = max(machine.calendar_horizon, self.planning_horizon)
+            self._sync_machine_index(machine.machine_id)
+            self.machine_breakdown_events.extend(machine.breakdown_events)
+
+        for worker in self.workers:
+            worker.period_clock = self.period_clock
+            if worker.shift_windows and worker.calendar_horizon <= 0.0:
+                worker.rebuild_off_shift_windows(self.planning_horizon)
+            self._sync_worker_index(worker.worker_id)
+            self.worker_absence_events.extend(worker.absence_events)
+
+        self.machine_breakdown_events = sort_machine_breakdown_events(
+            self.machine_breakdown_events
+        )
+        self.worker_absence_events = sort_worker_absence_events(
+            self.worker_absence_events
         )
 
     def add_machine_unavailability(
@@ -382,19 +409,18 @@ class SFJSSPInstance:
         details: Optional[Dict[str, Any]] = None,
     ) -> AvailabilityWindow:
         """Register one explicit machine-unavailability interval."""
-        if self.get_machine(machine_id) is None:
+        machine = self.get_machine(machine_id)
+        if machine is None:
             raise ValueError(f"Unknown machine_id {machine_id!r}")
-
-        window = AvailabilityWindow(
-            start_time=start_time,
-            end_time=end_time,
+        machine.calendar_horizon = max(machine.calendar_horizon, self.planning_horizon)
+        window = machine.add_unavailability_window(
+            start_time,
+            end_time,
             reason=reason,
             source=source,
-            details=details or {},
+            details=details,
         )
-        windows = self.machine_unavailability.setdefault(machine_id, [])
-        windows.append(window)
-        self.machine_unavailability[machine_id] = self._sort_windows(windows)
+        self._sync_machine_index(machine_id)
         return window
 
     def add_worker_unavailability(
@@ -408,19 +434,41 @@ class SFJSSPInstance:
         details: Optional[Dict[str, Any]] = None,
     ) -> AvailabilityWindow:
         """Register one explicit worker-unavailability interval."""
-        if self.get_worker(worker_id) is None:
+        worker = self.get_worker(worker_id)
+        if worker is None:
             raise ValueError(f"Unknown worker_id {worker_id!r}")
-
-        window = AvailabilityWindow(
-            start_time=start_time,
-            end_time=end_time,
+        worker.calendar_horizon = max(worker.calendar_horizon, self.planning_horizon)
+        window = worker.add_unavailability_window(
+            start_time,
+            end_time,
             reason=reason,
             source=source,
-            details=details or {},
+            details=details,
         )
-        windows = self.worker_unavailability.setdefault(worker_id, [])
-        windows.append(window)
-        self.worker_unavailability[worker_id] = self._sort_windows(windows)
+        self._sync_worker_index(worker_id)
+        return window
+
+    def add_worker_shift_window(
+        self,
+        worker_id: int,
+        start_time: float,
+        end_time: float,
+        *,
+        shift_label: str = "shift",
+        details: Optional[Dict[str, Any]] = None,
+    ) -> ShiftWindow:
+        """Register one canonical worker shift window."""
+        worker = self.get_worker(worker_id)
+        if worker is None:
+            raise ValueError(f"Unknown worker_id {worker_id!r}")
+        window = worker.add_shift_window(
+            start_time,
+            end_time,
+            shift_label=shift_label,
+            details=details,
+            planning_horizon=self.planning_horizon,
+        )
+        self._sync_worker_index(worker_id)
         return window
 
     def add_machine_breakdown_event(
@@ -431,29 +479,23 @@ class SFJSSPInstance:
         *,
         source: str = "event",
         details: Optional[Dict[str, Any]] = None,
+        event_id: Optional[str] = None,
     ) -> MachineBreakdownEvent:
         """Register a typed machine-breakdown event and its derived window."""
-        if self.get_machine(machine_id) is None:
+        machine = self.get_machine(machine_id)
+        if machine is None:
             raise ValueError(f"Unknown machine_id {machine_id!r}")
-
-        event = MachineBreakdownEvent(
-            machine_id=machine_id,
-            start_time=start_time,
-            repair_duration=repair_duration,
+        event = machine.add_breakdown_event(
+            start_time,
+            repair_duration,
             source=source,
-            details=details or {},
+            details=details,
+            event_id=self._resolve_event_id("machine-breakdown", event_id),
         )
-        self.machine_breakdown_events.append(event)
-        self.machine_breakdown_events.sort(
-            key=lambda item: (item.start_time, item.end_time, item.machine_id)
-        )
-        self.add_machine_unavailability(
-            machine_id,
-            event.start_time,
-            event.end_time,
-            reason="breakdown",
-            source=source,
-            details=event.to_dict(),
+        machine.calendar_horizon = max(machine.calendar_horizon, self.planning_horizon)
+        self._sync_machine_index(machine_id)
+        self.machine_breakdown_events = sort_machine_breakdown_events(
+            [*self.machine_breakdown_events, event]
         )
         return event
 
@@ -465,38 +507,74 @@ class SFJSSPInstance:
         *,
         source: str = "event",
         details: Optional[Dict[str, Any]] = None,
+        event_id: Optional[str] = None,
     ) -> WorkerAbsenceEvent:
         """Register a typed worker-absence event and its derived window."""
-        if self.get_worker(worker_id) is None:
+        worker = self.get_worker(worker_id)
+        if worker is None:
             raise ValueError(f"Unknown worker_id {worker_id!r}")
-
-        event = WorkerAbsenceEvent(
-            worker_id=worker_id,
-            start_time=start_time,
-            end_time=end_time,
+        event = worker.add_absence_event(
+            start_time,
+            end_time,
             source=source,
-            details=details or {},
+            details=details,
+            event_id=self._resolve_event_id("worker-absence", event_id),
         )
-        self.worker_absence_events.append(event)
-        self.worker_absence_events.sort(
-            key=lambda item: (item.start_time, item.end_time, item.worker_id)
-        )
-        self.add_worker_unavailability(
-            worker_id,
-            event.start_time,
-            event.end_time,
-            reason="absence",
-            source=source,
-            details=event.to_dict(),
+        worker.calendar_horizon = max(worker.calendar_horizon, self.planning_horizon)
+        self._sync_worker_index(worker_id)
+        self.worker_absence_events = sort_worker_absence_events(
+            [*self.worker_absence_events, event]
         )
         return event
 
+    def iter_canonical_events(self) -> List[Dict[str, Any]]:
+        """Return all typed calendar events in deterministic application order."""
+        events: List[Dict[str, Any]] = []
+        for event in sort_machine_breakdown_events(self.machine_breakdown_events):
+            events.append(
+                {
+                    "event_type": "machine_breakdown",
+                    "event_id": event.event_id,
+                    "resource_id": event.machine_id,
+                    "start_time": event.start_time,
+                    "end_time": event.end_time,
+                    "payload": event.to_dict(),
+                }
+            )
+        for event in sort_worker_absence_events(self.worker_absence_events):
+            events.append(
+                {
+                    "event_type": "worker_absence",
+                    "event_id": event.event_id,
+                    "resource_id": event.worker_id,
+                    "start_time": event.start_time,
+                    "end_time": event.end_time,
+                    "payload": event.to_dict(),
+                }
+            )
+        return sorted(
+            events,
+            key=lambda item: (
+                item["start_time"],
+                item["end_time"],
+                item["event_type"],
+                item["resource_id"],
+                item["event_id"],
+            ),
+        )
+
     def get_machine_unavailability(self, machine_id: int) -> List[AvailabilityWindow]:
         """Return canonical machine-unavailability windows."""
+        machine = self.get_machine(machine_id)
+        if machine is not None:
+            self._sync_machine_index(machine_id)
         return list(self.machine_unavailability.get(machine_id, []))
 
     def get_worker_unavailability(self, worker_id: int) -> List[AvailabilityWindow]:
         """Return canonical worker-unavailability windows."""
+        worker = self.get_worker(worker_id)
+        if worker is not None:
+            self._sync_worker_index(worker_id)
         return list(self.worker_unavailability.get(worker_id, []))
 
     def get_machine_conflicting_windows(
@@ -507,7 +585,7 @@ class SFJSSPInstance:
     ) -> List[AvailabilityWindow]:
         return [
             window
-            for window in self.machine_unavailability.get(machine_id, [])
+            for window in self.get_machine_unavailability(machine_id)
             if window.overlaps(start_time, end_time)
         ]
 
@@ -519,7 +597,7 @@ class SFJSSPInstance:
     ) -> List[AvailabilityWindow]:
         return [
             window
-            for window in self.worker_unavailability.get(worker_id, [])
+            for window in self.get_worker_unavailability(worker_id)
             if window.overlaps(start_time, end_time)
         ]
 
@@ -784,11 +862,24 @@ class SFJSSPInstance:
         for worker in self.workers:
             worker.reset()
 
+    def build_calibration_record(self) -> Dict[str, Any]:
+        """Return one validated calibration record for public provenance."""
+
+        return build_public_calibration_record(
+            self.label,
+            self.label_justification,
+            self.calibration_sources,
+        )
+
     def to_dict(self) -> dict:
         """Convert instance to dictionary for serialization"""
+        self._sync_calendar_indexes_from_resources()
+        calibration = self.build_calibration_record()
         return {
             'instance_id': self.instance_id,
             'instance_name': self.instance_name,
+            'calibration_status': calibration['status'],
+            'calibration_status_justification': calibration['justification'],
             'label': self.label.value,
             'label_justification': self.label_justification,
             'instance_type': self.instance_type.value,
@@ -820,6 +911,7 @@ class SFJSSPInstance:
             'worker_absence_events': [
                 event.to_dict() for event in self.worker_absence_events
             ],
+            'event_sequence_counter': self.event_sequence_counter,
             'dynamic_params': {
                 'arrival_rate': self.dynamic_params.arrival_rate,
                 'breakdown_rate': self.dynamic_params.breakdown_rate,
@@ -852,8 +944,15 @@ class SFJSSPInstance:
         instance = cls(
             instance_id=data.get('instance_id', 'SFJSSP_001'),
             instance_name=data.get('instance_name', ''),
-            label=InstanceLabel(data.get('label', 'fully_synthetic')),
-            label_justification=data.get('label_justification', ''),
+            label=(
+                instance_label_from_public_calibration_status(data.get('calibration_status'))
+                if data.get('calibration_status') is not None
+                else InstanceLabel(data.get('label', 'fully_synthetic'))
+            ),
+            label_justification=data.get(
+                'calibration_status_justification',
+                data.get('label_justification', ''),
+            ),
             instance_type=InstanceType(data.get('instance_type', 'static')),
             planning_horizon=data.get('planning_horizon', 1000.0),
             creation_date=data.get('creation_date', ''),
@@ -874,51 +973,85 @@ class SFJSSPInstance:
         instance.jobs = [Job.from_dict(j_data) for j_data in data.get('jobs', [])]
         for worker in instance.workers:
             worker.period_clock = instance.period_clock
+            worker.calendar_horizon = max(worker.calendar_horizon, instance.planning_horizon)
+            if worker.shift_windows and not worker.off_shift_windows:
+                worker.rebuild_off_shift_windows(instance.planning_horizon)
+        for machine in instance.machines:
+            machine.calendar_horizon = max(machine.calendar_horizon, instance.planning_horizon)
+
+        instance.event_sequence_counter = int(
+            data.get(
+                "event_sequence_counter",
+                len(data.get("machine_breakdown_events", []))
+                + len(data.get("worker_absence_events", [])),
+            )
+        )
 
         raw_machine_windows = data.get('machine_unavailability', {})
         raw_worker_windows = data.get('worker_unavailability', {})
-        instance.machine_unavailability = {
-            int(machine_id): cls._sort_windows(
-                [AvailabilityWindow.from_dict(window) for window in windows]
-            )
-            for machine_id, windows in raw_machine_windows.items()
-        }
-        instance.worker_unavailability = {
-            int(worker_id): cls._sort_windows(
-                [AvailabilityWindow.from_dict(window) for window in windows]
-            )
-            for worker_id, windows in raw_worker_windows.items()
-        }
-
-        instance.machine_breakdown_events = [
-            MachineBreakdownEvent.from_dict(event_data)
-            for event_data in data.get('machine_breakdown_events', [])
-        ]
-        instance.worker_absence_events = [
-            WorkerAbsenceEvent.from_dict(event_data)
-            for event_data in data.get('worker_absence_events', [])
-        ]
-
-        if not raw_machine_windows:
-            for event in instance.machine_breakdown_events:
-                instance.add_machine_unavailability(
-                    event.machine_id,
-                    event.start_time,
-                    event.end_time,
-                    reason="breakdown",
-                    source=event.source,
-                    details=event.to_dict(),
+        if raw_machine_windows:
+            for machine in instance.machines:
+                machine.unavailability_windows = []
+            for machine_id_text, windows in raw_machine_windows.items():
+                machine = instance.get_machine(int(machine_id_text))
+                if machine is None:
+                    continue
+                machine.unavailability_windows = sort_windows(
+                    AvailabilityWindow.from_dict(window) for window in windows
                 )
-        if not raw_worker_windows:
-            for event in instance.worker_absence_events:
-                instance.add_worker_unavailability(
-                    event.worker_id,
-                    event.start_time,
-                    event.end_time,
-                    reason="absence",
-                    source=event.source,
-                    details=event.to_dict(),
+
+        if raw_worker_windows:
+            for worker in instance.workers:
+                worker.unavailability_windows = []
+                if worker.shift_windows:
+                    worker.rebuild_off_shift_windows(instance.planning_horizon)
+            for worker_id_text, windows in raw_worker_windows.items():
+                worker = instance.get_worker(int(worker_id_text))
+                if worker is None:
+                    continue
+                explicit_windows = [
+                    AvailabilityWindow.from_dict(window)
+                    for window in windows
+                    if window.get("reason") != "off_shift"
+                ]
+                off_shift_windows = [
+                    AvailabilityWindow.from_dict(window)
+                    for window in windows
+                    if window.get("reason") == "off_shift"
+                ]
+                worker.unavailability_windows = sort_windows(explicit_windows)
+                if off_shift_windows:
+                    worker.off_shift_windows = sort_windows(off_shift_windows)
+
+        raw_machine_events = data.get('machine_breakdown_events', [])
+        raw_worker_events = data.get('worker_absence_events', [])
+        if raw_machine_events:
+            for machine in instance.machines:
+                machine.breakdown_events = []
+            for event_data in raw_machine_events:
+                event = MachineBreakdownEvent.from_dict(event_data)
+                machine = instance.get_machine(event.machine_id)
+                if machine is None:
+                    continue
+                machine.breakdown_events = sort_machine_breakdown_events(
+                    [*machine.breakdown_events, event]
                 )
+                if not raw_machine_windows:
+                    machine._append_unavailability_window(event.to_availability_window())
+
+        if raw_worker_events:
+            for worker in instance.workers:
+                worker.absence_events = []
+            for event_data in raw_worker_events:
+                event = WorkerAbsenceEvent.from_dict(event_data)
+                worker = instance.get_worker(event.worker_id)
+                if worker is None:
+                    continue
+                worker.absence_events = sort_worker_absence_events(
+                    [*worker.absence_events, event]
+                )
+                if not raw_worker_windows:
+                    worker._append_unavailability_window(event.to_availability_window())
         
         # Risk map reconstruction
         raw_risks = data.get('ergonomic_risks')
@@ -934,6 +1067,7 @@ class SFJSSPInstance:
             instance.ergonomic_risk_map[(jid, oid)] = val
             
         instance._update_statistics()
+        instance._sync_calendar_indexes_from_resources()
         return instance
 
     def __repr__(self):

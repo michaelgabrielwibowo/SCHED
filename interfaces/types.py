@@ -4,7 +4,7 @@ Typed return values for external interface operations.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Tuple, Union
 
 try:
@@ -41,3 +41,4 @@ class ImportedInstance:
     normalized_payload: Dict[str, Any]
     instance: SFJSSPInstance
     id_maps: IdentifierMaps
+    provenance: Dict[str, Any] = field(default_factory=dict)

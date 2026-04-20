@@ -1,6 +1,13 @@
 import json
 from pathlib import Path
 
+import pytest
+
+try:
+    from ..sfjssp_model.instance import InstanceLabel
+except ImportError:  # pragma: no cover - supports repo-root imports
+    from sfjssp_model.instance import InstanceLabel
+
 try:
     from ..experiments.generate_benchmarks import (
         BENCHMARK_DOCUMENT_SCHEMA,
@@ -182,8 +189,30 @@ def test_save_instance_embeds_schema_and_full_generator_provenance(tmp_path):
     assert payload["document_schema"] == BENCHMARK_DOCUMENT_SCHEMA
     assert payload["document_version"] == BENCHMARK_DOCUMENT_VERSION
     assert payload["document_type"] == "instance"
+    assert payload["calibration_status"] == "fully_synthetic"
+    assert payload["calibration_status_justification"]
     assert payload["generator_config"]["size"] == "small"
+    assert payload["generator_config"]["calibration_status"] == "fully_synthetic"
     assert payload["generator_config"]["absence_probability"] == 0.75
     assert payload["generator_provenance"]["generator_version"] == BENCHMARK_GENERATOR_VERSION
+    assert payload["generator_provenance"]["calibration_status"] == "fully_synthetic"
     assert payload["generator_provenance"]["runtime_supported_sizes"] == ["small", "medium", "large"]
     assert payload["size_preset_table"] == get_size_preset_table()
+
+
+def test_generator_rejects_calibrated_claim_without_calibration_sources():
+    generator = UtilsBenchmarkGenerator(
+        UtilsGeneratorConfig(
+            instance_id="BAD_CALIBRATION",
+            size=UtilsInstanceSize.SMALL,
+            seed=37,
+            n_jobs=2,
+            n_machines=2,
+            n_workers=2,
+            label=InstanceLabel.CALIBRATED_SYNTHETIC,
+            calibration_sources=[],
+        )
+    )
+
+    with pytest.raises(ValueError, match="requires at least one calibration source"):
+        generator.generate()

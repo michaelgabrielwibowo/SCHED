@@ -36,6 +36,7 @@ from .schema import (
     REQUIRED_OPERATION_FIELDS,
     REQUIRED_PROCESSING_OPTION_FIELDS,
     REQUIRED_WORKER_ABSENCE_FIELDS,
+    REQUIRED_WORKER_SHIFT_FIELDS,
     REQUIRED_WORKER_UNAVAILABILITY_FIELDS,
     REQUIRED_WORKER_FIELDS,
     SUPPORTED_ELECTRICITY_PRICE_FIELDS,
@@ -49,6 +50,7 @@ from .schema import (
     SUPPORTED_OPERATION_FIELDS,
     SUPPORTED_PROCESSING_OPTION_FIELDS,
     SUPPORTED_WORKER_ABSENCE_FIELDS,
+    SUPPORTED_WORKER_SHIFT_FIELDS,
     SUPPORTED_WORKER_UNAVAILABILITY_FIELDS,
     SUPPORTED_WORKER_FIELDS,
 )
@@ -154,6 +156,15 @@ CSV_TABLE_SPECS: Dict[str, _CsvTableSpec] = {
         | frozenset({"details_json"}),
         required=False,
     ),
+    "machine_calendar": _CsvTableSpec(
+        name="machine_calendar",
+        filename="machine_calendar.csv",
+        required_columns=REQUIRED_MACHINE_UNAVAILABILITY_FIELDS,
+        optional_columns=(SUPPORTED_MACHINE_UNAVAILABILITY_FIELDS
+        - REQUIRED_MACHINE_UNAVAILABILITY_FIELDS)
+        | frozenset({"details_json"}),
+        required=False,
+    ),
     "worker_unavailability": _CsvTableSpec(
         name="worker_unavailability",
         filename="worker_unavailability.csv",
@@ -163,13 +174,41 @@ CSV_TABLE_SPECS: Dict[str, _CsvTableSpec] = {
         | frozenset({"details_json"}),
         required=False,
     ),
+    "worker_calendar": _CsvTableSpec(
+        name="worker_calendar",
+        filename="worker_calendar.csv",
+        required_columns=REQUIRED_WORKER_SHIFT_FIELDS | frozenset({"entry_type"}),
+        optional_columns=(
+            (SUPPORTED_WORKER_SHIFT_FIELDS - REQUIRED_WORKER_SHIFT_FIELDS)
+            | (SUPPORTED_WORKER_UNAVAILABILITY_FIELDS - REQUIRED_WORKER_UNAVAILABILITY_FIELDS)
+            | frozenset({"details_json"})
+        ),
+        required=False,
+    ),
     "machine_breakdowns": _CsvTableSpec(
         name="machine_breakdowns",
         filename="machine_breakdowns.csv",
         required_columns=REQUIRED_MACHINE_BREAKDOWN_FIELDS,
         optional_columns=(SUPPORTED_MACHINE_BREAKDOWN_FIELDS
         - REQUIRED_MACHINE_BREAKDOWN_FIELDS)
-        | frozenset({"details_json"}),
+        | frozenset({"details_json", "event_id"}),
+        required=False,
+    ),
+    "events": _CsvTableSpec(
+        name="events",
+        filename="events.csv",
+        required_columns=frozenset({"event_type", "start_time"}),
+        optional_columns=frozenset(
+            {
+                "machine_id",
+                "worker_id",
+                "end_time",
+                "repair_duration",
+                "source",
+                "event_id",
+                "details_json",
+            }
+        ),
         required=False,
     ),
     "worker_absences": _CsvTableSpec(
@@ -178,13 +217,16 @@ CSV_TABLE_SPECS: Dict[str, _CsvTableSpec] = {
         required_columns=REQUIRED_WORKER_ABSENCE_FIELDS,
         optional_columns=(SUPPORTED_WORKER_ABSENCE_FIELDS
         - REQUIRED_WORKER_ABSENCE_FIELDS)
-        | frozenset({"details_json"}),
+        | frozenset({"details_json", "event_id"}),
         required=False,
     ),
 }
 
 CSV_V2_TABLE_NAMES = frozenset(
     {
+        "machine_calendar",
+        "worker_calendar",
+        "events",
         "machine_unavailability",
         "worker_unavailability",
         "machine_breakdowns",
@@ -193,13 +235,25 @@ CSV_V2_TABLE_NAMES = frozenset(
 )
 
 
-def load_instance_from_csv_bundle(path: Any, strict: bool = True) -> ImportedInstance:
+def load_instance_from_csv_bundle(
+    path: Any,
+    strict: bool = True,
+    *,
+    site_profile_name: Optional[str] = None,
+) -> ImportedInstance:
     """Load a CSV bundle into the canonical external payload importer."""
 
-    importer = _CsvBundleImporter(bundle_path=Path(path), strict=strict)
+    bundle_path = Path(path)
+    importer = _CsvBundleImporter(bundle_path=bundle_path, strict=strict)
     payload = importer.build_external_payload()
     importer.raise_if_needed()
-    return import_instance_from_dict(payload, strict=strict)
+    return import_instance_from_dict(
+        payload,
+        strict=strict,
+        site_profile_name=site_profile_name,
+        raw_source_id=str(bundle_path),
+        raw_input_format="csv_bundle",
+    )
 
 
 class _CsvBundleImporter:
@@ -242,10 +296,13 @@ class _CsvBundleImporter:
             payload["defaults"] = defaults
         if schema_name == EXTERNAL_INPUT_SCHEMA_V2:
             payload["calendar"] = self._build_calendar(
+                tables["machine_calendar"],
+                tables["worker_calendar"],
                 tables["machine_unavailability"],
                 tables["worker_unavailability"],
             )
             payload["events"] = self._build_events(
+                tables["events"],
                 tables["machine_breakdowns"],
                 tables["worker_absences"],
             )
@@ -371,11 +428,17 @@ class _CsvBundleImporter:
             self._optional_float(row, "horizon_start", path),
         )
         self._set_if_present(metadata, "source", self._optional_text(row, "source"))
-        self._set_if_present(metadata, "label", self._optional_text(row, "label"))
         self._set_if_present(
             metadata,
-            "label_justification",
-            self._optional_text(row, "label_justification"),
+            "calibration_status",
+            self._optional_text(row, "calibration_status")
+            or self._optional_text(row, "label"),
+        )
+        self._set_if_present(
+            metadata,
+            "calibration_status_justification",
+            self._optional_text(row, "calibration_status_justification")
+            or self._optional_text(row, "label_justification"),
         )
         self._set_if_present(
             metadata,
@@ -697,34 +760,71 @@ class _CsvBundleImporter:
 
     def _build_calendar(
         self,
+        machine_calendar_rows: List[Dict[str, str]],
+        worker_calendar_rows: List[Dict[str, str]],
         machine_rows: List[Dict[str, str]],
         worker_rows: List[Dict[str, str]],
     ) -> Dict[str, Any]:
+        machine_unavailability = [
+            self._build_machine_calendar_row(row, index)
+            for index, row in enumerate(machine_calendar_rows)
+        ]
+        machine_unavailability.extend(
+            self._build_machine_unavailability_row(row, index)
+            for index, row in enumerate(machine_rows)
+        )
+
+        worker_shifts: List[Dict[str, Any]] = []
+        worker_unavailability: List[Dict[str, Any]] = []
+        for index, row in enumerate(worker_calendar_rows):
+            entry = self._build_worker_calendar_row(row, index)
+            if entry is None:
+                continue
+            if entry["entry_type"] == "shift_window":
+                worker_shifts.append(entry["payload"])
+            else:
+                worker_unavailability.append(entry["payload"])
+
+        worker_unavailability.extend(
+            self._build_worker_unavailability_row(row, index)
+            for index, row in enumerate(worker_rows)
+        )
+
         return {
-            "machine_unavailability": [
-                self._build_machine_unavailability_row(row, index)
-                for index, row in enumerate(machine_rows)
-            ],
-            "worker_unavailability": [
-                self._build_worker_unavailability_row(row, index)
-                for index, row in enumerate(worker_rows)
-            ],
+            "machine_unavailability": machine_unavailability,
+            "worker_shifts": worker_shifts,
+            "worker_unavailability": worker_unavailability,
         }
 
     def _build_events(
         self,
+        event_rows: List[Dict[str, str]],
         machine_rows: List[Dict[str, str]],
         worker_rows: List[Dict[str, str]],
     ) -> Dict[str, Any]:
+        machine_breakdowns: List[Dict[str, Any]] = []
+        worker_absences: List[Dict[str, Any]] = []
+        for index, row in enumerate(event_rows):
+            entry = self._build_event_row(row, index)
+            if entry is None:
+                continue
+            if entry["event_type"] == "machine_breakdown":
+                machine_breakdowns.append(entry["payload"])
+            else:
+                worker_absences.append(entry["payload"])
+
+        machine_breakdowns.extend(
+            self._build_machine_breakdown_row(row, index)
+            for index, row in enumerate(machine_rows)
+        )
+        worker_absences.extend(
+            self._build_worker_absence_row(row, index)
+            for index, row in enumerate(worker_rows)
+        )
+
         return {
-            "machine_breakdowns": [
-                self._build_machine_breakdown_row(row, index)
-                for index, row in enumerate(machine_rows)
-            ],
-            "worker_absences": [
-                self._build_worker_absence_row(row, index)
-                for index, row in enumerate(worker_rows)
-            ],
+            "machine_breakdowns": machine_breakdowns,
+            "worker_absences": worker_absences,
         }
 
     def _build_machine_unavailability_row(
@@ -733,6 +833,22 @@ class _CsvBundleImporter:
         index: int,
     ) -> Dict[str, Any]:
         path = ("csv_bundle", "machine_unavailability", index)
+        payload: Dict[str, Any] = {
+            "machine_id": self._required_text(row, "machine_id", path),
+            "start_time": self._required_float(row, "start_time", path),
+            "end_time": self._required_float(row, "end_time", path),
+        }
+        self._set_if_present(payload, "reason", self._optional_text(row, "reason"))
+        self._set_if_present(payload, "source", self._optional_text(row, "source"))
+        self._set_if_present(payload, "details", self._optional_json_object(row, "details_json", path))
+        return payload
+
+    def _build_machine_calendar_row(
+        self,
+        row: Dict[str, str],
+        index: int,
+    ) -> Dict[str, Any]:
+        path = ("csv_bundle", "machine_calendar", index)
         payload: Dict[str, Any] = {
             "machine_id": self._required_text(row, "machine_id", path),
             "start_time": self._required_float(row, "start_time", path),
@@ -759,6 +875,47 @@ class _CsvBundleImporter:
         self._set_if_present(payload, "details", self._optional_json_object(row, "details_json", path))
         return payload
 
+    def _build_worker_calendar_row(
+        self,
+        row: Dict[str, str],
+        index: int,
+    ) -> Optional[Dict[str, Any]]:
+        path = ("csv_bundle", "worker_calendar", index)
+        entry_type = self._required_text(row, "entry_type", path)
+        if entry_type == "shift_window":
+            payload: Dict[str, Any] = {
+                "worker_id": self._required_text(row, "worker_id", path),
+                "start_time": self._required_float(row, "start_time", path),
+                "end_time": self._required_float(row, "end_time", path),
+            }
+            self._set_if_present(payload, "shift_label", self._optional_text(row, "shift_label"))
+            self._set_if_present(payload, "details", self._optional_json_object(row, "details_json", path))
+            return {"entry_type": entry_type, "payload": payload}
+
+        if entry_type == "unavailability_window":
+            payload = {
+                "worker_id": self._required_text(row, "worker_id", path),
+                "start_time": self._required_float(row, "start_time", path),
+                "end_time": self._required_float(row, "end_time", path),
+            }
+            self._set_if_present(payload, "reason", self._optional_text(row, "reason"))
+            self._set_if_present(payload, "source", self._optional_text(row, "source"))
+            self._set_if_present(payload, "details", self._optional_json_object(row, "details_json", path))
+            return {"entry_type": entry_type, "payload": payload}
+
+        self.issues.append(
+            issue(
+                INVALID_VALUE,
+                *path,
+                "entry_type",
+                message=(
+                    "worker_calendar.csv entry_type must be 'shift_window' or "
+                    "'unavailability_window'."
+                ),
+            )
+        )
+        return None
+
     def _build_machine_breakdown_row(
         self,
         row: Dict[str, str],
@@ -772,7 +929,47 @@ class _CsvBundleImporter:
         }
         self._set_if_present(payload, "source", self._optional_text(row, "source"))
         self._set_if_present(payload, "details", self._optional_json_object(row, "details_json", path))
+        self._set_if_present(payload, "event_id", self._optional_text(row, "event_id"))
         return payload
+
+    def _build_event_row(
+        self,
+        row: Dict[str, str],
+        index: int,
+    ) -> Optional[Dict[str, Any]]:
+        path = ("csv_bundle", "events", index)
+        event_type = self._required_text(row, "event_type", path)
+        if event_type == "machine_breakdown":
+            payload: Dict[str, Any] = {
+                "machine_id": self._required_text(row, "machine_id", path),
+                "start_time": self._required_float(row, "start_time", path),
+                "repair_duration": self._required_float(row, "repair_duration", path),
+            }
+            self._set_if_present(payload, "source", self._optional_text(row, "source"))
+            self._set_if_present(payload, "event_id", self._optional_text(row, "event_id"))
+            self._set_if_present(payload, "details", self._optional_json_object(row, "details_json", path))
+            return {"event_type": event_type, "payload": payload}
+
+        if event_type == "worker_absence":
+            payload = {
+                "worker_id": self._required_text(row, "worker_id", path),
+                "start_time": self._required_float(row, "start_time", path),
+                "end_time": self._required_float(row, "end_time", path),
+            }
+            self._set_if_present(payload, "source", self._optional_text(row, "source"))
+            self._set_if_present(payload, "event_id", self._optional_text(row, "event_id"))
+            self._set_if_present(payload, "details", self._optional_json_object(row, "details_json", path))
+            return {"event_type": event_type, "payload": payload}
+
+        self.issues.append(
+            issue(
+                INVALID_VALUE,
+                *path,
+                "event_type",
+                message="events.csv event_type must be 'machine_breakdown' or 'worker_absence'.",
+            )
+        )
+        return None
 
     def _build_worker_absence_row(
         self,
@@ -787,6 +984,7 @@ class _CsvBundleImporter:
         }
         self._set_if_present(payload, "source", self._optional_text(row, "source"))
         self._set_if_present(payload, "details", self._optional_json_object(row, "details_json", path))
+        self._set_if_present(payload, "event_id", self._optional_text(row, "event_id"))
         return payload
 
     def _required_text(

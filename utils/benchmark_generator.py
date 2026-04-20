@@ -20,6 +20,8 @@ try:
         InstanceLabel,
         InstanceType,
         SFJSSPInstance,
+        build_public_calibration_record,
+        normalize_public_calibration_status,
     )
     from ..sfjssp_model.job import Job, Operation
     from ..sfjssp_model.machine import Machine, MachineMode
@@ -30,6 +32,8 @@ except ImportError:  # pragma: no cover - supports repo-root imports
         InstanceLabel,
         InstanceType,
         SFJSSPInstance,
+        build_public_calibration_record,
+        normalize_public_calibration_status,
     )
     from sfjssp_model.job import Job, Operation
     from sfjssp_model.machine import Machine, MachineMode
@@ -63,11 +67,7 @@ BENCHMARK_DOCUMENT_SCHEMA = "sfjssp_benchmark_document_v1"
 BENCHMARK_DOCUMENT_VERSION = 1
 BENCHMARK_GENERATOR_VERSION = "3.0"
 
-DEFAULT_CALIBRATION_SOURCES = [
-    "DyDFJSP 2023 (fatigue parameters)",
-    "E-DFJSP 2025 (energy parameters)",
-    "NSGA-III 2021 (ergonomic parameters)",
-]
+DEFAULT_CALIBRATION_SOURCES: List[str] = []
 
 
 def coerce_instance_size(value: Any) -> InstanceSize:
@@ -200,6 +200,7 @@ class BenchmarkGenerator:
     def generate(self) -> SFJSSPInstance:
         """Generate a synthetic SFJSSP instance from the current configuration."""
         self.rng = np.random.default_rng(self.config.seed)
+        self._validate_calibration_claim()
 
         instance = SFJSSPInstance(
             instance_id=self.config.instance_id,
@@ -347,6 +348,8 @@ class BenchmarkGenerator:
             ],
             "config": {
                 "is_dynamic": self.config.is_dynamic,
+                "calibration_status": normalize_public_calibration_status(self.config.label),
+                "calibration_status_justification": self._get_label_justification(),
                 "calibration_sources": list(self.config.calibration_sources),
             },
         }
@@ -363,7 +366,16 @@ class BenchmarkGenerator:
             return "Classical benchmark extended with synthetic SFJSSP parameters"
         if self.config.label == InstanceLabel.CALIBRATED_SYNTHETIC:
             return "Synthetic parameters calibrated against real industrial data"
+        if self.config.label in {InstanceLabel.SITE_CALIBRATED, InstanceLabel.REAL_INDUSTRIAL}:
+            return "Parameters calibrated against one documented site profile or plant dataset"
         return "Computer-generated instance"
+
+    def _validate_calibration_claim(self) -> None:
+        build_public_calibration_record(
+            self.config.label,
+            self._get_label_justification(),
+            list(self.config.calibration_sources),
+        )
 
     @staticmethod
     def _get_known_limitations() -> List[str]:
@@ -525,10 +537,13 @@ class BenchmarkGenerator:
 
     def _serialize_config(self) -> Dict[str, Any]:
         """Return the full generator config as a JSON-ready dictionary."""
-        return {
+        payload = {
             key: _json_ready(value)
             for key, value in asdict(self.config).items()
         }
+        payload["calibration_status"] = normalize_public_calibration_status(self.config.label)
+        payload["calibration_status_justification"] = self._get_label_justification()
+        return payload
 
     def _build_generator_provenance(self) -> Dict[str, Any]:
         """Return generator provenance embedded in saved benchmark artifacts."""
@@ -538,6 +553,7 @@ class BenchmarkGenerator:
             "generated_at": datetime.now().isoformat(),
             "runtime_supported_sizes": [size.value for size in SUPPORTED_INSTANCE_SIZES],
             "default_suite_sizes": [size.value for size in DEFAULT_SUITE_SIZES],
+            "calibration_status": normalize_public_calibration_status(self.config.label),
         }
 
     def build_instance_document(self, instance: SFJSSPInstance) -> Dict[str, Any]:

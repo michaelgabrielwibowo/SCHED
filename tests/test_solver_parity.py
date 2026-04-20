@@ -79,8 +79,8 @@ def _run_env_on_reference_schedule(instance: SFJSSPInstance, reference_schedule)
 
 def _build_transport_waiting_instance() -> SFJSSPInstance:
     instance = SFJSSPInstance(instance_id="PARITY_TRANSPORT_WAITING")
-    instance.add_machine(Machine(machine_id=0, modes=[MachineMode(mode_id=0)], setup_time=2.0))
-    instance.add_machine(Machine(machine_id=1, modes=[MachineMode(mode_id=0)], setup_time=3.0))
+    instance.add_machine(Machine(machine_id=0, modes=[MachineMode(mode_id=0)], setup_time=0.0))
+    instance.add_machine(Machine(machine_id=1, modes=[MachineMode(mode_id=0)], setup_time=0.0))
     instance.add_worker(Worker(worker_id=0, min_rest_fraction=0.0, ocra_max_per_shift=999.0))
 
     first = Operation(
@@ -219,6 +219,58 @@ def _build_simple_precedence_instance() -> SFJSSPInstance:
     return instance
 
 
+def _build_machine_calendar_instance() -> SFJSSPInstance:
+    instance = _build_single_operation_instance()
+    instance.instance_id = "PARITY_MACHINE_CALENDAR"
+    instance.add_machine_unavailability(
+        0,
+        0.0,
+        20.0,
+        reason="maintenance",
+        source="calendar",
+    )
+    return instance
+
+
+def _build_worker_calendar_instance() -> SFJSSPInstance:
+    instance = _build_single_operation_instance()
+    instance.instance_id = "PARITY_WORKER_CALENDAR"
+    instance.add_worker_unavailability(
+        0,
+        0.0,
+        15.0,
+        reason="training",
+        source="calendar",
+    )
+    return instance
+
+
+def _build_machine_breakdown_instance() -> SFJSSPInstance:
+    instance = _build_single_operation_instance()
+    instance.instance_id = "PARITY_MACHINE_BREAKDOWN"
+    instance.add_machine_breakdown_event(
+        0,
+        0.0,
+        12.0,
+        source="event",
+        details={"event_id": "BD-1"},
+    )
+    return instance
+
+
+def _build_worker_absence_instance() -> SFJSSPInstance:
+    instance = _build_single_operation_instance()
+    instance.instance_id = "PARITY_WORKER_ABSENCE"
+    instance.add_worker_absence_event(
+        0,
+        0.0,
+        14.0,
+        source="event",
+        details={"event_id": "ABS-1"},
+    )
+    return instance
+
+
 def test_greedy_env_and_nsga_match_on_transport_waiting_case():
     base_instance = _build_transport_waiting_instance()
 
@@ -302,6 +354,55 @@ def test_greedy_env_and_nsga_match_on_setup_rest_and_ocra_case():
     assert _metric_signature(greedy_instance, greedy_schedule)["max_ergonomic_exposure"] > 0.0
 
 
+@pytest.mark.parametrize(
+    ("builder", "expected_start"),
+    [
+        (_build_machine_calendar_instance, 20.0),
+        (_build_worker_calendar_instance, 15.0),
+        (_build_machine_breakdown_instance, 12.0),
+        (_build_worker_absence_instance, 14.0),
+    ],
+)
+def test_greedy_and_env_match_on_explicit_unavailability_cases(builder, expected_start):
+    base_instance = builder()
+
+    greedy_instance = _clone_instance(base_instance)
+    greedy_schedule = GreedyScheduler(job_rule=fifo_rule).schedule(
+        greedy_instance,
+        verbose=False,
+    )
+
+    env_instance = _clone_instance(base_instance)
+    env_schedule = _run_env_on_reference_schedule(env_instance, greedy_schedule)
+
+    nsga_instance = _clone_instance(base_instance)
+    genome = schedule_to_sfjssp_genome(_clone_instance(base_instance), greedy_schedule)
+    nsga_details = evaluate_sfjssp_genome_detailed(nsga_instance, genome)
+
+    greedy_signature = _schedule_signature(greedy_schedule)
+    env_signature = _schedule_signature(env_schedule)
+    nsga_signature = _schedule_signature(nsga_details["schedule"])
+
+    assert greedy_schedule.check_feasibility(greedy_instance) is True
+    assert env_schedule.check_feasibility(env_instance) is True
+    assert nsga_details["is_feasible"] is True
+    assert nsga_details["constraint_violations"] == []
+    assert greedy_signature == env_signature == nsga_signature
+    assert greedy_signature[(0, 0)]["start_time"] == expected_start
+    assert _metric_signature(greedy_instance, greedy_schedule) == _metric_signature(
+        env_instance,
+        env_schedule,
+    )
+    assert _metric_signature(greedy_instance, greedy_schedule) == {
+        "makespan": round(nsga_details["metrics"]["makespan"], 6),
+        "total_energy": round(nsga_details["metrics"]["total_energy"], 6),
+        "max_ergonomic_exposure": round(nsga_details["metrics"]["max_ergonomic_exposure"], 6),
+        "total_labor_cost": round(nsga_details["metrics"]["total_labor_cost"], 6),
+        "weighted_tardiness": round(nsga_details["metrics"]["weighted_tardiness"], 6),
+        "n_tardy_jobs": int(nsga_details["metrics"]["n_tardy_jobs"]),
+    }
+
+
 def test_cp_matches_canonical_single_operation_case_when_ortools_installed():
     pytest.importorskip("ortools")
 
@@ -346,6 +447,69 @@ def test_cp_matches_simple_precedence_fixture_when_ortools_installed():
     assert cp_schedule.metadata["surrogate_timing"] is False
     assert _schedule_signature(greedy_schedule) == _schedule_signature(cp_schedule)
     assert _metric_signature(greedy_instance, greedy_schedule) == _metric_signature(cp_instance, cp_schedule)
+
+
+def test_cp_matches_transport_waiting_fixture_when_ortools_installed():
+    pytest.importorskip("ortools")
+
+    base_instance = _build_transport_waiting_instance()
+    greedy_instance = _clone_instance(base_instance)
+    greedy_schedule = GreedyScheduler(job_rule=fifo_rule).schedule(greedy_instance, verbose=False)
+
+    cp_instance = _clone_instance(base_instance)
+    cp_schedule = solve_sfjssp(
+        cp_instance,
+        method="cp",
+        objective="makespan",
+        time_limit=5,
+        verbose=False,
+    )
+
+    assert cp_schedule is not None
+    assert cp_schedule.check_feasibility(cp_instance) is True
+    assert cp_schedule.metadata["surrogate_timing"] is False
+    assert cp_schedule.metadata["verified_scope"] == "narrow_canonical_makespan_fixtures"
+    assert _schedule_signature(greedy_schedule) == _schedule_signature(cp_schedule)
+    assert _metric_signature(greedy_instance, greedy_schedule) == _metric_signature(cp_instance, cp_schedule)
+    assert _schedule_signature(cp_schedule)[(0, 1)]["start_time"] == 21.0
+
+
+@pytest.mark.parametrize(
+    ("builder", "expected_start"),
+    [
+        (_build_machine_calendar_instance, 20.0),
+        (_build_worker_calendar_instance, 15.0),
+        (_build_machine_breakdown_instance, 12.0),
+        (_build_worker_absence_instance, 14.0),
+    ],
+)
+def test_cp_matches_fixed_blackout_unavailability_fixtures_when_ortools_installed(
+    builder,
+    expected_start,
+):
+    pytest.importorskip("ortools")
+
+    base_instance = builder()
+    greedy_instance = _clone_instance(base_instance)
+    greedy_schedule = GreedyScheduler(job_rule=fifo_rule).schedule(greedy_instance, verbose=False)
+
+    cp_instance = _clone_instance(base_instance)
+    cp_schedule = solve_sfjssp(
+        cp_instance,
+        method="cp",
+        objective="makespan",
+        time_limit=5,
+        verbose=False,
+    )
+
+    assert cp_schedule is not None
+    assert cp_schedule.check_feasibility(cp_instance) is True
+    assert cp_schedule.metadata["surrogate_timing"] is False
+    assert cp_schedule.metadata["calendar_event_semantics"] == "fixed_blackout_intervals"
+    assert cp_schedule.metadata["calendar_event_semantics_verified"] is True
+    assert _schedule_signature(greedy_schedule) == _schedule_signature(cp_schedule)
+    assert _metric_signature(greedy_instance, greedy_schedule) == _metric_signature(cp_instance, cp_schedule)
+    assert _schedule_signature(cp_schedule)[(0, 0)]["start_time"] == expected_start
 
 
 def test_nsga_infeasible_payload_preserves_assignment_reason():

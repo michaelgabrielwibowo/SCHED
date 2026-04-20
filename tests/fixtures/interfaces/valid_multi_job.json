@@ -7,11 +7,9 @@
     "planning_horizon": 720.0,
     "period_duration": 480.0,
     "source": "phase6-fixture",
-    "label": "fully_synthetic",
-    "label_justification": "Fixture for external interface tests",
-    "calibration_sources": [
-      "fixture-source"
-    ],
+    "calibration_status": "fully_synthetic",
+    "calibration_status_justification": "Fixture for external interface tests",
+    "calibration_sources": [],
     "known_limitations": [
       "synthetic"
     ]

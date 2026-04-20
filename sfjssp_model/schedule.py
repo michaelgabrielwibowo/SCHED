@@ -289,6 +289,51 @@ class Schedule:
 
         return prev_sched.completion_time + waiting_time + transport_time
 
+    def shift_start_past_explicit_unavailability(
+        self,
+        instance: SFJSSPInstance,
+        machine_id: int,
+        worker_id: int,
+        start_time: float,
+        duration: float,
+    ) -> float:
+        """Move a proposed start to the first canonical blackout-free interval."""
+        if duration <= 0.0:
+            return start_time
+
+        candidate = start_time
+        max_iterations = (
+            len(instance.get_machine_unavailability(machine_id))
+            + len(instance.get_worker_unavailability(worker_id))
+            + 1
+        )
+
+        for _ in range(max_iterations):
+            completion_time = candidate + duration
+            conflicts = list(
+                instance.get_machine_conflicting_windows(
+                    machine_id,
+                    candidate,
+                    completion_time,
+                )
+            )
+            conflicts.extend(
+                instance.get_worker_conflicting_windows(
+                    worker_id,
+                    candidate,
+                    completion_time,
+                )
+            )
+            if not conflicts:
+                return candidate
+
+            next_candidate = max(window.end_time for window in conflicts)
+            if next_candidate <= candidate + 1e-9:
+                break
+            candidate = next_candidate
+
+        return candidate
+
     def update_predecessor_transport(
         self,
         instance: SFJSSPInstance,
@@ -698,6 +743,28 @@ class Schedule:
             details=details or {},
         )
 
+    @staticmethod
+    def _machine_unavailability_code(window: Any) -> str:
+        """Map a canonical machine blackout window to a stable violation code."""
+        reason = getattr(window, "reason", "")
+        if reason == "maintenance":
+            return "machine_maintenance_violation"
+        if reason == "outage":
+            return "machine_outage_violation"
+        if reason == "breakdown":
+            return "machine_breakdown_violation"
+        return "machine_unavailable"
+
+    @staticmethod
+    def _worker_unavailability_code(window: Any) -> str:
+        """Map a canonical worker blackout window to a stable violation code."""
+        reason = getattr(window, "reason", "")
+        if reason == "off_shift":
+            return "worker_off_shift_violation"
+        if reason == "absence":
+            return "worker_absence_violation"
+        return "worker_unavailable"
+
     def collect_constraint_violations(
         self,
         instance: SFJSSPInstance
@@ -894,9 +961,10 @@ class Schedule:
                 sched_op.start_time,
                 sched_op.completion_time,
             ):
+                code = self._machine_unavailability_code(window)
                 violations.append(
                     self._build_violation(
-                        "machine_unavailable",
+                        code,
                         f"Machine unavailable: M{sched_op.machine_id} "
                         f"during Job {job_id} Op {op_id}",
                         job_id=job_id,
@@ -911,6 +979,7 @@ class Schedule:
                             "window_reason": window.reason,
                             "window_source": window.source,
                             "window_details": dict(window.details),
+                            "window_event_id": getattr(window, "event_id", ""),
                         },
                     )
                 )
@@ -920,9 +989,10 @@ class Schedule:
                 sched_op.start_time,
                 sched_op.completion_time,
             ):
+                code = self._worker_unavailability_code(window)
                 violations.append(
                     self._build_violation(
-                        "worker_unavailable",
+                        code,
                         f"Worker unavailable: W{sched_op.worker_id} "
                         f"during Job {job_id} Op {op_id}",
                         job_id=job_id,
@@ -937,6 +1007,7 @@ class Schedule:
                             "window_reason": window.reason,
                             "window_source": window.source,
                             "window_details": dict(window.details),
+                            "window_event_id": getattr(window, "event_id", ""),
                         },
                     )
                 )

@@ -96,14 +96,14 @@ def test_csv_importer_rejects_unknown_column_in_strict_mode(tmp_path):
 def test_csv_v2_rejects_invalid_details_json(tmp_path):
     fixture_dir = tmp_path / "bad_details"
     shutil.copytree(CSV_FIXTURE_ROOT / "valid_with_calendar_events_v2", fixture_dir)
-    breakdowns_path = fixture_dir / "machine_breakdowns.csv"
-    breakdowns_path.write_text(
-        "machine_id,start_time,repair_duration,source,details_json\n"
-        "M0,200.0,25.0,event,{not-json}\n",
+    events_path = fixture_dir / "events.csv"
+    events_path.write_text(
+        "event_type,machine_id,worker_id,start_time,end_time,repair_duration,source,event_id,details_json\n"
+        "machine_breakdown,M0,,200.0,,25.0,event,machine-breakdown-000001,{not-json}\n",
         encoding="utf-8",
     )
 
     with pytest.raises(InterfaceValidationError) as excinfo:
         load_instance_from_csv_bundle(fixture_dir)
 
-    _assert_issue(excinfo.value, "invalid_value", "$.csv_bundle.machine_breakdowns[0].details_json")
+    _assert_issue(excinfo.value, "invalid_value", "$.csv_bundle.events[0].details_json")

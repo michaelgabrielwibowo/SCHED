@@ -36,6 +36,19 @@ class InterfaceValidationError(ValueError):
         self.issues: List[ValidationIssue] = list(issues)
         super().__init__(self._format_message())
 
+    @classmethod
+    def from_single_issue(
+        cls,
+        *,
+        code: str,
+        path: str,
+        message: str,
+        hint: Optional[str] = None,
+    ) -> "InterfaceValidationError":
+        """Construct an error from one already-rendered issue payload."""
+
+        return cls([ValidationIssue(code=code, path=path, message=message, hint=hint)])
+
     def _format_message(self) -> str:
         if not self.issues:
             return "External input validation failed."

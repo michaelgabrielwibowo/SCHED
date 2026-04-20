@@ -24,6 +24,9 @@ What is verified now:
 What is still not verified in this environment:
 - Any claim of MIP exact-solver correctness. That path is now quarantined and raises a clear `NotImplementedError`.
 - Any claim of real industrial validity or calibrated benchmark realism beyond the synthetic generator assumptions.
+- Any site-calibrated claim without explicit calibration provenance. Audit and
+  export artifacts now require status/justification/source evidence before a
+  non-synthetic claim is accepted.
 
 ## Current Implementation Status
 
@@ -101,8 +104,11 @@ Observed outcome from the sweep:
 3. Torch-backed policy/training quality is only smoke-verified, not performance-validated.
 4. Dynamic events in the Gym environment have partial support only.
 5. Benchmark realism remains synthetic and literature-calibrated rather than factory-measured.
-6. NSGA-III comparison quality improved materially after fixing the warm-start decoder, but it still carries tardiness-driven soft-constraint penalty mass on every stored small benchmark in the reviewed `30`-generation slice.
-7. The April 13, 2026 budget sweep showed no benefit from simply increasing generations or population size under the current fixed-seed setup and default report-member policy.
+6. Calibration-sensitive claims are now mechanically controlled: exported
+   audits and schedule bundles carry explicit calibration status, and
+   non-synthetic claims require supporting calibration source references.
+7. NSGA-III comparison quality improved materially after fixing the warm-start decoder, but it still carries tardiness-driven soft-constraint penalty mass on every stored small benchmark in the reviewed `30`-generation slice.
+8. The April 13, 2026 budget sweep showed no benefit from simply increasing generations or population size under the current fixed-seed setup and default report-member policy.
 
 ## Recommended Next Checks
 

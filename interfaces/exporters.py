@@ -9,7 +9,11 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-from .audit import SCHEDULE_AUDIT_SCHEMA, build_schedule_audit
+from .audit import (
+    SCHEDULE_AUDIT_SCHEMA,
+    build_schedule_audit,
+    validate_schedule_audit_payload,
+)
 from .types import IdentifierMaps
 
 try:
@@ -20,8 +24,8 @@ except ImportError:  # pragma: no cover - supports repo-root imports
     from sfjssp_model.schedule import Schedule
 
 
-RUN_MANIFEST_SCHEMA = "schedule_run_manifest_v1"
-SCHEDULE_EXPORT_SCHEMA = "schedule_export_bundle_v1"
+RUN_MANIFEST_SCHEMA = "schedule_run_manifest_v2"
+SCHEDULE_EXPORT_SCHEMA = "schedule_export_bundle_v2"
 
 OPERATION_FIELDNAMES = [
     "job_id",
@@ -81,6 +85,43 @@ VIOLATION_FIELDNAMES = [
     "details_json",
 ]
 
+MACHINE_CALENDAR_FIELDNAMES = [
+    "machine_id",
+    "machine_external_id",
+    "start_time",
+    "end_time",
+    "reason",
+    "source",
+    "event_id",
+    "details_json",
+]
+
+WORKER_CALENDAR_FIELDNAMES = [
+    "worker_id",
+    "worker_external_id",
+    "entry_type",
+    "start_time",
+    "end_time",
+    "shift_label",
+    "reason",
+    "source",
+    "event_id",
+    "details_json",
+]
+
+EVENT_FIELDNAMES = [
+    "event_type",
+    "event_id",
+    "resource_type",
+    "resource_id",
+    "resource_external_id",
+    "start_time",
+    "end_time",
+    "repair_duration",
+    "source",
+    "details_json",
+]
+
 
 def export_schedule_artifacts(
     output_dir: Any,
@@ -106,6 +147,7 @@ def export_schedule_artifacts(
         input_schema=input_schema,
         input_source_id=input_source_id,
     )
+    validate_schedule_audit_payload(audit_payload)
     schedule_bundle = build_schedule_export_bundle(
         schedule,
         instance,
@@ -117,6 +159,9 @@ def export_schedule_artifacts(
     machine_timeline_rows = build_machine_timeline_rows(schedule, id_maps=id_maps)
     worker_timeline_rows = build_worker_timeline_rows(schedule, id_maps=id_maps)
     violation_rows = build_violation_rows(audit_payload)
+    machine_calendar_rows = build_machine_calendar_rows(audit_payload)
+    worker_calendar_rows = build_worker_calendar_rows(audit_payload)
+    event_rows = build_event_rows(audit_payload)
 
     schedule_path = target_dir / "schedule.json"
     manifest_path = target_dir / "run_manifest.json"
@@ -125,6 +170,9 @@ def export_schedule_artifacts(
     worker_timeline_path = target_dir / "worker_timeline.csv"
     violations_json_path = target_dir / "violations.json"
     violations_csv_path = target_dir / "violations.csv"
+    machine_calendar_path = target_dir / "machine_calendar.csv"
+    worker_calendar_path = target_dir / "worker_calendar.csv"
+    events_path = target_dir / "events.csv"
 
     _write_json(schedule_path, schedule_bundle)
     _write_json(violations_json_path, audit_payload)
@@ -132,6 +180,9 @@ def export_schedule_artifacts(
     _write_csv(machine_timeline_path, TIMELINE_FIELDNAMES, machine_timeline_rows)
     _write_csv(worker_timeline_path, TIMELINE_FIELDNAMES, worker_timeline_rows)
     _write_csv(violations_csv_path, VIOLATION_FIELDNAMES, violation_rows)
+    _write_csv(machine_calendar_path, MACHINE_CALENDAR_FIELDNAMES, machine_calendar_rows)
+    _write_csv(worker_calendar_path, WORKER_CALENDAR_FIELDNAMES, worker_calendar_rows)
+    _write_csv(events_path, EVENT_FIELDNAMES, event_rows)
 
     manifest = {
         "manifest_schema": RUN_MANIFEST_SCHEMA,
@@ -139,6 +190,7 @@ def export_schedule_artifacts(
         "audit_schema": audit_payload.get("audit_schema", SCHEDULE_AUDIT_SCHEMA),
         "instance_id": instance.instance_id,
         "instance_name": instance.instance_name,
+        "calibration": dict(audit_payload["calibration"]),
         "feasible": audit_payload["feasible"],
         "hard_violation_count": audit_payload["hard_violation_count"],
         "scheduled_operation_count": len(schedule.scheduled_ops),
@@ -152,6 +204,9 @@ def export_schedule_artifacts(
             "worker_timeline_csv": worker_timeline_path.name,
             "violations_json": violations_json_path.name,
             "violations_csv": violations_csv_path.name,
+            "machine_calendar_csv": machine_calendar_path.name,
+            "worker_calendar_csv": worker_calendar_path.name,
+            "events_csv": events_path.name,
         },
         "provenance": dict(audit_payload["provenance"]),
     }
@@ -173,6 +228,7 @@ def build_schedule_export_bundle(
         "schedule_schema": SCHEDULE_EXPORT_SCHEMA,
         "instance_id": instance.instance_id,
         "instance_name": instance.instance_name,
+        "calibration": dict(audit_payload["calibration"]),
         "feasible": audit_payload["feasible"],
         "hard_violation_count": audit_payload["hard_violation_count"],
         "metrics": dict(audit_payload["soft_summary"]["metrics"]),
@@ -192,6 +248,8 @@ def build_schedule_export_bundle(
             resource_key="worker_id",
             external_key="worker_external_id",
         ),
+        "resource_calendars": dict(audit_payload.get("resource_calendars", {})),
+        "canonical_events": list(audit_payload.get("canonical_events", [])),
         "provenance": dict(audit_payload["provenance"]),
     }
 
@@ -318,6 +376,104 @@ def build_violation_rows(audit_payload: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "worker_external_id": violation.get("worker_external_id"),
                 "details_json": json.dumps(
                     violation.get("details", {}),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            }
+        )
+    return rows
+
+
+def build_machine_calendar_rows(audit_payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return deterministic flat machine-calendar rows."""
+
+    rows: List[Dict[str, Any]] = []
+    for machine in audit_payload.get("resource_calendars", {}).get("machines", []):
+        for window in machine.get("unavailability_windows", []):
+            rows.append(
+                {
+                    "machine_id": machine["machine_id"],
+                    "machine_external_id": machine.get("machine_external_id"),
+                    "start_time": window.get("start_time"),
+                    "end_time": window.get("end_time"),
+                    "reason": window.get("reason"),
+                    "source": window.get("source"),
+                    "event_id": window.get("event_id"),
+                    "details_json": json.dumps(
+                        window.get("details", {}),
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                }
+            )
+    return rows
+
+
+def build_worker_calendar_rows(audit_payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return deterministic flat worker-calendar rows."""
+
+    rows: List[Dict[str, Any]] = []
+    for worker in audit_payload.get("resource_calendars", {}).get("workers", []):
+        for shift in worker.get("shift_windows", []):
+            rows.append(
+                {
+                    "worker_id": worker["worker_id"],
+                    "worker_external_id": worker.get("worker_external_id"),
+                    "entry_type": "shift_window",
+                    "start_time": shift.get("start_time"),
+                    "end_time": shift.get("end_time"),
+                    "shift_label": shift.get("shift_label"),
+                    "reason": "",
+                    "source": "",
+                    "event_id": "",
+                    "details_json": json.dumps(
+                        shift.get("details", {}),
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                }
+            )
+        for window in worker.get("unavailability_windows", []):
+            rows.append(
+                {
+                    "worker_id": worker["worker_id"],
+                    "worker_external_id": worker.get("worker_external_id"),
+                    "entry_type": "unavailability_window",
+                    "start_time": window.get("start_time"),
+                    "end_time": window.get("end_time"),
+                    "shift_label": "",
+                    "reason": window.get("reason"),
+                    "source": window.get("source"),
+                    "event_id": window.get("event_id"),
+                    "details_json": json.dumps(
+                        window.get("details", {}),
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                }
+            )
+    return rows
+
+
+def build_event_rows(audit_payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return deterministic flat canonical-event rows."""
+
+    rows: List[Dict[str, Any]] = []
+    for event in audit_payload.get("canonical_events", []):
+        payload = event.get("payload", {})
+        rows.append(
+            {
+                "event_type": event.get("event_type"),
+                "event_id": event.get("event_id"),
+                "resource_type": event.get("resource_type"),
+                "resource_id": event.get("resource_id"),
+                "resource_external_id": event.get("resource_external_id"),
+                "start_time": event.get("start_time"),
+                "end_time": event.get("end_time"),
+                "repair_duration": payload.get("repair_duration"),
+                "source": payload.get("source"),
+                "details_json": json.dumps(
+                    payload.get("details", {}),
                     sort_keys=True,
                     separators=(",", ":"),
                 ),

@@ -1,0 +1,3 @@
+worker_id,entry_type,start_time,end_time,shift_label,reason,source,details_json
+W0,shift_window,0.0,240.0,day,,,"{""roster"":""weekday""}"
+W0,unavailability_window,130.0,150.0,,training,calendar,"{""course"":""safe-handling""}"

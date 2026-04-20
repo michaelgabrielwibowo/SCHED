@@ -201,6 +201,30 @@ class TestMachine:
         assert not machine.is_broken
         assert machine.current_state == MachineState.IDLE
 
+    def test_machine_serialization_round_trip_preserves_calendar_and_events(self):
+        machine = Machine(machine_id=4, machine_name="M4")
+        machine.add_unavailability_window(
+            10.0,
+            20.0,
+            reason="maintenance",
+            source="calendar",
+            details={"ticket": "M-4"},
+        )
+        machine.add_breakdown_event(
+            30.0,
+            15.0,
+            source="event",
+            details={"ticket": "BD-4"},
+            event_id="machine-breakdown-000001",
+        )
+
+        restored = Machine.from_dict(machine.to_dict())
+
+        assert restored.to_dict() == machine.to_dict()
+        assert restored.breakdown_events[0].event_id == "machine-breakdown-000001"
+        assert restored.unavailability_windows[0].reason == "maintenance"
+        assert restored.unavailability_windows[1].reason == "breakdown"
+
 
 class TestWorker:
     """Tests for Worker dataclass"""
@@ -329,6 +353,37 @@ class TestWorker:
         assert restored.SHIFT_DURATION == 600.0
         assert restored._last_worked_period == 2
         assert restored.operations_completed == {1: 4}
+
+    def test_worker_serialization_round_trip_preserves_calendar_and_events(self):
+        worker = Worker(worker_id=8, worker_name="B")
+        worker.add_shift_window(
+            20.0,
+            80.0,
+            shift_label="day",
+            details={"roster": "A"},
+            planning_horizon=120.0,
+        )
+        worker.add_unavailability_window(
+            30.0,
+            35.0,
+            reason="training",
+            source="calendar",
+            details={"ticket": "W-8"},
+        )
+        worker.add_absence_event(
+            50.0,
+            60.0,
+            source="event",
+            details={"ticket": "ABS-8"},
+            event_id="worker-absence-000001",
+        )
+
+        restored = Worker.from_dict(worker.to_dict())
+
+        assert restored.to_dict() == worker.to_dict()
+        assert restored.shift_windows[0].shift_label == "day"
+        assert any(window.reason == "off_shift" for window in restored.off_shift_windows)
+        assert restored.absence_events[0].event_id == "worker-absence-000001"
 
 
 class TestSFJSSPInstance:
@@ -497,6 +552,13 @@ class TestSFJSSPInstance:
         instance = SFJSSPInstance(instance_id="TEST_CALENDAR_ROUND_TRIP")
         instance.add_machine(Machine(machine_id=0))
         instance.add_worker(Worker(worker_id=0))
+        instance.add_worker_shift_window(
+            0,
+            20.0,
+            100.0,
+            shift_label="day",
+            details={"roster": "weekday"},
+        )
         instance.add_machine_unavailability(
             0,
             10.0,
@@ -533,8 +595,28 @@ class TestSFJSSPInstance:
         assert restored.to_dict() == instance.to_dict()
         assert restored.get_machine_unavailability(0)[0].reason == "maintenance"
         assert restored.get_machine_unavailability(0)[1].reason == "breakdown"
-        assert restored.get_worker_unavailability(0)[0].reason == "training"
-        assert restored.get_worker_unavailability(0)[1].reason == "absence"
+        worker_reasons = [window.reason for window in restored.get_worker_unavailability(0)]
+        assert "off_shift" in worker_reasons
+        assert "training" in worker_reasons
+        assert "absence" in worker_reasons
+        assert restored.event_sequence_counter == instance.event_sequence_counter
+
+    def test_iter_canonical_events_is_deterministic_across_round_trip(self):
+        instance = SFJSSPInstance(instance_id="TEST_EVENT_ORDER")
+        instance.add_machine(Machine(machine_id=0))
+        instance.add_worker(Worker(worker_id=0))
+
+        instance.add_worker_absence_event(0, 40.0, 60.0, source="event")
+        instance.add_machine_breakdown_event(0, 10.0, 5.0, source="event")
+
+        events = instance.iter_canonical_events()
+        restored = SFJSSPInstance.from_dict(instance.to_dict())
+
+        assert [event["event_type"] for event in events] == [
+            "machine_breakdown",
+            "worker_absence",
+        ]
+        assert restored.iter_canonical_events() == events
 
     def test_to_dict(self):
         """Test instance serialization"""
@@ -547,6 +629,7 @@ class TestSFJSSPInstance:
 
         assert data['instance_id'] == "TEST_001"
         assert len(data['jobs']) == 1
+        assert data['calibration_status'] == "fully_synthetic"
         assert 'label' in data
 
 
@@ -798,7 +881,7 @@ class TestSchedule:
 
         assert schedule.check_feasibility(instance) is False
         assert any(
-            violation.code == "machine_unavailable"
+            violation.code == "machine_maintenance_violation"
             for violation in schedule.constraint_violation_details
         )
 
@@ -823,7 +906,57 @@ class TestSchedule:
 
         assert schedule.check_feasibility(instance) is False
         assert any(
-            violation.code == "worker_unavailable"
+            violation.code == "worker_absence_violation"
+            for violation in schedule.constraint_violation_details
+        )
+
+    def test_check_feasibility_rejects_worker_off_shift_windows(self):
+        instance = SFJSSPInstance(instance_id="TEST_WORKER_OFF_SHIFT")
+        instance.add_machine(Machine(machine_id=0))
+        instance.add_worker(
+            Worker(worker_id=0, min_rest_fraction=0.0, ocra_max_per_shift=999.0)
+        )
+        instance.add_worker_shift_window(0, 20.0, 40.0, shift_label="day")
+        op = Operation(
+            job_id=0,
+            op_id=0,
+            processing_times={0: {0: 10.0}},
+            eligible_machines={0},
+            eligible_workers={0},
+        )
+        instance.add_job(Job(job_id=0, operations=[op]))
+
+        schedule = Schedule(instance_id="TEST_WORKER_OFF_SHIFT")
+        schedule.add_operation(0, 0, 0, 0, 0, 5.0, 15.0, 10.0)
+
+        assert schedule.check_feasibility(instance) is False
+        assert any(
+            violation.code == "worker_off_shift_violation"
+            for violation in schedule.constraint_violation_details
+        )
+
+    def test_check_feasibility_rejects_machine_breakdown_windows(self):
+        instance = SFJSSPInstance(instance_id="TEST_MACHINE_BREAKDOWN")
+        instance.add_machine(Machine(machine_id=0))
+        instance.add_worker(
+            Worker(worker_id=0, min_rest_fraction=0.0, ocra_max_per_shift=999.0)
+        )
+        op = Operation(
+            job_id=0,
+            op_id=0,
+            processing_times={0: {0: 10.0}},
+            eligible_machines={0},
+            eligible_workers={0},
+        )
+        instance.add_job(Job(job_id=0, operations=[op]))
+        instance.add_machine_breakdown_event(0, 12.0, 6.0, source="event")
+
+        schedule = Schedule(instance_id="TEST_MACHINE_BREAKDOWN")
+        schedule.add_operation(0, 0, 0, 0, 0, 10.0, 20.0, 10.0)
+
+        assert schedule.check_feasibility(instance) is False
+        assert any(
+            violation.code == "machine_breakdown_violation"
             for violation in schedule.constraint_violation_details
         )
 
