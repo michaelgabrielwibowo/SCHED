@@ -20,6 +20,14 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def test_cli_without_arguments_shows_top_level_help():
+    result = _run_cli()
+
+    assert result.returncode == 0, result.stderr
+    assert "usage: python -m interfaces.cli" in result.stdout
+    assert "validate-input" in result.stdout
+
+
 def test_cli_validate_input_happy_path():
     result = _run_cli(
         "validate-input",

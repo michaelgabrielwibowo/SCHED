@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 import time
@@ -101,7 +102,12 @@ class CLIError(Exception):
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = _build_parser()
-    args = parser.parse_args(argv)
+    resolved_argv = list(sys.argv[1:] if argv is None else argv)
+    if not resolved_argv:
+        parser.print_help(sys.stdout)
+        return EXIT_SUCCESS
+
+    args = parser.parse_args(resolved_argv)
 
     try:
         if args.command == "validate-input":
@@ -142,7 +148,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m interfaces.cli",
+        prog=_detect_prog_name(),
         description="Validate external SFJSSP inputs and run documented operator workflows.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -225,6 +231,19 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     return parser
+
+
+def _detect_prog_name(argv0: Optional[str] = None) -> str:
+    """Render help for the active entrypoint without changing CLI behavior."""
+
+    override = os.environ.get("SCHED_CLI_PROG")
+    if override:
+        return override
+
+    candidate = Path(argv0 or sys.argv[0]).name.lower()
+    if candidate in {"sched", "sched.exe", "sched.cmd", "sched.ps1"}:
+        return "SCHED"
+    return "python -m interfaces.cli"
 
 
 def _add_solve_like_arguments(parser: argparse.ArgumentParser) -> None:

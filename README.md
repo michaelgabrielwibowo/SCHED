@@ -131,16 +131,16 @@ produces `run_manifest.json`, `schedule.json`, `operations.csv`,
 CLI happy path:
 
 ```bash
-python -m interfaces.cli validate-input --input tests/fixtures/interfaces/valid_minimal.json
-python -m interfaces.cli validate-input --input tests/fixtures/interfaces/valid_with_calendar_events_v2.json
-python -m interfaces.cli solve --input tests/fixtures/interfaces/valid_minimal.json --solver greedy:spt --output-root runs
-python -m interfaces.cli validate-input --input tests/fixtures/interfaces_csv/valid_minimal
-python -m interfaces.cli validate-input --input tests/fixtures/interfaces_csv/valid_with_calendar_events_v2
-python -m interfaces.cli solve --input tests/fixtures/interfaces/valid_with_calendar_events_v2.json --solver greedy:spt --output-root runs
-python -m interfaces.cli validate-input --input tests/fixtures/interfaces_adapters/valid_plant_tables_v1.json --adapter plant_tables_v1 --site-profile light_assembly_demo_v1
-python -m interfaces.cli solve --input tests/fixtures/interfaces_adapters/valid_plant_tables_v1.json --adapter plant_tables_v1 --site-profile light_assembly_demo_v1 --solver greedy:spt --output-root runs
-python -m interfaces.cli audit --run-dir runs/EXT_MINIMAL/greedy-spt
-python -m interfaces.cli export --run-dir runs/EXT_MINIMAL/greedy-spt --target-dir handoff/EXT_MINIMAL-greedy-spt
+SCHED validate-input --input tests/fixtures/interfaces/valid_minimal.json
+SCHED validate-input --input tests/fixtures/interfaces/valid_with_calendar_events_v2.json
+SCHED solve --input tests/fixtures/interfaces/valid_minimal.json --solver greedy:spt --output-root runs
+SCHED validate-input --input tests/fixtures/interfaces_csv/valid_minimal
+SCHED validate-input --input tests/fixtures/interfaces_csv/valid_with_calendar_events_v2
+SCHED solve --input tests/fixtures/interfaces/valid_with_calendar_events_v2.json --solver greedy:spt --output-root runs
+SCHED validate-input --input tests/fixtures/interfaces_adapters/valid_plant_tables_v1.json --adapter plant_tables_v1 --site-profile light_assembly_demo_v1
+SCHED solve --input tests/fixtures/interfaces_adapters/valid_plant_tables_v1.json --adapter plant_tables_v1 --site-profile light_assembly_demo_v1 --solver greedy:spt --output-root runs
+SCHED audit --run-dir runs/EXT_MINIMAL/greedy-spt
+SCHED export --run-dir runs/EXT_MINIMAL/greedy-spt --target-dir handoff/EXT_MINIMAL-greedy-spt
 ```
 
 Operator workflow notes:
@@ -204,6 +204,37 @@ sfjssp_code/
 ```bash
 pip install -r requirements.txt
 ```
+
+### Install the `SCHED` Command
+
+From the repo root, the Windows shim works immediately:
+
+```bash
+.\SCHED --help
+```
+
+To install a global `SCHED` command for your current user on Windows:
+
+```bash
+powershell -ExecutionPolicy Bypass -File .\scripts\install_sched_command.ps1
+SCHED --help
+```
+
+The installer writes a small `SCHED.cmd` shim into `%USERPROFILE%\bin`, updates
+your active Python `Scripts` directory when available, otherwise `%USERPROFILE%\bin`.
+If it falls back to `%USERPROFILE%\bin`, it updates the user `PATH` if needed and
+tells you to open a new shell when Windows has not yet picked up the new command
+search path.
+
+If you also want a standard editable Python entry point, the repo includes
+`pyproject.toml` with `SCHED = "interfaces.cli:main"`:
+
+```bash
+python -m pip install --no-build-isolation -e .
+```
+
+`python -m interfaces.cli ...` remains supported as a direct fallback for
+non-Windows environments or manual debugging.
 
 ### Optional DRL Support
 

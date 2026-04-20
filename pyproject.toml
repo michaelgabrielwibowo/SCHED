@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sched"
+version = "0.1.0"
+description = "Canonical SFJSSP command-line workflow."
+readme = "README.md"
+requires-python = ">=3.10"
+
+[project.scripts]
+SCHED = "interfaces.cli:main"
+
+[tool.setuptools.packages.find]
+include = [
+    "agents*",
+    "baseline_solver*",
+    "environment*",
+    "exact_solvers*",
+    "interfaces*",
+    "moea*",
+    "sfjssp_model*",
+    "training*",
+    "utils*",
+    "visualization*",
+]
+exclude = [
+    "tests*",
+    "experiments*",
+]
